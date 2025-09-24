@@ -1,7 +1,7 @@
 # Root structure
-
+```
 .
-├── benchmarks - вещи которые должны запускаться по итогу
+├── benchmarks
 │   ├── factorial.lang
 │   └── first_program.lang
 ├── docs - дока проекта
@@ -28,7 +28,7 @@
         │   └── todo
         └── vm
             └── todo
-
+```
 ## lexer
 Берет текст и преобразует его в последовательность токенов описанных в src/lexer/token.h, выбрасывает лексические ошибки
 ## Parser
