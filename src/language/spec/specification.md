@@ -385,12 +385,12 @@ struct Rectangle {
 ### Struct Instantiation
 ```
 void create_geometry(): {
-    let point = Vector2 { x: 10.5, y: 20.3 };
-    let rect = Rectangle { 
+    Vector2 point = Vector2(x: 10.5, y: 20.3);
+    Rectangle rect = Rectangle(
         position: point, 
         width: 100.0, 
         height: 50.0 
-    };
+    );
 }
 ```
 
