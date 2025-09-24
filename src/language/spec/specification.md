@@ -132,7 +132,7 @@ b = 5;            // Error: b not declared
 
 ### Keywords
 Reserved words that cannot be used as variable names:
-- **Types**: `bool`, `int`, `long`, `array`, `None`
+- **Types**: `bool`, `int`, `long`, `array`, `NoneType`
 - **Control flow**: `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `return`
 - **Other**: `true`, `false`
 
