@@ -1,0 +1,14 @@
+int factorial(int n) {
+    int x = 1
+    num = 0;
+    while (num <= n){
+        x *= num;
+    }
+    return x;
+}
+
+int main(){
+    int n = input();
+    int result = factorial(n);
+    print(result);
+}

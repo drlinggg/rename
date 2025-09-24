@@ -10,17 +10,17 @@ An object has a storage duration that determines its lifetime. #todo add about G
 Variables are visible within the scope where they are declared.
 
 #### Global Scope
-```javascript
+```lang
 int global_var = 100;  // Global variable
 
-void main() {
+None main() {
     print(global_var);  // Accessible everywhere
 }
-```
+```lang
 
 #### Function Scope
-```javascript
-void example() {
+```lang
+None example() {
     int local_var = 50;  // Local to this function
     if (true) {
         int block_var = 10;  // Local to this block
@@ -28,12 +28,12 @@ void example() {
     }
     // print(block_var);     // Error: block_var not accessible here
 }
-```
+```lang
 
 ### File-based Namespaces
 Each source file implicitly defines a namespace.
 
-```javascript
+```lang
 // file: math_utils.lang
 int factorial(int n) {
     // implementation
@@ -45,10 +45,10 @@ int fibonacci(int n) {
 
 // file: main.lang
 // Functions can be used if files are linked together
-void main() {
+None main() {
     int result = factorial(5);  // Assuming proper inclusion/linking
 }
-```
+```lang
 
 ### Import System (if implemented)
 pass
@@ -56,10 +56,10 @@ pass
 ### Shadowing
 Inner scopes can shadow variables from outer scopes.
 
-```javascript
+```lang
 int x = 10;  // Global x
 
-void shadow_example() {
+None shadow_example() {
     int x = 20;      // Shadows global x
     if (true) {
         int x = 30;  // Shadows function x
@@ -69,27 +69,27 @@ void shadow_example() {
 }
 
 print(x);            // 10
-```
+```lang
 
 ### Namespace Resolution
 The language uses lexical scoping (static scoping) for variable resolution.
 
-```javascript
-string x = "global";
+```lang
+string x = "global"; #thereisno actual string rn but for this example.
 
-void outer() {
+None outer() {
     string x = "outer";
     
-    void inner() {
+    None inner() {
         string x = "inner";
         print(x);        // "inner" (innermost scope)
     }
     
-    void inner2() {
+    None inner2() {
         print(x);        // "outer" (parent scope)
     }
 }
-```
+```lang
 
 ## 1. Character Set
 - **Letters**: A-Z, a-z
@@ -114,13 +114,13 @@ void outer() {
 | `array` | Dynamic array | `[1, 2, 3]` | 
 
 ### Variable Declaration
-```javascript
+```lang
 int x = 5;        // Correct
 x = 'a';          // Error: type mismatch
 
 int a = 5;        // Correct
 b = 5;            // Error: b not declared
-```
+```lang
 
 ### Type Rules
 - Strict static typing
@@ -132,7 +132,7 @@ b = 5;            // Error: b not declared
 
 ### Keywords
 Reserved words that cannot be used as variable names:
-- **Types**: `bool`, `int`, `long`, `array`, `void`
+- **Types**: `bool`, `int`, `long`, `array`, `None`
 - **Control flow**: `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `return`
 - **Other**: `true`, `false`
 
@@ -177,6 +177,7 @@ Reserved words that cannot be used as variable names:
 ## 6. Constants
 - Boolean: `true`, `false`
 - Integer: `42`, `-10`, `0`
+- None: special thing
 - No floating-point or character constants in initial version
 
 Each constant has a type determined by its form and value.
@@ -201,59 +202,59 @@ An expression is a sequence of operators and operands that specifies a computati
 ### 7.2 Expression Types
 
 #### Arithmetic Expressions
-```javascript
+```lang
 int x = 5 + 3 * 2;     // 11 (multiplication has higher precedence)
 int y = (5 + 3) * 2;   // 16 (parentheses change precedence)
-```
+```lang
 
 #### Logical Expressions
-```javascript
+```lang
 bool a = true and false;        // false
 bool b = (x > 0) or (y < 10);  // logical combination
 bool c = not (a == b);          // logical NOT
-```
+```lang
 
 #### Assignment Expressions
-```javascript
+```lang
 x = 10;              // simple assignment
 y += 5;              // compound assignment (y = y + 5)
 z *= 2 + 3;          // compound with expression
-```
+```lang
 
 #### Function Call Expressions
-```javascript
+```lang
 int result = factorial(5);          // function call
 int len = calculate_length(x, y);   // multiple arguments
-```
+```lang
 
 ### 7.3 Primary Expressions
 
 Primary expressions are the basic building blocks of more complex expressions:
 
 #### Literals
-```javascript
+```lang
 42           // integer literal
 true         // boolean literal
 [1, 2, 3]    // array literal
-```
+```lang
 
 #### Identifiers
-```javascript
+```lang
 x            // variable name
 counter      // identifier
-```
+```lang
 
 #### Parenthesized Expressions
-```javascript
+```lang
 (x + y) * z          // parentheses override precedence
 (a and b) or c       // explicit grouping
-```
+```lang
 
 #### Function Calls
-```javascript
+```lang
 sin(angle)           // function call as expression
 max(a, b, c)         // multiple arguments
-```
+```lang
 
 ### 7.4 Evaluation Rules
 
@@ -264,33 +265,33 @@ max(a, b, c)         // multiple arguments
 - Function arguments are evaluated before function call
 
 #### Short-Circuit Evaluation
-```javascript
+```lang
 // If 'x' is false, 'y' is not evaluated
 bool result = x and y;
 
 // If 'a' is true, 'b' is not evaluated  
 bool value = a or b;
-```
+```lang
 
 ### 7.5 Side Effects
 
 Expressions may have side effects that change program state:
 
 #### Assignment Side Effects
-```javascript
+```lang
 x = 5;              // changes value of x
 counter += 1;       // modifies counter
-```
+```lang
 
 #### Function Call Side Effects
-```javascript
+```lang
 print("hello");     // output side effect
-```
+```lang
 
 ### 7.6 Expression Examples
 
 #### Complex Expressions
-```javascript
+```lang
 // Combined arithmetic and assignment
 x = (a + b) * c - d / e;
 
@@ -302,16 +303,16 @@ int result = max(min(a, b), min(c, d));
 
 // Array access in expression
 int value = scores[index] * multiplier + bonus;
-```
+```lang
 
 ## 8. Functions
 
 ### 8.1 Function Declaration
 Functions are declared with return type, name, parameters, and body.
 
-```javascript
+```lang
 // Basic function
-void greet(string name) {
+None greet(string name) {
     print("Hello, " + name);
 }
 
@@ -319,22 +320,22 @@ void greet(string name) {
 int add(int a, int b) {
     return a + b;
 }
-```
+```lang
 
 ### 8.2 Function Parameters
 Parameters are passed by value. Each parameter must specify its type.
 
-```javascript
+```lang
 // Parameters with different types
 int calculate(int balance, int rate, int years) {
     return balance * (1 + rate) * years;
 }
-```
+```lang
 
 ### 8.3 Return Statement
 The `return` statement exits a function and optionally returns a value.
 
-```javascript
+```lang
 int max(int a, int b) {
     if (a > b) {
         return a;
@@ -351,25 +352,25 @@ bool is_valid_email(string email) {
     // further validation
     return true;
 }
-```
+```lang
 
 ### 8.4 Function Calls
 Functions are called using the function name followed by arguments in parentheses.
 
-```javascript
+```lang
 // Simple call
 int result = add(5, 3);
 
 // Nested calls
 int max_value = max(add(2, 3), multiply(4, 5));
-```
+```lang
 
 ## 9. Structs and Methods
 
 ### Struct Declaration
 Structs create new namespaces for their fields and methods.
 
-```
+```lang
 struct Vector2 {
     x: double;
     y: double;
@@ -380,11 +381,11 @@ struct Rectangle {
     width: double;
     height: double;
 }
-```
+```lang
 
 ### Struct Instantiation
-```
-void create_geometry(): {
+```lang
+None create_geometry(): {
     Vector2 point = Vector2(x: 10.5, y: 20.3);
     Rectangle rect = Rectangle(
         position: point, 
@@ -392,7 +393,7 @@ void create_geometry(): {
         height: 50.0 
     );
 }
-```
+```lang
 
 ## 10. Control Structures
 
