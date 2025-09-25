@@ -1,7 +1,6 @@
 #pragma once
-#include <string>
 
-enum class TokenType {
+typedef enum TokenType {
 
     // 1. Keywords
 
@@ -9,12 +8,12 @@ enum class TokenType {
     KW_INT, KW_BOOL, KW_LONG, KW_ARRAY,
 
     // 1.2 Special constants
-    KW_NONE, KW_TRUE, KW_FALSE
+    KW_NONE, KW_TRUE, KW_FALSE,
 
     // 1.3 Control flow
     KW_IF, KW_ELSE, KW_ELIF, 
     KW_WHILE, KW_FOR, KW_BREAK, 
-    KW_CONTINUE, KW_RETURN,
+    KW_CONTINUE, KW_RETURN, KW_FUN, //function
 
     // 1.4 Structs, object.attr
     KW_STRUCT, KW_DOT,
@@ -50,16 +49,16 @@ enum class TokenType {
     // 6. Special
     END_OF_FILE, ERROR, // idk what is it
     
-};
+} TokenType;
 
 
 // This struct represents based indivisible brick of code written by.
 // value is used to storage text inside for diagnostics and future trouble-shootings
 // examples:
 // int x = 5 + 2 => [Token(TokenType(KW_INT), 'int'), Token(TokenType(IDENTIFIER), 'x'), Token(TokenType(OP_ASSIGN), '+') ....]
-struct Token {
+typedef struct Token {
     TokenType type;
-    std::string value;
+    char* value;
     int line; // used for showing in lexical exceptions
     int column; // used for showing in lexical exceptions
-};
+} Token;

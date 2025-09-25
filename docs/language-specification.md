@@ -184,7 +184,7 @@ Each constant has a type determined by its form and value.
 
 ## 7. Expressions
 
-An expression is a sequence of operators and operands that specifies a computation.
+An expression is a sequence of operators and operands that specifies a computation. Expressions always have return value
 
 ### 7.1 Operator Precedence and Associativity
 
@@ -304,6 +304,10 @@ int result = max(min(a, b), min(c, d));
 // Array access in expression
 int value = scores[index] * multiplier + bonus;
 ```
+
+### Statements
+Statements are changing control of the program commands which do not have return value
+for e.x. if statement, return statement, declaration statement
 
 ## 8. Functions
 
