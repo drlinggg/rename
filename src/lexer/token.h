@@ -56,7 +56,7 @@ typedef enum TokenType {
 // value is used to storage text inside for diagnostics and future trouble-shootings
 // examples:
 // int x = 5 + 2 => [Token(TokenType(KW_INT), 'int'), Token(TokenType(IDENTIFIER), 'x'), Token(TokenType(OP_ASSIGN), '+') ....]
-typedef struct Token {
+typedef struct {
     TokenType type;
     char* value;
     int line; // used for showing in lexical exceptions

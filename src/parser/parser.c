@@ -13,7 +13,6 @@ Parser* parser_create(Token* tokens, size_t token_count) {
 
     parser->current_location.line = 1;
     parser->current_location.column = 1;
-    parser->current_location.length = 0;
     return parser;
 }
 

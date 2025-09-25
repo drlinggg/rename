@@ -540,10 +540,11 @@ const char* ast_node_type_to_string(int node_type) {
         case NODE_BLOCK_STATEMENT: return "BlockStatement";
         case NODE_IF_STATEMENT: return "IfStatement";
         case NODE_WHILE_STATEMENT: return "WhileStatement";
+        case NODE_ASSIGNMENT_STATEMENT: return "AssignmentStatement";
         case NODE_FOR_STATEMENT: return "ForStatement";
+
         case NODE_BINARY_EXPRESSION: return "BinaryExpression";
         case NODE_UNARY_EXPRESSION: return "UnaryExpression";
-        case NODE_ASSIGNMENT_STATEMENT: return "AssignmentStatement";
         case NODE_LITERAL_EXPRESSION: return "LiteralExpression";
         case NODE_VARIABLE_EXPRESSION: return "VariableExpression";
         case NODE_FUNCTION_CALL_EXPRESSION: return "FunctionCallExpression";
@@ -551,6 +552,104 @@ const char* ast_node_type_to_string(int node_type) {
     }
 }
 
+const char* type_var_to_string(int type_var) {
+    switch (type_var) {
+        case TYPE_INT: return "int";
+        case TYPE_LONG: return "long";
+        case TYPE_BOOL: return "bool";
+        case TYPE_ARRAY: return "array";
+        case TYPE_STRUCT: return "struct";
+        default: return "unknown_type";
+    }
+}
+
+const char* token_type_to_string(int token_type) {
+    switch (token_type) {
+        // 1.1 TYPES
+        case KW_INT: return "KW_INT";
+        case KW_BOOL: return "KW_BOOL";
+        case KW_LONG: return "KW_LONG";
+        case KW_ARRAY: return "KW_ARRAY";
+
+        // 1.2 Special constants
+        case KW_NONE: return "KW_NONE";
+        case KW_TRUE: return "KW_TRUE";
+        case KW_FALSE: return "KW_FALSE";
+
+        // 1.3 Control flow
+        case KW_IF: return "KW_IF";
+        case KW_ELSE: return "KW_ELSE";
+        case KW_ELIF: return "KW_ELIF";
+        case KW_WHILE: return "KW_WHILE";
+        case KW_FOR: return "KW_FOR";
+        case KW_BREAK: return "KW_BREAK";
+        case KW_CONTINUE: return "KW_CONTINUE";
+        case KW_RETURN: return "KW_RETURN";
+        case KW_FUN: return "KW_FUN";
+
+        // 1.4 Structs, object.attr
+        case KW_STRUCT: return "KW_STRUCT";
+        case KW_DOT: return "KW_DOT";
+        
+        // 2. Identifiers
+        case IDENTIFIER: return "IDENTIFIER";
+        
+        // 3. Literals
+        case INT_LITERAL: return "INT_LITERAL";
+        case BOOL_LITERAL: return "BOOL_LITERAL";
+        case LONG_LITERAL: return "LONG_LITERAL";
+
+        // 4. Operators
+
+        // 4.1. + - / * %
+        case OP_PLUS: return "OP_PLUS";
+        case OP_MINUS: return "OP_MINUS";
+        case OP_MULT: return "OP_MULT";
+        case OP_DIV: return "OP_DIV";
+        case OP_MOD: return "OP_MOD";
+
+        // 4.2. = += -= /= *= %=
+        case OP_ASSIGN: return "OP_ASSIGN";
+        case OP_ASSIGN_PLUS: return "OP_ASSIGN_PLUS";
+        case OP_ASSIGN_MINUS: return "OP_ASSIGN_MINUS";
+        case OP_ASSIGN_MULT: return "OP_ASSIGN_MULT";
+        case OP_ASSIGN_DIV: return "OP_ASSIGN_DIV";
+        case OP_ASSIGN_MOD: return "OP_ASSIGN_MOD";
+
+        // 4.3. == != <=>
+        case OP_EQ: return "OP_EQ";
+        case OP_NE: return "OP_NE";
+        case OP_LT: return "OP_LT";
+        case OP_GT: return "OP_GT";
+        case OP_LE: return "OP_LE";
+        case OP_GE: return "OP_GE";
+
+        // 4.4. and or not
+        case OP_AND: return "OP_AND";
+        case OP_OR: return "OP_OR";
+        case OP_NOT: return "OP_NOT";
+        
+        // 5. Delimiters
+
+        // 5.1. { } ( ) [ ]
+        case LPAREN: return "LPAREN";
+        case RPAREN: return "RPAREN";
+        case LBRACE: return "LBRACE";
+        case RBRACE: return "RBRACE";
+        case LBRACKET: return "LBRACKET";
+        case RBRACKET: return "RBRACKET";
+
+        // 5.2 ; ,
+        case SEMICOLON: return "SEMICOLON";
+        case COMMA: return "COMMA";
+        
+        // 6. Special
+        case END_OF_FILE: return "END_OF_FILE";
+        case ERROR: return "ERROR";
+        
+        default: return "UNKNOWN_TOKEN";
+    }
+}
 
 
 void ast_print(ASTNode* node, int indent) {
@@ -560,21 +659,46 @@ void ast_print(ASTNode* node, int indent) {
     printf("%s\n", ast_node_type_to_string(node->node_type));
     
     switch (node->node_type) {
-        /*
-        case NODE_PROGRAM:
-            for (size_t i = 0; i < node->function_count; i++) {
-                ast_print(node->functions[i], indent + 1);
-            }
-            node = (ASTNode*) node;
+        case NODE_PROGRAM: {
+            // TODO
             break;
-        */    
+        }
+            
         case NODE_FUNCTION_DECLARATION_STATEMENT: {
             FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
+
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Function: %s (returns type %d)\n", casted_node->name, casted_node->return_type);
+            
             for (size_t i = 0; i < casted_node->parameter_count; i++) {
-                //printf("%s\n", casted_node->parameters[i]);
-                printf("some parameter"); //TODO
+                for (int j = 0; j < indent + 1; j++) printf("  ");
+                printf("Parameter: %s (type %d)\n", 
+                       casted_node->parameters[i].variable->name, 
+                       casted_node->parameters[i].type);
             }
             ast_print(casted_node->body, indent + 1);
+            break;
+        }
+        
+        case NODE_VARIABLE_DECLARATION_STATEMENT: {
+            VariableDeclarationStatement* casted_node = (VariableDeclarationStatement*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Variable: %s (type %d)\n", casted_node->name, casted_node->var_type);
+            ast_print(casted_node->initializer, indent + 1);
+            break;
+        }
+            
+        case NODE_EXPRESSION_STATEMENT: {
+            ExpressionStatement* casted_node = (ExpressionStatement*) node;
+            ast_print(casted_node->expression, indent + 1);
+            break;
+        }
+            
+        case NODE_RETURN_STATEMENT: {
+            ReturnStatement* casted_node = (ReturnStatement*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Return\n");
+            ast_print(casted_node->expression, indent + 1);
             break;
         }
             
@@ -588,26 +712,120 @@ void ast_print(ASTNode* node, int indent) {
             
         case NODE_IF_STATEMENT: {
             IfStatement* casted_node = (IfStatement*) node;
-            ast_print(casted_node->condition, indent + 1);
-            ast_print(casted_node->then_branch, indent + 1);
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("If Condition:\n");
+            ast_print(casted_node->condition, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Then Branch:\n");
+            ast_print(casted_node->then_branch, indent + 2);
+            
             for (size_t i = 0; i < casted_node->elif_count; i++) {
-                ast_print(casted_node->elif_conditions[i], indent + 1);
-                ast_print(casted_node->elif_branches[i], indent + 1);
+                for (int j = 0; j < indent + 1; j++) printf("  ");
+                printf("Elif Condition %zu:\n", i + 1);
+                ast_print(casted_node->elif_conditions[i], indent + 2);
+                ast_print(casted_node->elif_branches[i], indent + 2);
             }
-            ast_print(casted_node->else_branch, indent + 1);
+            
+            if (casted_node->else_branch) {
+                for (int i = 0; i < indent + 1; i++) printf("  ");
+                printf("Else Branch:\n");
+                ast_print(casted_node->else_branch, indent + 2);
+            }
+            break;
+        }
+            
+        case NODE_WHILE_STATEMENT: {
+            WhileStatement* casted_node = (WhileStatement*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("While Condition:\n");
+            ast_print(casted_node->condition, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("While Body:\n");
+            ast_print(casted_node->body, indent + 2);
+            break;
+        }
+            
+        case NODE_FOR_STATEMENT: {
+            ForStatement* casted_node = (ForStatement*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("For Initializer:\n");
+            ast_print(casted_node->initializer, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("For Condition:\n");
+            ast_print(casted_node->condition, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("For Increment:\n");
+            ast_print(casted_node->increment, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("For Body:\n");
+            ast_print(casted_node->body, indent + 2);
+            break;
+        }
+
+        case NODE_ASSIGNMENT_STATEMENT: {
+            AssignmentStatement* casted_node = (AssignmentStatement*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Assignment:\n");
+            ast_print(casted_node->left, indent + 2);
+            ast_print(casted_node->right, indent + 2);
             break;
         }
             
         case NODE_BINARY_EXPRESSION: {
             BinaryExpression* casted_node = (BinaryExpression*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Operator: %s\n", token_type_to_string(casted_node->operator_.type));
             ast_print(casted_node->left, indent + 1);
             ast_print(casted_node->right, indent + 1);
             break;
         }
-            
-        default:
-            // todo
+        
+        case NODE_UNARY_EXPRESSION: {
+            UnaryExpression* casted_node = (UnaryExpression*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Unary Operator: %s\n", token_type_to_string(casted_node->operator_.type));
+            ast_print(casted_node->operand, indent + 1);
             break;
+        }
+            
+        case NODE_LITERAL_EXPRESSION: {
+            LiteralExpression* casted_node = (LiteralExpression*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Literal: type=%s, value=%lld\n", type_var_to_string(casted_node->type), (long long)casted_node->value);
+            break;
+        }
+            
+        case NODE_VARIABLE_EXPRESSION: {
+            VariableExpression* casted_node = (VariableExpression*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Variable: %s\n", casted_node->name);
+            break;
+        }
+            
+        case NODE_FUNCTION_CALL_EXPRESSION: {
+            FunctionCallExpression* casted_node = (FunctionCallExpression*) node;
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Function Call:\n");
+            ast_print(casted_node->callee, indent + 2);
+            
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Arguments (%d):\n", casted_node->argument_count);
+            for (int i = 0; i < casted_node->argument_count; i++) {
+                ast_print(casted_node->arguments[i], indent + 2);
+            }
+            break;
+        }
+
+        default: {
+            for (int i = 0; i < indent + 1; i++) printf("  ");
+            printf("Unknown node type: %d\n", node->node_type);
+            break;
+        }
     }
 }
 

@@ -1,0 +1,28 @@
+# Compiled object files
+*.o
+*.obj
+
+# Executables
+*.exe
+*.out
+a.out
+
+# Libraries
+*.lib
+*.a
+*.so
+*.dll
+
+# Dependency files (e.g., from Makefiles)
+*.d
+
+# Build directories
+build/
+bin/
+obj/
+
+# Editor/IDE specific files (examples)
+.vscode/
+.idea/
+*.swp
+*~

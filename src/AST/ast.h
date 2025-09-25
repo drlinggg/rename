@@ -10,7 +10,6 @@
 typedef struct { // debug info
     int line;
     int column;
-    int length;
 } SourceLocation;
 
 typedef enum {
@@ -156,6 +155,7 @@ typedef struct {
 
 
 static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc);
+
 void ast_free(ASTNode* node);
 
 ASTNode* ast_new_binary_expression(SourceLocation loc, ASTNode* left, Token op, ASTNode* right);
@@ -172,5 +172,9 @@ ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* 
 ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode* condition, ASTNode* increment, ASTNode* body);
 ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_t count);
+
+const char* ast_node_type_to_string(int node_type);
+const char* type_var_to_string(int node_type);
+const char* token_type_to_string(int token_type);
 
 void ast_print(ASTNode* node, int indent);
