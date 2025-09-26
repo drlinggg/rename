@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <stdbool.h>
 
 static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     ASTNode* node = NULL;
@@ -610,11 +611,11 @@ const char* token_type_to_string(int token_type) {
 
         // 4.2. = += -= /= *= %=
         case OP_ASSIGN: return "OP_ASSIGN";
-        case OP_ASSIGN_PLUS: return "OP_ASSIGN_PLUS";
+        /*case OP_ASSIGN_PLUS: return "OP_ASSIGN_PLUS";
         case OP_ASSIGN_MINUS: return "OP_ASSIGN_MINUS";
         case OP_ASSIGN_MULT: return "OP_ASSIGN_MULT";
         case OP_ASSIGN_DIV: return "OP_ASSIGN_DIV";
-        case OP_ASSIGN_MOD: return "OP_ASSIGN_MOD";
+        case OP_ASSIGN_MOD: return "OP_ASSIGN_MOD";*/
 
         // 4.3. == != <=>
         case OP_EQ: return "OP_EQ";
@@ -829,3 +830,23 @@ void ast_print(ASTNode* node, int indent) {
     }
 }
 
+bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt) {
+    // returns 1 if realloc is done and 0 otherwise
+    BlockStatement* casted_node = (BlockStatement*) block_stmt;
+    casted_node->statement_count += 1;
+        
+    ASTNode** new_statements = realloc(
+        casted_node->statements,
+        casted_node->statement_count * sizeof(ASTNode*)
+    );
+    
+    if (!new_statements) {
+        fprintf(stderr, "Memory allocation failed\n");
+        casted_node->statement_count -= 1;
+        free(casted_node);
+        return 0;
+    }
+    casted_node->statements = new_statements;
+    casted_node->statements[casted_node->statement_count - 1] = stmt;
+    return 1;
+}

@@ -30,7 +30,7 @@ typedef enum TokenType {
     OP_PLUS, OP_MINUS, OP_MULT, OP_DIV, OP_MOD,
 
     // 4.2. = += -= /= *= %=
-    OP_ASSIGN, OP_ASSIGN_PLUS, OP_ASSIGN_MINUS, OP_ASSIGN_MULT, OP_ASSIGN_DIV, OP_ASSIGN_MOD,
+    OP_ASSIGN, /*OP_ASSIGN_PLUS, OP_ASSIGN_MINUS, OP_ASSIGN_MULT, OP_ASSIGN_DIV, OP_ASSIGN_MOD,*/ // maybe later
 
     // 4.3. == != <=>
     OP_EQ, OP_NE, OP_LT, OP_GT, OP_LE, OP_GE,

@@ -157,7 +157,7 @@ Reserved words that cannot be used as variable names:
 
 ### Assignment Operations
 - Assignment: `=`
-- Compound assignments: `+=`, `-=`, `*=`, `/=`
+- Compound assignments: `+=`, `-=`, `*=`, `/=` # dead rn, maybe later
 
 ### Comparison Operations
 - Equality: `==`

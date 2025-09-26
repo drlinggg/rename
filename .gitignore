@@ -26,3 +26,5 @@ obj/
 .idea/
 *.swp
 *~
+
+*.h.gch

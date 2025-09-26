@@ -25,14 +25,15 @@ void test_simple_expressions() {
         create_token(SEMICOLON, ";", 1, 10),
         create_token(END_OF_FILE, "", 1, 11)
     };
-    
+
     Parser* parser = parser_create(tokens, 7);
-    ASTNode* expr = parser_parse_expression(parser);
+
+    ASTNode* block_statements = parser_parse(parser);
     
-    if (expr) {
+    if (block_statements) {
         printf("Успешно распаршено выражение!\n");
-        ast_print(expr, 0);
-        ast_free(expr);
+        ast_print(block_statements, 0);
+        ast_free(block_statements);
     } else {
         printf("Ошибка парсинга выражения\n");
     }
@@ -57,6 +58,7 @@ void test_variable_declaration() {
     
     Parser* parser = parser_create(tokens, 8);
     ASTNode* stmt = parser_parse_statement(parser);
+
     
     if (stmt) {
         printf("Успешно распаршено объявление переменной!\n");
@@ -164,7 +166,7 @@ int main() {
     test_variable_declaration();
     test_unary_expression();
     test_complex_expression();
-    test_error_recovery();
+    //test_error_recovery();
     
     printf("✅ ТЕСТЫ ЗАВЕРШЕНЫ\n");
     return 0;

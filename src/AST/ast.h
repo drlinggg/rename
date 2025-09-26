@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
 #include <stddef.h>
 
 #include "../lexer/token.h"
@@ -73,7 +72,7 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    char* name;
+    const char* name;
 } VariableExpression;
 
 typedef struct {
@@ -153,7 +152,6 @@ typedef struct {
 } ForStatement;
 
 
-
 static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc);
 
 void ast_free(ASTNode* node);
@@ -172,6 +170,8 @@ ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* 
 ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode* condition, ASTNode* increment, ASTNode* body);
 ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_t count);
+
+bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt);
 
 const char* ast_node_type_to_string(int node_type);
 const char* type_var_to_string(int node_type);
