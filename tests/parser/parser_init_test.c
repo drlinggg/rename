@@ -44,20 +44,16 @@ void test_simple_expressions() {
 }
 
 void test_variable_declaration() {
-    printf("=== TEST 2: Объявление переменной ===\n");
+    printf("=== TEST 2: ===\n");
     
     Token tokens[] = {
-        create_token(KW_INT, "int", 1, 1),
-        create_token(IDENTIFIER, "x", 1, 5),
-        create_token(OP_ASSIGN, "=", 1, 7),
-        create_token(INT_LITERAL, "5", 1, 9),
         create_token(OP_PLUS, "+", 1, 11),
         create_token(INT_LITERAL, "3", 1, 13),
         create_token(SEMICOLON, ";", 1, 14),
         create_token(END_OF_FILE, "", 1, 15)
     };
     
-    Parser* parser = parser_create(tokens, 8);
+    Parser* parser = parser_create(tokens, 4);
     ASTNode* stmt = parser_parse_statement(parser);
 
     
@@ -163,8 +159,8 @@ void test_error_recovery() {
 int main() {
     printf("🚀 ЗАПУСК ТЕСТОВ ПАРСЕРА\n\n");
     
-    test_simple_expressions();
-    //test_variable_declaration();
+    //test_simple_expressions();
+    test_variable_declaration();
     //test_unary_expression();
     //test_complex_expression();
     //test_error_recovery();

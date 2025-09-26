@@ -168,18 +168,18 @@ ASTNode* parser_parse_expression(Parser* parser) {
     Token* current = parser_peek(parser);
     SourceLocation loc = (SourceLocation){current->line, current->column};
     ASTNode* left = NULL;
-    
     switch (current->type) {
+        case OP_PLUS:
+        case OP_MINUS:
+        case OP_NOT:
+            left = parser_parse_unary_expression(parser, 0);
+            break;
+
         case IDENTIFIER:
         case INT_LITERAL:
         case BOOL_LITERAL:
         case LONG_LITERAL:
             left = parser_parse_primary_expression(parser);
-            break;
-        case OP_PLUS:
-        case OP_MINUS:
-        case OP_NE:
-            left = parser_parse_unary_expression(parser, 0);
             break;
         case LBRACE:
             left = parser_parse_expression(parser);
@@ -228,12 +228,23 @@ ASTNode* parser_parse_expression(Parser* parser) {
 }
 
 ASTNode* parser_parse_unary_expression(Parser* parser, int min_precedence) {
-    UnaryExpression* node = malloc(sizeof(UnaryExpression));
     Token* operator_ = parser_advance(parser);
-    SourceLocation loc = (SourceLocation) {operator_->line, operator_->column};
+    printf("%s\n", "a");
+    SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
+    
+    if (operator_->type != OP_PLUS && operator_->type != OP_MINUS && operator_->type != OP_NOT) {
+        report_error(parser, "Expected unary operator");
+        return NULL;
+    }
+    
     ASTNode* operand = parser_parse_expression(parser);
-    *node = (UnaryExpression) {NODE_UNARY_EXPRESSION, loc, *operator_, operand};
-    return (ASTNode*) node;
+    if (!operand) {
+        return NULL;
+    }
+    
+    UnaryExpression* node = malloc(sizeof(UnaryExpression));
+    *node = (UnaryExpression){NODE_UNARY_EXPRESSION, loc, *operator_, operand};
+    return (ASTNode*)node;
 }
 
 ASTNode* parser_parse_expression_statement(Parser* parser) {
@@ -302,6 +313,10 @@ ASTNode* parser_parse_statement(Parser* parser) {
         case INT_LITERAL:
         case BOOL_LITERAL:
         case LONG_LITERAL:
+        case OP_PLUS:
+        case OP_MINUS:
+        case OP_NOT:
+
             res = parser_parse_expression_statement(parser);
             break;
             
