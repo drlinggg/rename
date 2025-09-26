@@ -27,8 +27,8 @@ bool parser_is_at_end(Parser* parser) {
 
 void report_error(Parser* parser, const char* error_message) {
     printf("%s\n", error_message);
-    printf("%s", "current token is");
-    printf("%s", parser->tokens[parser->current].value);
+    printf("%s", "current token is ");
+    printf(" %s\n", parser->tokens[parser->current].value);
 }
 
 // if current token is the same as expected -> 
@@ -117,12 +117,13 @@ ASTNode* parser_parse_assignment_statement(Parser* parser) {
 ASTNode* parser_parse_primary_expression(Parser* parser) {
     Token* current = parser_peek(parser);
     SourceLocation loc = (SourceLocation) {current->line, current->column};
-
     switch (current->type) {
         case IDENTIFIER: {
+            parser_advance(parser);
             Token* next = parser_peek(parser);
             switch (next->type) {
                 case LBRACE: {
+                    parser_retreat(parser);
                     return parser_parse_function_call_expression(parser);
                 }
                 default: {
@@ -137,18 +138,23 @@ ASTNode* parser_parse_primary_expression(Parser* parser) {
             LiteralExpression* node = malloc(sizeof(LiteralExpression));
             if (!node) return NULL;
             *node = (LiteralExpression) {NODE_LITERAL_EXPRESSION, loc, TYPE_INT, atoi(current->value)};
+            //printf("%s\n",parser_peek(parser)->value);
+            parser_advance(parser);
+            //printf("%s\n",parser_peek(parser)->value);
             return (ASTNode*) node;
         }
         case BOOL_LITERAL: {
             LiteralExpression* node = malloc(sizeof(LiteralExpression));
             if (!node) return NULL;
             *node = (LiteralExpression) {NODE_LITERAL_EXPRESSION, loc, TYPE_BOOL, atoi(current->value)};
+            parser_advance(parser);
             return (ASTNode*) node;
         }
         case LONG_LITERAL: {
             LiteralExpression* node = malloc(sizeof(LiteralExpression));
             if (!node) return NULL;
             *node = (LiteralExpression) {NODE_LITERAL_EXPRESSION, loc, TYPE_LONG, atoi(current->value)};
+            parser_advance(parser);
             return (ASTNode*) node;
         }
         default: {
@@ -158,9 +164,9 @@ ASTNode* parser_parse_primary_expression(Parser* parser) {
     }
 }
 
-ASTNode* parser_parse_expression(Parser* parser) { // ReturnType: Expression
+ASTNode* parser_parse_expression(Parser* parser) {
     Token* current = parser_peek(parser);
-    SourceLocation loc = (SourceLocation) {current->line, current->column};
+    SourceLocation loc = (SourceLocation){current->line, current->column};
     ASTNode* left = NULL;
     
     switch (current->type) {
@@ -168,55 +174,56 @@ ASTNode* parser_parse_expression(Parser* parser) { // ReturnType: Expression
         case INT_LITERAL:
         case BOOL_LITERAL:
         case LONG_LITERAL:
-
-            //parser_retreat(parser);
             left = parser_parse_primary_expression(parser);
             break;
         case OP_PLUS:
         case OP_MINUS:
         case OP_NE:
-            //parser_retreat(parser);
-            left = parser_parse_unary_expression(parser, 0); //TODO
+            left = parser_parse_unary_expression(parser, 0);
             break;
         case LBRACE:
             left = parser_parse_expression(parser);
             break;
         default:
-            report_error(parser, "couldn't parse token");
-            free(left);
             return NULL;
     }
 
-    parser_advance(parser);
+    if (!left) return NULL;
+
     Token* next = parser_peek(parser);
+    printf("Next token after expression: %s (type: %d)\n", next->value, next->type);
 
     switch (next->type) {
-        case OP_EQ:
-        case OP_NE:
-        case OP_LT:
-        case OP_GT:
-        case OP_LE:
-        case OP_GE:
-        case OP_AND:
-        case OP_OR:
-        case OP_PLUS:
-        case OP_MINUS:
-        case OP_MULT:
-        case OP_DIV:
-        case OP_MOD:
-            parser_advance(parser);
-            ASTNode* right = parser_parse_expression(parser);
-            BinaryExpression* node = malloc(sizeof(BinaryExpression));
-            *node = (BinaryExpression) {NODE_BINARY_EXPRESSION, loc, left, right, *next};
-            return (ASTNode*) node;
+        case OP_EQ: case OP_NE: case OP_LT: case OP_GT: case OP_LE: case OP_GE:
+        case OP_AND: case OP_OR: case OP_PLUS: case OP_MINUS:
+        case OP_MULT: case OP_DIV: case OP_MOD:
+            {
+                // Сохраняем оператор перед advance
+                Token operator_token = *next;
+                parser_advance(parser);  // Потребляем оператор
+                
+                ASTNode* right = parser_parse_expression(parser);
+                if (!right) {
+                    //free_ast_node(left);
+                    return NULL;
+                }
+
+                BinaryExpression* node = malloc(sizeof(BinaryExpression));
+                *node = (BinaryExpression){
+                    .base = {NODE_BINARY_EXPRESSION, loc},
+                    .left = left,
+                    .right = right,
+                    .operator_ = operator_token  // Используем сохраненный оператор
+                };
+                return (ASTNode*)node;
+            }
 
         case SEMICOLON:
-            parser_advance(parser);
+            printf("Found semicolon, returning expression\n");
             return left;
 
         default:
-            report_error(parser, "couldn't parse token");
-            return NULL;
+            return left;
     }
 }
 
@@ -231,25 +238,29 @@ ASTNode* parser_parse_unary_expression(Parser* parser, int min_precedence) {
 
 ASTNode* parser_parse_expression_statement(Parser* parser) {
     ASTNode* expression = parser_parse_expression(parser);
-    parser_consume(parser, SEMICOLON, "';'?");
     return ast_new_expression_statement(expression->location, expression);
 }
 
 ASTNode* parser_parse_statement(Parser* parser) {
     Token* current = parser_peek(parser);
+    ASTNode* res = NULL;
     
     switch (current->type) {
         case KW_IF:
-            return parser_parse_if_statement(parser);
+            res = parser_parse_if_statement(parser);
+            break;
             
         case KW_WHILE:
-            return parser_parse_while_statement(parser);
+            res = parser_parse_while_statement(parser);
+            break;
             
         case KW_FOR:
-            return parser_parse_for_statement(parser);
+            res = parser_parse_for_statement(parser);
+            break;
             
         case KW_RETURN:
-            return parser_parse_return_statement(parser);
+            res = parser_parse_return_statement(parser);
+            break;
             
         case KW_INT:
         case KW_LONG:
@@ -258,28 +269,62 @@ ASTNode* parser_parse_statement(Parser* parser) {
             Token* next_token = parser_peek(parser);
             if (next_token->type == IDENTIFIER) {
                 parser_retreat(parser);
-                return parser_parse_declaration(parser);
+                res = parser_parse_declaration(parser);
+            } else {
+                parser_retreat(parser);
+                // Если после типа нет идентификатора, это ошибка
+                report_error(parser, "expected identifier after type");
+                res = NULL;
             }
-            parser_retreat(parser);
+            break;
 
         case IDENTIFIER:
-            Token* current_identifier = parser_advance(parser);
-            if (!parser_check(parser, OP_ASSIGN)) {
-                parser_retreat(parser);
-                return parser_parse_assignment_statement(parser);
+            {
+                Token* current_identifier = parser_advance(parser);
+                if (parser_check(parser, OP_ASSIGN)) {
+                    parser_retreat(parser);
+                    res = parser_parse_assignment_statement(parser);
+                } else {
+                    parser_retreat(parser);
+                    res = parser_parse_expression_statement(parser);
+                }
             }
-            parser_retreat(parser);
             break;
 
         case LBRACE:
-            return parser_parse(parser);
+            res = parser_parse(parser);  // предполагаю, что это парсинг блока
+            break;
 
         case END_OF_FILE:
-            return NULL;
+            res = NULL;
+            break;
+
+        case INT_LITERAL:
+        case BOOL_LITERAL:
+        case LONG_LITERAL:
+            res = parser_parse_expression_statement(parser);
+            break;
             
-        default: // x = 5 ?? fun()??
-            return parser_parse_expression_statement(parser);
+        default:
+            report_error(parser, "couldn't parse token");
+            res = NULL;
+            break;
     }
+
+    // Проверяем точку с запятой для всех statement'ов, кроме блочных
+    if (res != NULL && 
+        current->type != KW_IF && 
+        current->type != KW_WHILE && 
+        current->type != KW_FOR && 
+        current->type != LBRACE) {
+        
+        if (!parser_consume(parser, SEMICOLON, "';' expected")) {
+            // Освобождаем память, если точка с запятой не найдена
+            //free_ast_node(res);  // убедитесь, что у вас есть эта функция
+            return NULL;
+        }
+    }
+    return res;
 }
 
 ASTNode* parser_parse(Parser* parser) {
@@ -287,6 +332,10 @@ ASTNode* parser_parse(Parser* parser) {
     ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);
 
     while (!parser_is_at_end(parser)) {
+
+        if (parser_peek(parser)->type == END_OF_FILE) {
+            break;
+        }
         ASTNode* stmt = parser_parse_statement(parser);
 
         if (!stmt) return block_statements;

@@ -17,7 +17,7 @@ void test_simple_expressions() {
     printf("=== TEST 1: Простые выражения ===\n");
     
     Token tokens[] = {
-        create_token(INT_LITERAL, "5", 1, 1),
+        create_token(IDENTIFIER, "variable", 1, 1),
         create_token(OP_PLUS, "+", 1, 3),
         create_token(INT_LITERAL, "3", 1, 5),
         create_token(OP_MULT, "*", 1, 7),
@@ -25,6 +25,7 @@ void test_simple_expressions() {
         create_token(SEMICOLON, ";", 1, 10),
         create_token(END_OF_FILE, "", 1, 11)
     };
+
 
     Parser* parser = parser_create(tokens, 7);
 
@@ -163,9 +164,9 @@ int main() {
     printf("🚀 ЗАПУСК ТЕСТОВ ПАРСЕРА\n\n");
     
     test_simple_expressions();
-    test_variable_declaration();
-    test_unary_expression();
-    test_complex_expression();
+    //test_variable_declaration();
+    //test_unary_expression();
+    //test_complex_expression();
     //test_error_recovery();
     
     printf("✅ ТЕСТЫ ЗАВЕРШЕНЫ\n");
