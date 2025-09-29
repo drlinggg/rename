@@ -72,7 +72,7 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    const char* name;
+    char* name;
 } VariableExpression;
 
 typedef struct {
@@ -167,6 +167,7 @@ ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_if_statement(SourceLocation loc, ASTNode* condition, ASTNode* then_branch);
 ASTNode* ast_new_while_statement(SourceLocation loc, ASTNode* condition, ASTNode* body);
 ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type);
+ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** args, int arg_count);
 ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode* condition, ASTNode* increment, ASTNode* body);
 ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_t count);

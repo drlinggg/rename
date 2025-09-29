@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 
 Token create_token(TokenType type, const char* value, int line, int column) {
@@ -32,7 +33,7 @@ void test_print_ast() {
         bin_expr
     );
     
-    ast_print(expr_stmt, 0);
+    ast_tree_print(expr_stmt, 0);
     ast_free(expr_stmt);
     free(literals);
 }
@@ -61,6 +62,8 @@ void test_memory_leak() {
 
 }
 
+
+// gcc tests/parser/parser_init_test.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
     test_memory_leak();
     test_print_ast();

@@ -22,7 +22,7 @@ ASTNode* parser_parse(Parser* parser);
 ASTNode* parser_parse_statement(Parser* parser);
 ASTNode* parser_parse_expression(Parser* parser);
 
-ASTNode* parser_parse_declaration(Parser* parser);
+ASTNode* parser_parse_declaration_statement(Parser* parser);
 ASTNode* parser_parse_variable_declaration_statement(Parser* parser);
 ASTNode* parser_parse_function_declaration_statement(Parser* parser);
 
@@ -42,7 +42,7 @@ ASTNode* parser_parse_literal_expression(Parser* parser);
 ASTNode* parser_parse_function_call_expression(Parser* parser);
 ASTNode* parser_parse_variable_expression(Parser* parser);
 
-void report_error(Parser* parser, const char* error_message);
+const void report_error(Parser* parser, const char* error_message);
 
 Token* parser_consume(Parser* parser, TokenType expected, const char* error_message); // if current 
 Token* parser_peek(Parser* parser); // returns current token without moving forward
@@ -50,5 +50,7 @@ Token* parser_advance(Parser* parser); // returns current token and moving forwa
 Token* parser_previous(Parser* parser); // return previous token without moving
 Token* parser_retreat(Parser* parser); // return previous token and moving back;
 
-bool parser_check(Parser* parser, TokenType type);
-bool parser_is_at_end(Parser* parser);
+const bool parser_check(Parser* parser, TokenType type);
+const bool parser_is_at_end(Parser* parser);
+
+const TypeVar token_type_to_type_var(TokenType type);
