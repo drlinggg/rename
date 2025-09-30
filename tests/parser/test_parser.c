@@ -1,5 +1,6 @@
 #include "../../src/parser/parser.h"
 #include "../../src/lexer/token.h"
+#include "../../src/AST/ast.h"
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -33,17 +34,15 @@ void test_simple_expressions() {
     ASTNode* block_statements = parser_parse(parser);
     
     if (block_statements) {
-        printf("Успешно распаршено выражение!\n");
-        ast_tree_print(block_statements, 0);
+        ast_print_tree(block_statements, 0);
         ast_free(block_statements);
         assert(1 == 1);
     } else {
-        printf("Ошибка парсинга выражения\n");
         assert(0 == "couldnt parse");
     }
     
     parser_destroy(parser);
-    printf("\n");
+    printf("\n\n");
 }
 
 void test_variable_declaration() {
@@ -63,17 +62,15 @@ void test_variable_declaration() {
 
     
     if (stmt) {
-        printf("Успешно распаршено объявление переменной!\n");
-        ast_tree_print(stmt, 0);
+        ast_print_tree(stmt, 0);
         ast_free(stmt);
         assert(1 == 1);
     } else {
-        printf("Ошибка парсинга объявления переменной\n");
         assert(0 == "couldn parse");
     }
     
     parser_destroy(parser);
-    printf("\n");
+    printf("\n\n");
 }
 
 void test_unary_expression() {
@@ -93,15 +90,15 @@ void test_unary_expression() {
     ASTNode* stmt = parser_parse_statement(parser);
     
     if (stmt) {
-        printf("Успешно распаршено унарное выражение!\n");
-        ast_tree_print(stmt, 0);
+        ast_print_tree(stmt, 0);
         ast_free(stmt);
+        assert(1 == 1);
     } else {
-        printf("Ошибка парсинга унарного выражения\n");
+        assert(0 == "couldnt parse");
     }
     
     parser_destroy(parser);
-    printf("\n");
+    printf("\n\n");
 }
 
 void test_complex_expression() {
@@ -125,15 +122,15 @@ void test_complex_expression() {
     ASTNode* expr = parser_parse_expression(parser);
     
     if (expr) {
-        printf("Успешно распаршено сложное выражение!\n");
-        ast_tree_print(expr, 0);
+        ast_print_tree(expr, 0);
         ast_free(expr);
+        assert(1 == 1);
     } else {
-        printf("Ошибка парсинга сложного выражения\n");
+        assert(0 == "couldnt parse");
     }
     
     parser_destroy(parser);
-    printf("\n");
+    printf("\n\n");
 }
 
 void test_fun_expression() {
@@ -160,7 +157,7 @@ void test_fun_expression() {
     ASTNode* expr = parser_parse(parser);
     
     if (expr) {
-        ast_tree_print(expr, 0);
+        ast_print_tree(expr, 0);
         ast_free(expr);
         assert(1 == 1);
     }
@@ -169,11 +166,11 @@ void test_fun_expression() {
     }
     
     parser_destroy(parser);
-    printf("\n");
+    printf("\n\n");
 }
 
+// gcc tests/parser/test_parser.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
-    printf("🚀 ЗАПУСК ТЕСТОВ ПАРСЕРА\n\n");
     
     test_simple_expressions();
     test_variable_declaration();
@@ -181,6 +178,5 @@ int main() {
     test_complex_expression(); // to be fixed prioritet
     test_fun_expression();
     
-    printf("✅ ТЕСТЫ ЗАВЕРШЕНЫ\n");
     return 0;
 }

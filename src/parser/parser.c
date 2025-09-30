@@ -188,6 +188,13 @@ ASTNode* parser_parse_function_call_expression(Parser* parser) {
                 return NULL;
             }
             
+            // ОСВОБОЖДАЕМ исходные узлы, так как они были скопированы
+            ast_free(function_identifier);
+            for (size_t i = 0; i < argument_count; i++) {
+                ast_free(function_arguments[i]);
+            }
+            free(function_arguments);
+            
             printf("[PARSER] Successfully created function call expression\n");
             return function_call_expr;
         } else {
@@ -198,19 +205,26 @@ ASTNode* parser_parse_function_call_expression(Parser* parser) {
 }
 
 ASTNode* parser_parse_if_statement(Parser* parser) {
+    // TODO: реализовать
+    return NULL;
 }
 
 ASTNode* parser_parse_while_statement(Parser* parser) {
+    // TODO: реализовать
+    return NULL;
 }
 
 ASTNode* parser_parse_for_statement(Parser* parser) {
+    // TODO: реализовать
+    return NULL;
 }
 
 ASTNode* parser_parse_return_statement(Parser* parser) {
+    // TODO: реализовать
+    return NULL;
 }
 
 ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
-
     Token* token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){token->line, token->column};
     ASTNode* initializer = NULL;
@@ -222,8 +236,14 @@ ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
         initializer = parser_parse_expression(parser);
     }
 
-    return ast_new_variable_declaration_statement(loc, token_type_to_type_var(token->type), identifier->value, initializer);
-
+    ASTNode* node = ast_new_variable_declaration_statement(loc, token_type_to_type_var(token->type), identifier->value, initializer);
+    
+    // ОСВОБОЖДАЕМ исходный initializer, так как он был скопирован
+    if (initializer) {
+        ast_free(initializer);
+    }
+    
+    return node;
 }
 
 ASTNode* parser_parse_function_declaration_statement(Parser* parser){
@@ -232,8 +252,10 @@ ASTNode* parser_parse_function_declaration_statement(Parser* parser){
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "declaration should have a naming");
     if (!identifier) return NULL;
+    
+    // TODO: реализовать полностью
+    return NULL;
 }
-
 
 ASTNode* parser_parse_declaration_statement(Parser* parser) {
     Token* current = parser_advance(parser);
@@ -250,10 +272,11 @@ ASTNode* parser_parse_declaration_statement(Parser* parser) {
     parser_retreat(parser);
     parser_retreat(parser);
     return parser_parse_function_declaration_statement(parser);
-
 }
 
 ASTNode* parser_parse_assignment_statement(Parser* parser) {
+    // TODO: реализовать
+    return NULL;
 }
 
 ASTNode* parser_parse_primary_expression(Parser* parser) {
@@ -367,11 +390,16 @@ ASTNode* parser_parse_expression(Parser* parser) {
                 
                 ASTNode* right = parser_parse_expression(parser);
                 if (!right) {
-                    //free_ast_node(left);
+                    ast_free(left);  // ОСВОБОЖДАЕМ left так как он не будет использован
                     return NULL;
                 }
 
                 ASTNode* binary_expr = ast_new_binary_expression(loc, left, operator_token, right);
+                
+                // ОСВОБОЖДАЕМ исходные узлы, так как они были скопированы
+                ast_free(left);
+                ast_free(right);
+                
                 return binary_expr;
             }
 
@@ -379,7 +407,7 @@ ASTNode* parser_parse_expression(Parser* parser) {
             printf("[PARSER]: Found semicolon, returning expression\n");
             return left;
         case COMMA:
-            printf("[PARSER]: Found comma, returting expression\n");
+            printf("[PARSER]: Found comma, returning expression\n");
             return left;
 
         default:
@@ -402,12 +430,23 @@ ASTNode* parser_parse_unary_expression(Parser* parser, int min_precedence) {
     }
     
     ASTNode *node = ast_new_unary_expression(loc, *operator_, operand);
-    return (ASTNode*)node;
+    
+    // ОСВОБОЖДАЕМ исходный operand, так как он был скопирован
+    ast_free(operand);
+    
+    return node;
 }
 
 ASTNode* parser_parse_expression_statement(Parser* parser) {
     ASTNode* expression = parser_parse_expression(parser);
-    return ast_new_expression_statement(expression->location, expression);
+    if (!expression) return NULL;
+    
+    ASTNode* node = ast_new_expression_statement(expression->location, expression);
+    
+    // ОСВОБОЖДАЕМ исходный expression, так как он был скопирован
+    ast_free(expression);
+    
+    return node;
 }
 
 ASTNode* parser_parse_statement(Parser* parser) {
@@ -476,7 +515,6 @@ ASTNode* parser_parse_statement(Parser* parser) {
         case OP_PLUS:
         case OP_MINUS:
         case OP_NOT:
-
             res = parser_parse_expression_statement(parser);
             break;
             
@@ -501,11 +539,9 @@ ASTNode* parser_parse_statement(Parser* parser) {
 }
 
 ASTNode* parser_parse(Parser* parser) {
-
     ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);
 
     while (!parser_is_at_end(parser)) {
-
         if (parser_peek(parser)->type == END_OF_FILE) {
             break;
         }
@@ -517,6 +553,9 @@ ASTNode* parser_parse(Parser* parser) {
             return NULL;
         }
         add_statement_to_block(block_statements, stmt);
+        
+        // ОСВОБОЖДАЕМ исходный stmt, так как он был скопирован в блок
+        ast_free(stmt);
     }
     return block_statements;
 }

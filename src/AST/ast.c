@@ -247,6 +247,297 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
 }
 
 
+static BinaryExpression* copy_binary_expression(ASTNode* original) {
+    if (!original) return NULL;
+    BinaryExpression* orig = (BinaryExpression*)original;
+    
+    BinaryExpression* copy = malloc(sizeof(BinaryExpression));
+    copy->base = orig->base;
+    copy->left = ast_node_copy(orig->left);
+    copy->right = ast_node_copy(orig->right);
+    copy->operator_ = orig->operator_;
+    
+    if (orig->operator_.value) {
+        copy->operator_.value = strdup(orig->operator_.value);
+    }
+    
+    return copy;
+}
+
+static UnaryExpression* copy_unary_expression(ASTNode* original) {
+    if (!original) return NULL;
+    UnaryExpression* orig = (UnaryExpression*)original;
+    
+    UnaryExpression* copy = malloc(sizeof(UnaryExpression));
+    copy->base = orig->base;
+    copy->operand = ast_node_copy(orig->operand);
+    copy->operator_ = orig->operator_;
+    
+    if (orig->operator_.value) {
+        copy->operator_.value = strdup(orig->operator_.value);
+    }
+    
+    return copy;
+}
+
+static VariableExpression* copy_variable_expression(ASTNode* original) {
+    if (!original) return NULL;
+    VariableExpression* orig = (VariableExpression*)original;
+    
+    VariableExpression* copy = malloc(sizeof(VariableExpression));
+    copy->base = orig->base;
+    
+    if (orig->name) {
+        copy->name = strdup(orig->name);
+    } else {
+        copy->name = NULL;
+    }
+    
+    return copy;
+}
+
+static FunctionCallExpression* copy_call_expression(ASTNode* original) {
+    if (!original) return NULL;
+    FunctionCallExpression* orig = (FunctionCallExpression*)original;
+    
+    FunctionCallExpression* copy = malloc(sizeof(FunctionCallExpression));
+    copy->base = orig->base;
+    copy->callee = ast_node_copy(orig->callee);
+    copy->argument_count = orig->argument_count;
+    
+    if (orig->argument_count > 0 && orig->arguments) {
+        copy->arguments = malloc(orig->argument_count * sizeof(ASTNode*));
+        for (int i = 0; i < orig->argument_count; i++) {
+            copy->arguments[i] = ast_node_copy(orig->arguments[i]);
+        }
+    } else {
+        copy->arguments = NULL;
+    }
+    
+    return copy;
+}
+
+static AssignmentStatement* copy_assignment_statement(ASTNode* original) {
+    if (!original) return NULL;
+    AssignmentStatement* orig = (AssignmentStatement*)original;
+    
+    AssignmentStatement* copy = malloc(sizeof(AssignmentStatement));
+    copy->base = orig->base;
+    copy->left = ast_node_copy(orig->left);
+    copy->right = ast_node_copy(orig->right);
+    
+    return copy;
+}
+
+static VariableDeclarationStatement* copy_variable_declaration_statement(ASTNode* original) {
+    if (!original) return NULL;
+    VariableDeclarationStatement* orig = (VariableDeclarationStatement*)original;
+    
+    VariableDeclarationStatement* copy = malloc(sizeof(VariableDeclarationStatement));
+    copy->base = orig->base;
+    copy->var_type = orig->var_type;
+    
+    if (orig->name) {
+        copy->name = strdup(orig->name);
+    } else {
+        copy->name = NULL;
+    }
+    
+    copy->initializer = ast_node_copy(orig->initializer);
+    
+    return copy;
+}
+
+static ReturnStatement* copy_return_statement(ASTNode* original) {
+    if (!original) return NULL;
+    ReturnStatement* orig = (ReturnStatement*)original;
+    
+    ReturnStatement* copy = malloc(sizeof(ReturnStatement));
+    copy->base = orig->base;
+    copy->expression = ast_node_copy(orig->expression);
+    
+    return copy;
+}
+
+static ExpressionStatement* copy_expression_statement(ASTNode* original) {
+    if (!original) return NULL;
+    ExpressionStatement* orig = (ExpressionStatement*)original;
+    
+    ExpressionStatement* copy = malloc(sizeof(ExpressionStatement));
+    copy->base = orig->base;
+    copy->expression = ast_node_copy(orig->expression);
+    
+    return copy;
+}
+
+static BlockStatement* copy_block_statement(ASTNode* original) {
+    if (!original) return NULL;
+    BlockStatement* orig = (BlockStatement*)original;
+    
+    BlockStatement* copy = malloc(sizeof(BlockStatement));
+    copy->base = orig->base;
+    copy->statement_count = orig->statement_count;
+    
+    if (orig->statement_count > 0 && orig->statements) {
+        copy->statements = malloc(orig->statement_count * sizeof(ASTNode*));
+        for (size_t i = 0; i < orig->statement_count; i++) {
+            copy->statements[i] = ast_node_copy(orig->statements[i]);
+        }
+    } else {
+        copy->statements = NULL;
+    }
+    
+    return copy;
+}
+
+static IfStatement* copy_if_statement(ASTNode* original) {
+    if (!original) return NULL;
+    IfStatement* orig = (IfStatement*)original;
+    
+    IfStatement* copy = malloc(sizeof(IfStatement));
+    copy->base = orig->base;
+    copy->condition = ast_node_copy(orig->condition);
+    copy->then_branch = ast_node_copy(orig->then_branch);
+    copy->elif_count = orig->elif_count;
+    
+    if (orig->elif_count > 0 && orig->elif_conditions && orig->elif_branches) {
+        copy->elif_conditions = malloc(orig->elif_count * sizeof(ASTNode*));
+        copy->elif_branches = malloc(orig->elif_count * sizeof(ASTNode*));
+        for (size_t i = 0; i < orig->elif_count; i++) {
+            copy->elif_conditions[i] = ast_node_copy(orig->elif_conditions[i]);
+            copy->elif_branches[i] = ast_node_copy(orig->elif_branches[i]);
+        }
+    } else {
+        copy->elif_conditions = NULL;
+        copy->elif_branches = NULL;
+    }
+    
+    copy->else_branch = ast_node_copy(orig->else_branch);
+    
+    return copy;
+}
+
+static WhileStatement* copy_while_statement(ASTNode* original) {
+    if (!original) return NULL;
+    WhileStatement* orig = (WhileStatement*)original;
+    
+    WhileStatement* copy = malloc(sizeof(WhileStatement));
+    copy->base = orig->base;
+    copy->condition = ast_node_copy(orig->condition);
+    copy->body = ast_node_copy(orig->body);
+    
+    return copy;
+}
+
+static ForStatement* copy_for_statement(ASTNode* original) {
+    if (!original) return NULL;
+    ForStatement* orig = (ForStatement*)original;
+    
+    ForStatement* copy = malloc(sizeof(ForStatement));
+    copy->base = orig->base;
+    copy->initializer = ast_node_copy(orig->initializer);
+    copy->condition = ast_node_copy(orig->condition);
+    copy->increment = ast_node_copy(orig->increment);
+    copy->body = ast_node_copy(orig->body);
+    
+    return copy;
+}
+
+static FunctionDeclarationStatement* copy_function_declaration_statement(ASTNode* original) {
+    if (!original) return NULL;
+    FunctionDeclarationStatement* orig = (FunctionDeclarationStatement*)original;
+    
+    FunctionDeclarationStatement* copy = malloc(sizeof(FunctionDeclarationStatement));
+    copy->base = orig->base;
+    copy->return_type = orig->return_type;
+    
+    if (orig->name) {
+        copy->name = strdup(orig->name);
+    } else {
+        copy->name = NULL;
+    }
+    
+    copy->parameter_count = orig->parameter_count;
+    
+    if (orig->parameter_count > 0 && orig->parameters) {
+        copy->parameters = malloc(orig->parameter_count * sizeof(Parameter));
+        for (size_t i = 0; i < orig->parameter_count; i++) {
+            copy->parameters[i] = orig->parameters[i];
+            if (orig->parameters[i].variable) {
+                copy->parameters[i].variable = copy_variable_expression((ASTNode*)orig->parameters[i].variable);
+            }
+        }
+    } else {
+        copy->parameters = NULL;
+    }
+    
+    copy->body = ast_node_copy(orig->body);
+    
+    return copy;
+}
+
+// Теперь основная функция копирования
+static ASTNode* ast_node_copy(ASTNode* original) {
+    if (!original) return NULL;
+    
+    switch (original->node_type) {
+        case NODE_BINARY_EXPRESSION:
+            return (ASTNode*)copy_binary_expression(original);
+            
+        case NODE_UNARY_EXPRESSION:
+            return (ASTNode*)copy_unary_expression(original);
+            
+        case NODE_LITERAL_EXPRESSION: {
+            LiteralExpression* orig = (LiteralExpression*)original;
+            LiteralExpression* copy = malloc(sizeof(LiteralExpression));
+            *copy = *orig;
+            return (ASTNode*)copy;
+        }
+            
+        case NODE_VARIABLE_EXPRESSION:
+            return (ASTNode*)copy_variable_expression(original);
+            
+        case NODE_FUNCTION_CALL_EXPRESSION:
+            return (ASTNode*)copy_call_expression(original);
+            
+        case NODE_ASSIGNMENT_STATEMENT:
+            return (ASTNode*)copy_assignment_statement(original);
+            
+        case NODE_VARIABLE_DECLARATION_STATEMENT:
+            return (ASTNode*)copy_variable_declaration_statement(original);
+            
+        case NODE_RETURN_STATEMENT:
+            return (ASTNode*)copy_return_statement(original);
+            
+        case NODE_EXPRESSION_STATEMENT:
+            return (ASTNode*)copy_expression_statement(original);
+            
+        case NODE_BLOCK_STATEMENT:
+            return (ASTNode*)copy_block_statement(original);
+            
+        case NODE_IF_STATEMENT:
+            return (ASTNode*)copy_if_statement(original);
+            
+        case NODE_WHILE_STATEMENT:
+            return (ASTNode*)copy_while_statement(original);
+            
+        case NODE_FOR_STATEMENT:
+            return (ASTNode*)copy_for_statement(original);
+            
+        case NODE_FUNCTION_DECLARATION_STATEMENT:
+            return (ASTNode*)copy_function_declaration_statement(original);
+            
+        case NODE_PROGRAM:
+            fprintf(stderr, "Program node copying not implemented yet\n");
+            return NULL;
+            
+        default:
+            fprintf(stderr, "Unknown node type in copy function: %d\n", original->node_type);
+            return NULL;
+    }
+}
+
+
 // Statements constructors
 
 //ASTNode* ast_new_program(SourceLocation loc) {
@@ -276,7 +567,7 @@ ASTNode* ast_new_variable_declaration_statement(SourceLocation loc, TypeVar var_
     VariableDeclarationStatement* casted_node = (VariableDeclarationStatement*) node;
     casted_node->var_type = var_type;
     casted_node->name = strdup(name);
-    casted_node->initializer = initializer;
+    casted_node->initializer = ast_node_copy(initializer);
     return node;
 }
 
@@ -284,7 +575,7 @@ ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression) {
     ASTNode* node = ast_node_allocate(NODE_EXPRESSION_STATEMENT, loc);
     if (!node) return NULL;
     ExpressionStatement* casted_node = (ExpressionStatement*) node;
-    casted_node->expression = expression;
+    casted_node->expression = ast_node_copy(expression);
     return node;
 }
 
@@ -292,7 +583,7 @@ ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression) {
     ASTNode* node = ast_node_allocate(NODE_RETURN_STATEMENT, loc);
     if (!node) return NULL;
     ReturnStatement* casted_node = (ReturnStatement*) node;
-    casted_node->expression = expression;
+    casted_node->expression = ast_node_copy(expression);
     return node;
 }
 
@@ -309,7 +600,7 @@ ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_
         }
         
         for (size_t i = 0; i < statement_count; i++) {
-            casted_node->statements[i] = statements[i];
+            casted_node->statements[i] = ast_node_copy(statements[i]);
         }
         casted_node->statement_count = statement_count;
     } else {
@@ -324,8 +615,8 @@ ASTNode* ast_new_if_statement(SourceLocation loc, ASTNode* condition, ASTNode* t
     ASTNode* node = ast_node_allocate(NODE_IF_STATEMENT, loc);
     if (!node) return NULL;
     IfStatement* casted_node = (IfStatement*) node;
-    casted_node->condition = condition;
-    casted_node->then_branch = then_branch;
+    casted_node->condition = ast_node_copy(condition);
+    casted_node->then_branch = ast_node_copy(then_branch);
     casted_node->elif_conditions = NULL;
     casted_node->elif_branches = NULL;
     casted_node->elif_count = 0;
@@ -337,8 +628,8 @@ ASTNode* ast_new_while_statement(SourceLocation loc, ASTNode* condition, ASTNode
     ASTNode* node = ast_node_allocate(NODE_WHILE_STATEMENT, loc);
     if (!node) return NULL;
     WhileStatement* casted_node = (WhileStatement*) node;
-    casted_node->condition = condition;
-    casted_node->body = body;
+    casted_node->condition = ast_node_copy(condition);
+    casted_node->body = ast_node_copy(body);
     return node;
 }
 
@@ -346,8 +637,8 @@ ASTNode* ast_new_assignment_statement(SourceLocation loc, ASTNode* left, ASTNode
     ASTNode* node = ast_node_allocate(NODE_ASSIGNMENT_STATEMENT, loc);
     if (!node) return NULL;
     AssignmentStatement* casted_node = (AssignmentStatement*) node;
-    casted_node->left = left;
-    casted_node->right = right;
+    casted_node->left = ast_node_copy(left);
+    casted_node->right = ast_node_copy(right);
     return node;
 }
 
@@ -355,10 +646,10 @@ ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode
     ASTNode* node = ast_node_allocate(NODE_FOR_STATEMENT, loc);
     if (!node) return NULL;
     ForStatement* casted_node = (ForStatement*) node;
-    casted_node->initializer = initializer;
-    casted_node->condition = condition;
-    casted_node->increment = increment;
-    casted_node->body = body;
+    casted_node->initializer = ast_node_copy(initializer);
+    casted_node->condition = ast_node_copy(condition);
+    casted_node->increment = ast_node_copy(increment);
+    casted_node->body = ast_node_copy(body);
     return node;
 }
 
@@ -368,9 +659,13 @@ ASTNode* ast_new_binary_expression(SourceLocation loc, ASTNode* left, Token op, 
     ASTNode* node = ast_node_allocate(NODE_BINARY_EXPRESSION, loc);
     if (!node) return NULL;
     BinaryExpression* casted_node = (BinaryExpression*) node;
-    casted_node->left = left;
-    casted_node->right = right;
+
+    casted_node->left = ast_node_copy(left);
+    casted_node->right = ast_node_copy(right);
     casted_node->operator_ = op;
+    if (op.value) {
+        casted_node->operator_.value = strdup(op.value);
+    }    
     return node;
 }
 
@@ -379,7 +674,10 @@ ASTNode* ast_new_unary_expression(SourceLocation loc, Token op, ASTNode* operand
     if (!node) return NULL;
     UnaryExpression* casted_node = (UnaryExpression*) node;
     casted_node->operator_ = op;
-    casted_node->operand = operand;
+    if (op.value) {
+        casted_node->operator_.value = strdup(op.value);
+    }
+    casted_node->operand = ast_node_copy(operand);
     return node;
 }
 
@@ -404,9 +702,23 @@ ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** 
     ASTNode* node = ast_node_allocate(NODE_FUNCTION_CALL_EXPRESSION, loc);
     if (!node) return NULL;
     FunctionCallExpression* casted_node = (FunctionCallExpression*) node;
-    casted_node->callee = callee;
-    casted_node->arguments = args;
-    casted_node->argument_count = arg_count;
+    casted_node->callee = ast_node_copy(callee);
+    
+    if (arg_count > 0 && args) {
+        casted_node->arguments = malloc(arg_count * sizeof(ASTNode*));
+        if (!casted_node->arguments) {
+            free(node);
+            return NULL;
+        }
+        for (int i = 0; i < arg_count; i++) {
+            casted_node->arguments[i] = ast_node_copy(args[i]);
+        }
+        casted_node->argument_count = arg_count;
+    } else {
+        casted_node->arguments = NULL;
+        casted_node->argument_count = 0;
+    }
+    
     return node;
 }
 
@@ -430,11 +742,13 @@ void ast_free(ASTNode* node) {
             */
         case NODE_FUNCTION_DECLARATION_STATEMENT: {
             FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
-            //free(casted_node->name);
+            free(casted_node->name);
             for (size_t i = 0; i < casted_node->parameter_count; i++) {
-                free(casted_node->parameters[i].variable);
+                ast_free((ASTNode*) casted_node->parameters[i].variable);
+                //free(casted_node->parameters[i]); // TODO WHAT
             }
             free(casted_node->parameters);
+
             ast_free(casted_node->body);
             free(casted_node->body);
             free(casted_node);
@@ -473,10 +787,12 @@ void ast_free(ASTNode* node) {
             
         case NODE_BLOCK_STATEMENT: {
             BlockStatement* casted_node = (BlockStatement*) node;
-            for (size_t i = 0; i < casted_node->statement_count; i++) {
-                ast_free(casted_node->statements[i]);
-            }
-            free(casted_node->statements);
+            if (casted_node->statements) {
+                for (size_t i = 0; i < casted_node->statement_count; i++) {
+                    ast_free(casted_node->statements[i]);
+                }
+                free(casted_node->statements);
+            }            
             free(casted_node);
             node = NULL;
             casted_node = NULL;
@@ -488,20 +804,20 @@ void ast_free(ASTNode* node) {
             ast_free(casted_node->condition);
             ast_free(casted_node->then_branch);
 
-            for (int i = 0; i < casted_node->elif_count; i++) {
-                ast_free(casted_node->elif_branches[i]);
+            if (casted_node->elif_conditions && casted_node->elif_branches) {
+                for (size_t i = 0; i < casted_node->elif_count; i++) {
+                    ast_free(casted_node->elif_conditions[i]);
+                    ast_free(casted_node->elif_branches[i]);
+                }
+                free(casted_node->elif_conditions);
+                free(casted_node->elif_branches);
             }
 
-            if (casted_node->else_branch != NULL) {
-                ast_free(casted_node->else_branch);
-            }
-
+            ast_free(casted_node->else_branch);
             free(casted_node);
-            node = NULL;
-            casted_node = NULL;
             break;
-        }
-            
+        }            
+
         case NODE_WHILE_STATEMENT: {
             WhileStatement* casted_node = (WhileStatement*) node;
             ast_free(casted_node->condition);
@@ -538,7 +854,10 @@ void ast_free(ASTNode* node) {
             BinaryExpression* casted_node = (BinaryExpression*) node;
             ast_free(casted_node->left);
             ast_free(casted_node->right);
-            free(casted_node);
+            if (casted_node->operator_.value) {
+                free(casted_node->operator_.value);
+            }
+            free(casted_node);            
             node = NULL;
             casted_node = NULL;
             break;
@@ -547,6 +866,9 @@ void ast_free(ASTNode* node) {
         case NODE_UNARY_EXPRESSION: {
             UnaryExpression* casted_node = (UnaryExpression*) node;
             ast_free(casted_node->operand);
+            if (casted_node->operator_.value) {
+                free(casted_node->operator_.value);
+            }
             free(casted_node);
             node = NULL;
             casted_node = NULL;
@@ -572,10 +894,12 @@ void ast_free(ASTNode* node) {
             
         case NODE_FUNCTION_CALL_EXPRESSION: {
             FunctionCallExpression* casted_node = (FunctionCallExpression*) node;
-            for (size_t i = 0; i < casted_node->argument_count; i++) {
-                ast_free(casted_node->arguments[i]);
+            if (casted_node->arguments) {
+                for (int i = 0; i < casted_node->argument_count; i++) {
+                    ast_free(casted_node->arguments[i]);
+                }
+                free(casted_node->arguments);
             }
-            free(casted_node->arguments);
             ast_free(casted_node->callee);
             free(casted_node);
             node = NULL;
@@ -584,6 +908,7 @@ void ast_free(ASTNode* node) {
         }
 
         default: {
+            printf("Freeing node type: %d at %p\n", ast_node_type_to_string(node->node_type), (void*)node);
             free(node);
             node = NULL;
             break;
@@ -718,8 +1043,7 @@ void ast_print_tree(ASTNode* node, int indent) {
     if (!node) return;
     
     for (int i = 0; i < indent; i++) printf("  ");
-    printf("AST TREE:\n");
-    printf("%s\n", ast_node_type_to_string(node->node_type));
+    printf("\nAST TREE:\n");
     ast_print(node, indent);
     printf("\n");
 }
@@ -921,6 +1245,6 @@ bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt) {
         return 0;
     }
     casted_node->statements = new_statements;
-    casted_node->statements[casted_node->statement_count - 1] = stmt;
+    casted_node->statements[casted_node->statement_count - 1] = ast_node_copy(stmt);
     return 1;
 }
