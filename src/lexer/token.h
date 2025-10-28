@@ -13,7 +13,7 @@ typedef enum TokenType {
     // 1.3 Control flow
     KW_IF, KW_ELSE, KW_ELIF, 
     KW_WHILE, KW_FOR, KW_BREAK, 
-    KW_CONTINUE, KW_RETURN, KW_FUN, //function
+    KW_CONTINUE, KW_RETURN,
 
     // 1.4 Structs, object.attr
     KW_STRUCT, KW_DOT,

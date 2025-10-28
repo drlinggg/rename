@@ -316,8 +316,9 @@ Functions are declared with return type, name, parameters, and body.
 
 ```
 // Basic function
-None greet(string name) {
+int greet(string name) {
     print("Hello, " + name);
+    return 0;
 }
 
 // Function with return value

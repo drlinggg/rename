@@ -1024,7 +1024,6 @@ const char* token_type_to_string(int token_type) {
         case KW_BREAK: return "KW_BREAK";
         case KW_CONTINUE: return "KW_CONTINUE";
         case KW_RETURN: return "KW_RETURN";
-        case KW_FUN: return "KW_FUN";
 
         // 1.4 Structs, object.attr
         case KW_STRUCT: return "KW_STRUCT";

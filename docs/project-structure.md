@@ -12,7 +12,7 @@
     ├── compiler
     │   └── todo
     ├── lexer
-    │   ├── lexer.cpp
+    │   ├── lexer.c
     │   ├── lexer.h
     │   ├── token.h
     │   └── todo
