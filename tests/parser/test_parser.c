@@ -139,13 +139,13 @@ void test_fun_expression() {
     
     Token tokens[] = {
         create_token(IDENTIFIER, "fun", 1, 1),
-        create_token(LBRACE, "(", 1, 3),
+        create_token(LPAREN, "(", 1, 3),
         create_token(IDENTIFIER, "var", 1, 5),
         create_token(COMMA, ",", 1, 7),
         create_token(INT_LITERAL, "5", 1, 5),
         create_token(OP_MULT, "*", 1, 5), 
         create_token(INT_LITERAL, "5", 1, 5),
-        create_token(RBRACE, ")", 1, 3),
+        create_token(RPAREN, ")", 1, 3),
         create_token(SEMICOLON, ";", 1, 8),
         create_token(INT_LITERAL, "5", 1, 5),
         create_token(OP_MULT, "*", 1, 5), 
@@ -224,11 +224,11 @@ void test_function_declaration_statement() {
 // gcc tests/parser/test_parser.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
     
-    //test_simple_expressions();
-    //test_variable_declaration();
-    //test_unary_expression();
-    //test_complex_expression();
-    //test_fun_expression();
+    test_simple_expressions();
+    test_variable_declaration();
+    test_unary_expression();
+    test_complex_expression();
+    test_fun_expression();
     test_function_declaration_statement();
     
     return 0;
