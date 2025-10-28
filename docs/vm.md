@@ -2,9 +2,10 @@
 
 ### VM structure:
 - **Stack Call** - stack of frames
-- **Global context** - Global storage for global objects, global namespace, hashmap
-- **Constants pool** - Global storage for constants which nobody can change
-- **Heap** - for objects with dynamical time of life, hashmap
+- **Global context** - Global storage for global objects, global namespace, list
+- **Builtins context** - Global storage for builtins, list
+- **Constants pool** - Global storage for constants which nobody can change, list
+- **Heap** - for objects with dynamical time of life, list
 
 methods:
 - create
@@ -13,11 +14,14 @@ methods:
 - execute
 - destroy
 
+TODO GARBAGE COLLECTOR
+
 ### Frame structure:
 - **Code** - bytecode operations list
-- **Operation stack** (LIFO) - stack of results of bytecode operations
+- **Stack** (LIFO) - stack of results of bytecode operations
 - **instruction pointer** used for jumping between operations
-- **local context** - dict of local variables, local namespace
+- **local context** - list of local values, local namespace
+- **local varnames context** - list of local varnames, used for debug
 - **Return address / value** - todo think about return mechanism
 
 methods:
@@ -29,7 +33,7 @@ methods:
 
 ### instructions format:
 ```
-opcode (1 байт) | arg (2 байта) | arg_value (depends of context idk rn)
+opcode (1 байт) | arg (2 байта)
 ```
 
 ### constants pool
@@ -52,9 +56,9 @@ opcode (1 байт) | arg (2 байта) | arg_value (depends of context idk rn)
 
 ### local context
 ```python
-{
-    "local_x": 100,
-    "local_variable_string": "123adsa",
-    "local_factorial": <function object>
-}
+[
+  100,
+  "123adsa",
+  <function object>
+]
 ```

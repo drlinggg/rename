@@ -2,18 +2,19 @@
 
 ### instructions format:
 ```
-opcode (1 байт) | arg (2 байта) | arg_value (зависит от контекста)
+opcode (1 байт) | arg (3 байта) |
 ```
 
 ## Bytecode table
 
-### 1. Загрузка констант и переменных
+### 1. loads
 | Мнемоника | Код | Аргумент | Описание |
 |-----------|-----|-----------|----------|
 | `LOAD_CONST` | 0x01 | index | Загружает константу из пула констант |
 | `LOAD_FAST` | 0x02 | local_index | Загружает локальную переменную |
 | `LOAD_GLOBAL` | 0x03 | name_index | Загружает глобальную переменную |
 | `LOAD_NAME` | 0x04 | name_index | Загружает переменную по имени (resolves scope) |
+
 
 ### 2. Сохранение переменных
 | Мнемоника | Код | Аргумент | Описание |
@@ -121,3 +122,22 @@ LOAD_CONST     1   # Аргумент 3
 CALL_FUNCTION  2   # Вызов с 2 аргументами
 STORE_FAST     0   # Сохраняем результат
 ```
+
+## bytecode operations documentation:
+### - load_fast:
+push(locals[arg])
+
+### - load_const:
+push(arg)
+
+### - load_global
+push_null = arg % 2 != 0 # if function => pushing null
+if push_null:
+    push(NULL)
+push(globals[arg>>1] or builtins[arg>>1])
+lowest bit says if you need to push null
+
+### - load name
+push(locals[arg] or globals[arg] or builtins[arg])
+
+TODO ADD MORE
