@@ -77,7 +77,7 @@ typedef struct {
 
 typedef struct {
     TypeVar type;
-    VariableExpression* variable; 
+    char* name;
 } Parameter;
 
 // Statements
@@ -108,7 +108,7 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* expression;
+    ASTNode* expression; // ExpressionStatement
 } ReturnStatement;
 
 typedef struct {
@@ -181,17 +181,21 @@ ASTNode* ast_new_variable_declaration_statement(SourceLocation loc, TypeVar var_
 ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_if_statement(SourceLocation loc, ASTNode* condition, ASTNode* then_branch);
 ASTNode* ast_new_while_statement(SourceLocation loc, ASTNode* condition, ASTNode* body);
-ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type); // TODO add params and decide how params work and declare
+ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type, Parameter* parameters, size_t parameter_count, ASTNode* body);
 ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** args, int arg_count);
 ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode* condition, ASTNode* increment, ASTNode* body);
 ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression);
 ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_t count);
+
+Parameter* ast_new_parameter(const char* name, TypeVar type);
+void parameter_free(Parameter* param);
 
 bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt);
 
 const char* ast_node_type_to_string(int node_type);
 const char* type_var_to_string(int node_type);
 const char* token_type_to_string(int token_type);
+const TypeVar token_type_to_type_var(TokenType type);
 
 void ast_print(ASTNode* node, int indent);
 void ast_print_tree(ASTNode* node, int indent);

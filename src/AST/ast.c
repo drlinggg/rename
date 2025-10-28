@@ -61,6 +61,7 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
     }
 }
 
+
 static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     ASTNode* node = NULL;
     
@@ -370,26 +371,6 @@ static ExpressionStatement* copy_expression_statement(ASTNode* original) {
     return copy;
 }
 
-static BlockStatement* copy_block_statement(ASTNode* original) {
-    if (!original) return NULL;
-    BlockStatement* orig = (BlockStatement*)original;
-    
-    BlockStatement* copy = malloc(sizeof(BlockStatement));
-    copy->base = orig->base;
-    copy->statement_count = orig->statement_count;
-    
-    if (orig->statement_count > 0 && orig->statements) {
-        copy->statements = malloc(orig->statement_count * sizeof(ASTNode*));
-        for (size_t i = 0; i < orig->statement_count; i++) {
-            copy->statements[i] = ast_node_copy(orig->statements[i]);
-        }
-    } else {
-        copy->statements = NULL;
-    }
-    
-    return copy;
-}
-
 static IfStatement* copy_if_statement(ASTNode* original) {
     if (!original) return NULL;
     IfStatement* orig = (IfStatement*)original;
@@ -443,16 +424,64 @@ static ForStatement* copy_for_statement(ASTNode* original) {
     return copy;
 }
 
+static BlockStatement* copy_block_statement(ASTNode* original) {
+    if (!original) return NULL;
+    BlockStatement* orig = (BlockStatement*)original;
+    
+    // Создаем новую базовую структуру
+    BlockStatement* copy = malloc(sizeof(BlockStatement));
+    if (!copy) return NULL;
+    
+    // Правильно инициализируем базовую структуру
+    copy->base.node_type = orig->base.node_type;
+    copy->base.location = orig->base.location;
+    
+    copy->statement_count = orig->statement_count;
+    
+    if (orig->statement_count > 0 && orig->statements) {
+        copy->statements = malloc(orig->statement_count * sizeof(ASTNode*));
+        if (!copy->statements) {
+            free(copy);
+            return NULL;
+        }
+        for (size_t i = 0; i < orig->statement_count; i++) {
+            copy->statements[i] = ast_node_copy(orig->statements[i]);
+            if (!copy->statements[i]) {
+                // В случае ошибки освобождаем уже скопированные statements
+                for (size_t j = 0; j < i; j++) {
+                    ast_free(copy->statements[j]);
+                }
+                free(copy->statements);
+                free(copy);
+                return NULL;
+            }
+        }
+    } else {
+        copy->statements = NULL;
+    }
+    
+    return copy;
+}
+
 static FunctionDeclarationStatement* copy_function_declaration_statement(ASTNode* original) {
     if (!original) return NULL;
     FunctionDeclarationStatement* orig = (FunctionDeclarationStatement*)original;
     
     FunctionDeclarationStatement* copy = malloc(sizeof(FunctionDeclarationStatement));
-    copy->base = orig->base;
+    if (!copy) return NULL;
+    
+    // Правильно инициализируем базовую структуру
+    copy->base.node_type = orig->base.node_type;
+    copy->base.location = orig->base.location;
+    
     copy->return_type = orig->return_type;
     
     if (orig->name) {
         copy->name = strdup(orig->name);
+        if (!copy->name) {
+            free(copy);
+            return NULL;
+        }
     } else {
         copy->name = NULL;
     }
@@ -461,22 +490,51 @@ static FunctionDeclarationStatement* copy_function_declaration_statement(ASTNode
     
     if (orig->parameter_count > 0 && orig->parameters) {
         copy->parameters = malloc(orig->parameter_count * sizeof(Parameter));
+        if (!copy->parameters) {
+            free(copy->name);
+            free(copy);
+            return NULL;
+        }
         for (size_t i = 0; i < orig->parameter_count; i++) {
             copy->parameters[i] = orig->parameters[i];
-            if (orig->parameters[i].variable) {
-                copy->parameters[i].variable = copy_variable_expression((ASTNode*)orig->parameters[i].variable);
+        
+            if (orig->parameters[i].name) {
+                copy->parameters[i].name = strdup(orig->parameters[i].name);
+                if (!copy->parameters[i].name) {
+                    // Освобождаем уже скопированные имена параметров
+                    for (size_t j = 0; j < i; j++) {
+                        free(copy->parameters[j].name);
+                    }
+                    free(copy->parameters);
+                    free(copy->name);
+                    free(copy);
+                    return NULL;
+                }
+            } else {
+                copy->parameters[i].name = NULL;
             }
         }
     } else {
         copy->parameters = NULL;
-    }
-    
+    }    
+
     copy->body = ast_node_copy(orig->body);
+    if (!copy->body) {
+        // Освобождаем ресурсы если копирование тела не удалось
+        if (copy->parameters) {
+            for (size_t i = 0; i < copy->parameter_count; i++) {
+                free(copy->parameters[i].name);
+            }
+            free(copy->parameters);
+        }
+        free(copy->name);
+        free(copy);
+        return NULL;
+    }
     
     return copy;
 }
 
-// Теперь основная функция копирования
 static ASTNode* ast_node_copy(ASTNode* original) {
     if (!original) return NULL;
     
@@ -549,15 +607,25 @@ static ASTNode* ast_node_copy(ASTNode* original) {
 //    return (ASTNode*)node;
 //}
 
-ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type) {
+Parameter* ast_new_parameter(const char* name, TypeVar type){
+    Parameter* parameter = malloc(sizeof(Parameter));
+    parameter->name = strdup(name);
+    parameter->type = type;
+    return parameter;
+}
+
+
+ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type, Parameter* parameters, size_t parameter_count, ASTNode* body) {
     ASTNode* node = ast_node_allocate(NODE_FUNCTION_DECLARATION_STATEMENT, loc);
     if (!node) return NULL;
+    
     FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
     casted_node->name = strdup(name);
     casted_node->return_type = return_type;
-    casted_node->parameters = NULL;
-    casted_node->parameter_count = 0;
-    casted_node->body = NULL;
+    casted_node->parameters = parameters;
+    casted_node->parameter_count = parameter_count;
+    casted_node->body = ast_node_copy(body);
+    
     return node;
 }
 
@@ -591,23 +659,8 @@ ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_
     ASTNode* node = ast_node_allocate(NODE_BLOCK_STATEMENT, loc);
     if (!node) return NULL;
     BlockStatement* casted_node = (BlockStatement*) node;
-    
-    if (statement_count > 0 && statements) {
-        casted_node->statements = malloc(statement_count * sizeof(ASTNode*));
-        if (!casted_node->statements) {
-            free(node);
-            return NULL;
-        }
-        
-        for (size_t i = 0; i < statement_count; i++) {
-            casted_node->statements[i] = ast_node_copy(statements[i]);
-        }
-        casted_node->statement_count = statement_count;
-    } else {
-        casted_node->statements = NULL;
-        casted_node->statement_count = 0;
-    }
-    
+    casted_node->statements = statements;
+    casted_node->statement_count = statement_count;
     return node;
 }
 
@@ -743,14 +796,13 @@ void ast_free(ASTNode* node) {
         case NODE_FUNCTION_DECLARATION_STATEMENT: {
             FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
             free(casted_node->name);
+
             for (size_t i = 0; i < casted_node->parameter_count; i++) {
-                ast_free((ASTNode*) casted_node->parameters[i].variable);
-                //free(casted_node->parameters[i]); // TODO WHAT
+                free(casted_node->parameters[i].name);
             }
             free(casted_node->parameters);
 
             ast_free(casted_node->body);
-            free(casted_node->body);
             free(casted_node);
             node = NULL;
             casted_node = NULL;
@@ -1064,13 +1116,13 @@ void ast_print(ASTNode* node, int indent) {
             FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
 
             for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Function: %s (returns type %d)\n", casted_node->name, casted_node->return_type);
+            printf("Function: %s (returns type %s)\n", casted_node->name, type_var_to_string(casted_node->return_type));
             
             for (size_t i = 0; i < casted_node->parameter_count; i++) {
                 for (int j = 0; j < indent + 1; j++) printf("  ");
-                printf("Parameter: %s (type %d)\n", 
-                       casted_node->parameters[i].variable->name, 
-                       casted_node->parameters[i].type);
+                printf("Parameter: %s (type %s)\n", 
+                       casted_node->parameters[i].name, 
+                       type_var_to_string(casted_node->parameters[i].type));
             }
             ast_print(casted_node->body, indent + 1);
             break;
@@ -1248,3 +1300,4 @@ bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt) {
     casted_node->statements[casted_node->statement_count - 1] = ast_node_copy(stmt);
     return 1;
 }
+

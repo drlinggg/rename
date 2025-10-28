@@ -40,11 +40,11 @@ typedef enum TokenType {
     
     // 5. Delimiters
 
-    // 5.1. { } ( ) [ ]
+    // 5.1. () {} []
     LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET,
 
-    // 5.2 ; ,
-    SEMICOLON, COMMA,
+    // 5.2 ; : ,
+    SEMICOLON, COLON, COMMA,
     
     // 6. Special
     END_OF_FILE, ERROR, // idk what is it

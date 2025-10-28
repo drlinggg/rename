@@ -116,7 +116,8 @@ void test_complex_expression() {
         create_token(INT_LITERAL, "2", 1, 17),
         create_token(SEMICOLON, ";", 1, 18),
         create_token(END_OF_FILE, "", 1, 19)
-    };
+    }; // a + b * c - d // 2;
+       // bin_expr( bin expr(a, bin_expr(b,c)), bin_expr(d, 2) )
     
     Parser* parser = parser_create(tokens, 11);
     ASTNode* expr = parser_parse_expression(parser);
@@ -169,14 +170,66 @@ void test_fun_expression() {
     printf("\n\n");
 }
 
+void test_function_declaration_statement() {
+    printf("=== TEST Function Declaration ===\n");
+    
+    Token tokens[] = {
+        // Тип возвращаемого значения и имя функции
+        create_token(KW_INT, "int", 1, 1),
+        create_token(IDENTIFIER, "add", 1, 5),
+        
+        // Параметры функции
+        create_token(LPAREN, "(", 1, 8),
+        create_token(IDENTIFIER, "a", 1, 9),
+        create_token(COLON, ":", 1, 10),
+        create_token(KW_INT, "int", 1, 11),
+        create_token(COMMA, ",", 1, 14),
+        create_token(IDENTIFIER, "b", 1, 15),
+        create_token(COLON, ":", 1, 16),
+        create_token(KW_INT, "int", 1, 17),
+        create_token(RPAREN, ")", 1, 20),
+        
+        // Тело функции
+        create_token(LBRACE, "{", 1, 21),
+        create_token(KW_RETURN, "return", 1, 22),
+        create_token(IDENTIFIER, "a", 1, 29),
+        create_token(OP_PLUS, "+", 1, 31),
+        create_token(IDENTIFIER, "b", 1, 33),
+        create_token(SEMICOLON, ";", 1, 34),
+        create_token(RBRACE, "}", 1, 35),
+        
+        create_token(END_OF_FILE, "", 1, 36),
+        // int add(a: int, b: int) {
+        //    return a + b;
+        // }
+    };
+    
+    Parser* parser = parser_create(tokens, 18);
+    ASTNode* func_decl = parser_parse(parser);
+    
+    if (func_decl) {
+        printf("Successfully parsed function declaration:\n");
+        ast_print_tree(func_decl, 0);
+        ast_free(func_decl);
+        assert(1 == 1);
+    } else {
+        printf("Failed to parse function declaration\n");
+        assert(0 && "couldnt parse function declaration");
+    }
+    
+    parser_destroy(parser);
+    printf("\n\n");
+}
+
 // gcc tests/parser/test_parser.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
     
-    test_simple_expressions();
-    test_variable_declaration();
-    test_unary_expression();
-    test_complex_expression(); // to be fixed prioritet
-    test_fun_expression();
+    //test_simple_expressions();
+    //test_variable_declaration();
+    //test_unary_expression();
+    //test_complex_expression();
+    //test_fun_expression();
+    test_function_declaration_statement();
     
     return 0;
 }

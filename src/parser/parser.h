@@ -14,16 +14,33 @@ typedef struct Parser {
     SourceLocation current_location;
 } Parser;
 
+typedef enum {
+    PRECEDENCE_NONE = 0,
+    PRECEDENCE_ASSIGNMENT = 1,  // =, +=, -=
+    PRECEDENCE_OR = 2,          // or
+    PRECEDENCE_AND = 3,         // and
+    PRECEDENCE_EQUALITY = 4,    // ==, !=
+    PRECEDENCE_COMPARISON = 5,  // <, >, <=, >=
+    PRECEDENCE_TERM = 6,        // +, -
+    PRECEDENCE_FACTOR = 7,      // *, /, %
+    PRECEDENCE_UNARY = 8,       // !, -, +
+    PRECEDENCE_CALL = 9,        // ., ()
+} Precedence;
+
+static Precedence get_precedence(TokenType type);
+
 Parser* parser_create(Token* tokens, size_t token_count);
 void parser_destroy(Parser* parser);
 
 ASTNode* parser_parse(Parser* parser);
+ASTNode* parser_parse_block(Parser* parser);
 
 ASTNode* parser_parse_statement(Parser* parser);
 ASTNode* parser_parse_expression(Parser* parser);
 
 ASTNode* parser_parse_declaration_statement(Parser* parser);
 ASTNode* parser_parse_variable_declaration_statement(Parser* parser);
+Parameter* parser_parse_parameter(Parser* parser);
 ASTNode* parser_parse_function_declaration_statement(Parser* parser);
 
 ASTNode* parser_parse_assignment_statement(Parser* parser);
@@ -34,9 +51,10 @@ ASTNode* parser_parse_return_statement(Parser* parser);
 ASTNode* parser_parse_block_statement(Parser* parser);
 ASTNode* parser_parse_expression_statement(Parser* parser);
 
+ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence);
 ASTNode* parser_parse_expression(Parser* parser);
-ASTNode* parser_parse_binary_expression(Parser* parser, int min_precedence); // TODO IMPLEMENT PRECEDENCE 
-ASTNode* parser_parse_unary_expression(Parser* parser, int min_precedence); 
+ASTNode* parser_parse_binary_expression(Parser* parser);
+ASTNode* parser_parse_unary_expression(Parser* parser); 
 ASTNode* parser_parse_primary_expression(Parser* parser);
 ASTNode* parser_parse_literal_expression(Parser* parser);
 ASTNode* parser_parse_function_call_expression(Parser* parser);
@@ -52,5 +70,3 @@ Token* parser_retreat(Parser* parser); // return previous token and moving back;
 
 const bool parser_check(Parser* parser, TokenType type);
 const bool parser_is_at_end(Parser* parser);
-
-const TypeVar token_type_to_type_var(TokenType type);
