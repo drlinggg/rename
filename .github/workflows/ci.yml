@@ -43,7 +43,7 @@ jobs:
     - name: Compile and run Bytecode tests
       run: |
         echo "Compiling Bytecode tests..."
-        gcc -I src -I src/bytecode tests/bytecode/test_bytecode.c src/bytecode/bytecode.c -o test_bytecode
+        gcc -I src -I src/bytecode tests/bytecode/test_bytecode.c src/compiler/bytecode.c -o test_bytecode
         echo "Running Bytecode tests..."
         ./test_bytecode || exit 1
     
