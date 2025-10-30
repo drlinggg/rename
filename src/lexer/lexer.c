@@ -1,48 +1,18 @@
 #include "lexer.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
 
-lexer* lexer_create(const char* filename) {
-    // initialize lexer from file function
-    lexer *l = malloc(sizeof(lexer));
-    if (!l) return NULL;
-    
-    l->file = fopen(filename, "r");
-    if (!l->file) {
-        free(l);
-        return NULL;
-    }
-    
-    l->current_char = fgetc(l->file);
-    l->line = 1;
-    l->column = 1;
-    l->filename = strdup(filename);
-    
-    return l;
-}
+static void lexer_advance(lexer *l);
+static void lexer_skip_whitespace(lexer *l);
+static Token* lexer_parse_identifier(lexer *l);
+static Token* lexer_next_token(lexer *l);
+static Token* lexer_parse_number(lexer *l);
+static Token* token_create(TokenType type, const char* value, int line, int column);
+static void token_free(Token *token);
 
-lexer* lexer_create_from_stream(FILE* file, const char* filename) {
-    // todo info
-    lexer *l = malloc(sizeof(lexer));
-    if (!l) return NULL;
-    
-    l->file = file;
-    l->current_char = fgetc(l->file);
-    l->line = 1;
-    l->column = 1;
-    l->filename = strdup(filename);
-    
-    return l;
-}
-
-
-void lexer_destroy(lexer *l) {
-    if (l) {
-        if (l->file) fclose(l->file);
-        if (l->filename) free(l->filename);
-        free(l);
-    }
-}
-
-void lexer_advance(lexer *l) {
+static void lexer_advance(lexer *l) {
     if (l->current_char == '\n') {
         l->line++;
         l->column = 1;
@@ -52,13 +22,13 @@ void lexer_advance(lexer *l) {
     l->current_char = fgetc(l->file);
 }
 
-void lexer_skip_whitespace(lexer *l) {
+static void lexer_skip_whitespace(lexer *l) {
     while (l->current_char != EOF && isspace(l->current_char)) {
         lexer_advance(l);
     }
 }
 
-Token* token_create(TokenType type, const char* value, int line, int column) {
+static Token* token_create(TokenType type, const char* value, int line, int column) {
     Token *token = malloc(sizeof(Token));
     token->type = type;
     token->value = strdup(value);
@@ -67,14 +37,14 @@ Token* token_create(TokenType type, const char* value, int line, int column) {
     return token;
 }
 
-void token_free(Token *token) {
+static void token_free(Token *token) {
     if (token) {
         if (token->value) free(token->value);
         free(token);
     }
 }
 
-Token* lexer_parse_identifier(lexer *l) {
+static Token* lexer_parse_identifier(lexer *l) {
     char buffer[256] = {0};
     int i = 0;
     int start_line = l->line;
@@ -107,7 +77,7 @@ Token* lexer_parse_identifier(lexer *l) {
     return token_create(IDENTIFIER, buffer, start_line, start_column);
 }
 
-Token* lexer_parse_number(lexer *l) {
+static Token* lexer_parse_number(lexer *l) {
     char buffer[256] = {0};
     int i = 0;
     int start_line = l->line;
@@ -122,7 +92,7 @@ Token* lexer_parse_number(lexer *l) {
     return token_create(INT_LITERAL, buffer, start_line, start_column);
 }
 
-Token* lexer_next_token(lexer *l) {
+static Token* lexer_next_token(lexer *l) {
     if (!l || !l->file) return NULL;
     
     lexer_skip_whitespace(l);
@@ -175,6 +145,47 @@ Token* lexer_next_token(lexer *l) {
     }
     
     return token;
+}
+
+lexer* lexer_create(const char* filename) {
+    // initialize lexer from file function
+    lexer *l = malloc(sizeof(lexer));
+    if (!l) return NULL;
+    
+    l->file = fopen(filename, "r");
+    if (!l->file) {
+        free(l);
+        return NULL;
+    }
+    
+    l->current_char = fgetc(l->file);
+    l->line = 1;
+    l->column = 1;
+    l->filename = strdup(filename);
+    
+    return l;
+}
+
+lexer* lexer_create_from_stream(FILE* file, const char* filename) {
+    // todo info
+    lexer *l = malloc(sizeof(lexer));
+    if (!l) return NULL;
+    
+    l->file = file;
+    l->current_char = fgetc(l->file);
+    l->line = 1;
+    l->column = 1;
+    l->filename = strdup(filename);
+    
+    return l;
+}
+
+void lexer_destroy(lexer *l) {
+    if (l) {
+        if (l->file) fclose(l->file);
+        if (l->filename) free(l->filename);
+        free(l);
+    }
 }
 
 Token* lexer_parse_file(lexer* lexer, const char* filename) {

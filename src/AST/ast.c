@@ -62,7 +62,7 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
 }
 
 
-static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
+ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     // generall allocator for ast_node with node_type and loc
     // use this one to allocate smth
     ASTNode* node = NULL;

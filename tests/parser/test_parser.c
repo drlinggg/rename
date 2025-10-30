@@ -58,7 +58,7 @@ void test_variable_declaration() {
     };
     
     Parser* parser = parser_create(tokens, 6);
-    ASTNode* stmt = parser_parse_statement(parser);
+    ASTNode* stmt = parser_parse(parser);
 
     
     if (stmt) {
@@ -87,7 +87,7 @@ void test_unary_expression() {
     };
     
     Parser* parser = parser_create(tokens, 7);
-    ASTNode* stmt = parser_parse_statement(parser);
+    ASTNode* stmt = parser_parse(parser);
     
     if (stmt) {
         ast_print_tree(stmt, 0);
@@ -120,7 +120,7 @@ void test_complex_expression() {
        // bin_expr( bin expr(a, bin_expr(b,c)), bin_expr(d, 2) )
     
     Parser* parser = parser_create(tokens, 11);
-    ASTNode* expr = parser_parse_expression(parser);
+    ASTNode* expr = parser_parse(parser);
     
     if (expr) {
         ast_print_tree(expr, 0);

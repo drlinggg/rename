@@ -5,6 +5,18 @@
 #include <string.h>
 #include <stdlib.h>
 
+typedef enum {
+    PRECEDENCE_NONE = 0,
+    PRECEDENCE_ASSIGNMENT = 1,
+    PRECEDENCE_OR = 2,
+    PRECEDENCE_AND = 3,
+    PRECEDENCE_EQUALITY = 4,
+    PRECEDENCE_COMPARISON = 5,
+    PRECEDENCE_TERM = 6,
+    PRECEDENCE_FACTOR = 7,
+    PRECEDENCE_UNARY = 8,
+    PRECEDENCE_CALL = 9,
+} Precedence;
 
 static Precedence get_precedence(TokenType type) {
     // Function for getting precedence for each binary token operation
@@ -18,6 +30,38 @@ static Precedence get_precedence(TokenType type) {
         default: return PRECEDENCE_NONE;
     }
 }
+
+static Precedence get_precedence(TokenType type);
+static bool parser_is_at_end(Parser* parser);
+static void report_error(Parser* parser, const char* error_message);
+static Token* parser_consume(Parser* parser, TokenType expected, const char* error_message);
+static Token* parser_peek(Parser* parser);
+static Token* parser_previous(Parser* parser);
+static Token* parser_retreat(Parser* parser);
+static Token* parser_advance(Parser* parser);
+static bool parser_check(Parser* parser, TokenType type);
+
+static ASTNode* parser_parse_block(Parser* parser);
+static ASTNode* parser_parse_statement(Parser* parser);
+static ASTNode* parser_parse_expression(Parser* parser);
+static ASTNode* parser_parse_declaration_statement(Parser* parser);
+static ASTNode* parser_parse_variable_declaration_statement(Parser* parser);
+static Parameter* parser_parse_parameter(Parser* parser);
+static ASTNode* parser_parse_function_declaration_statement(Parser* parser);
+static ASTNode* parser_parse_assignment_statement(Parser* parser);
+static ASTNode* parser_parse_if_statement(Parser* parser);
+static ASTNode* parser_parse_while_statement(Parser* parser);
+static ASTNode* parser_parse_for_statement(Parser* parser);
+static ASTNode* parser_parse_return_statement(Parser* parser);
+static ASTNode* parser_parse_block_statement(Parser* parser);
+static ASTNode* parser_parse_expression_statement(Parser* parser);
+static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence);
+static ASTNode* parser_parse_binary_expression(Parser* parser);
+static ASTNode* parser_parse_unary_expression(Parser* parser);
+static ASTNode* parser_parse_primary_expression(Parser* parser);
+static ASTNode* parser_parse_literal_expression(Parser* parser);
+static ASTNode* parser_parse_function_call_expression(Parser* parser);
+static ASTNode* parser_parse_variable_expression(Parser* parser);
 
 
 Parser* parser_create(Token* tokens, size_t token_count) {
@@ -39,7 +83,7 @@ void parser_destroy(Parser* parser) {
     free(parser);
 }
 
-bool parser_is_at_end(Parser* parser) {
+static bool parser_is_at_end(Parser* parser) {
     return parser->current >= parser->token_count;
 }
 
@@ -52,7 +96,7 @@ void report_error(Parser* parser, const char* error_message) {
 }
 
 // if current token is the same as expected -> 
-Token* parser_consume(Parser* parser, TokenType expected, const char* error_message) {
+static Token* parser_consume(Parser* parser, TokenType expected, const char* error_message) {
     if (parser_check(parser, expected)) {
         return parser_advance(parser);
     }
@@ -62,7 +106,7 @@ Token* parser_consume(Parser* parser, TokenType expected, const char* error_mess
 }
 
 // returns current token without moving forward
-Token* parser_peek(Parser* parser) {
+static Token* parser_peek(Parser* parser) {
     if (parser_is_at_end(parser)) {
         return NULL;
     }
@@ -70,14 +114,14 @@ Token* parser_peek(Parser* parser) {
 }
 
 // return previous token without moving
-Token* parser_previous(Parser* parser) {
+static Token* parser_previous(Parser* parser) {
     if (parser->current == 0) {
         return NULL;
     }
     return &(parser->tokens[parser->current - 1]);
 }
 
-Token* parser_retreat(Parser* parser) {
+static Token* parser_retreat(Parser* parser) {
     // Goes back and return previous token
     if (parser->current == 0) {
         return NULL;
@@ -93,7 +137,7 @@ Token* parser_retreat(Parser* parser) {
 }
 
 // returns current token and moving forward
-Token* parser_advance(Parser* parser) {
+static Token* parser_advance(Parser* parser) {
     if (parser_is_at_end(parser)) return NULL;
 
     Token* current = parser_peek(parser);
@@ -115,7 +159,7 @@ bool parser_check(Parser* parser, TokenType type) {
     return token->type == type;
 }
 
-ASTNode* parser_parse_function_call_expression(Parser* parser) {
+static ASTNode* parser_parse_function_call_expression(Parser* parser) {
     printf("[PARSER] [FUNCTION CALL] parse_function_call_expression started\n");
     
     Token* current = parser_advance(parser);
@@ -222,28 +266,28 @@ ASTNode* parser_parse_function_call_expression(Parser* parser) {
     }
 }
 
-ASTNode* parser_parse_if_statement(Parser* parser) {
+static ASTNode* parser_parse_if_statement(Parser* parser) {
     // TODO: реализовать
     return NULL;
 }
 
-ASTNode* parser_parse_while_statement(Parser* parser) {
+static ASTNode* parser_parse_while_statement(Parser* parser) {
     // TODO: реализовать
     return NULL;
 }
 
-ASTNode* parser_parse_for_statement(Parser* parser) {
+static ASTNode* parser_parse_for_statement(Parser* parser) {
     // TODO: реализовать
     return NULL;
 }
 
-ASTNode* parser_parse_return_statement(Parser* parser) {
+static ASTNode* parser_parse_return_statement(Parser* parser) {
     parser_consume(parser, KW_RETURN, "return statement should start with return keyword");
     ASTNode* expr = parser_parse_expression_statement(parser);
     return ast_new_return_statement(expr->location, expr);
 }
 
-ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
+static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     Token* token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){token->line, token->column};
     ASTNode* initializer = NULL;
@@ -264,7 +308,7 @@ ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     return node;
 }
 
-Parameter* parser_parse_parameter(Parser* parser) {
+static Parameter* parser_parse_parameter(Parser* parser) {
     Token* name = parser_consume(parser, IDENTIFIER, "Expected parameter name");
     if (!name) return NULL;
     
@@ -276,7 +320,7 @@ Parameter* parser_parse_parameter(Parser* parser) {
 }
 
 
-ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
+static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     printf("[PARSER] Starting to parse function declaration\n");
     Token* return_type_token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){return_type_token->line, return_type_token->column};
@@ -350,7 +394,7 @@ ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
 }
 
 
-ASTNode* parser_parse_declaration_statement(Parser* parser) {
+static ASTNode* parser_parse_declaration_statement(Parser* parser) {
     printf("[PARSER] Starting to parse declaration statement\n");
     Token* current = parser_advance(parser);
     if (!current) {
@@ -380,12 +424,12 @@ ASTNode* parser_parse_declaration_statement(Parser* parser) {
     return parser_parse_function_declaration_statement(parser);
 }
 
-ASTNode* parser_parse_assignment_statement(Parser* parser) {
+static ASTNode* parser_parse_assignment_statement(Parser* parser) {
     // TODO: реализовать
     return NULL;
 }
 
-ASTNode* parser_parse_primary_expression(Parser* parser) {
+static ASTNode* parser_parse_primary_expression(Parser* parser) {
     Token* current = parser_peek(parser);
     SourceLocation loc = (SourceLocation){current->line, current->column};
     
@@ -457,11 +501,11 @@ ASTNode* parser_parse_primary_expression(Parser* parser) {
     }
 }
 
-ASTNode* parser_parse_expression(Parser* parser) {
+static ASTNode* parser_parse_expression(Parser* parser) {
     return parser_parse_precedence(parser, PRECEDENCE_ASSIGNMENT);
 }
 
-ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence) {
+static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence) {
     Token* current = parser_peek(parser);
     SourceLocation loc = (SourceLocation){current->line, current->column};
     
@@ -518,7 +562,7 @@ ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence) {
     return left;
 }
 
-ASTNode* parser_parse_unary_expression(Parser* parser) {
+static ASTNode* parser_parse_unary_expression(Parser* parser) {
     Token* operator_ = parser_advance(parser);
     SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
     
@@ -539,7 +583,7 @@ ASTNode* parser_parse_unary_expression(Parser* parser) {
     return node;
 }
 
-ASTNode* parser_parse_expression_statement(Parser* parser) {
+static ASTNode* parser_parse_expression_statement(Parser* parser) {
     ASTNode* expression = parser_parse_expression(parser);
     if (!expression) return NULL;
     
@@ -549,7 +593,7 @@ ASTNode* parser_parse_expression_statement(Parser* parser) {
     return node;
 }
 
-ASTNode* parser_parse_statement(Parser* parser) {
+static ASTNode* parser_parse_statement(Parser* parser) {
     Token* current = parser_peek(parser);
     ASTNode* res = NULL;
     bool flag_fun_declaration = false;
@@ -644,48 +688,7 @@ ASTNode* parser_parse_statement(Parser* parser) {
     return res;
 }
 
-ASTNode* parser_parse(Parser* parser) {
-    // Main function for starting parsing, use it with initialized parser to get ast_tree
-    printf("[PARSER] Starting parsing\n");
-    
-    ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);
-    if (!block_statements) {
-        printf("[PARSER] ERROR: Failed to create block statement\n");
-        return NULL;
-    }
-
-    while (!parser_is_at_end(parser)) {
-        Token* current = parser_peek(parser);
-        
-        if (current->type == END_OF_FILE) {
-            printf("[PARSER] Reached end of file\n");
-            break;
-        }
-        
-        printf("[PARSER] Parsing statement, current token: type=%d, value='%s'\n", 
-               current->type, current->value);
-        
-        ASTNode* stmt = parser_parse_statement(parser);
-        if (!stmt) {
-            Token* error_token = parser_peek(parser);
-            printf("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n", 
-                   token_type_to_string(error_token->type), error_token->value);
-            ast_free(block_statements);
-            return NULL;
-        }
-        
-        printf("[PARSER] Successfully parsed statement, adding to block\n");
-        add_statement_to_block(block_statements, stmt);
-        
-        ast_free(stmt);
-    }
-    
-    printf("[PARSER] Finished parsing, returning block with statements\n");
-    return block_statements;
-}
-
-
-ASTNode* parser_parse_block(Parser* parser) {
+static ASTNode* parser_parse_block(Parser* parser) {
     printf("[PARSER] Starting to parse block\n");
     
     Token* lbrace = parser_consume(parser, LBRACE, "Expected '{' to start block");
@@ -729,3 +732,46 @@ ASTNode* parser_parse_block(Parser* parser) {
     //printf(token_type_to_string(parser->tokens[parser->current].type));
     return block;
 }
+
+ASTNode* parser_parse(Parser* parser) {
+    // Main function for starting parsing, use it with initialized parser to get ast_tree
+    printf("[PARSER] Starting parsing\n");
+    
+    ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);
+    if (!block_statements) {
+        printf("[PARSER] ERROR: Failed to create block statement\n");
+        return NULL;
+    }
+
+    while (!parser_is_at_end(parser)) {
+        Token* current = parser_peek(parser);
+        
+        if (current->type == END_OF_FILE) {
+            printf("[PARSER] Reached end of file\n");
+            break;
+        }
+        
+        printf("[PARSER] Parsing statement, current token: type=%d, value='%s'\n", 
+               current->type, current->value);
+        
+        ASTNode* stmt = parser_parse_statement(parser);
+        if (!stmt) {
+            Token* error_token = parser_peek(parser);
+            printf("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n", 
+                   token_type_to_string(error_token->type), error_token->value);
+            ast_free(block_statements);
+            return NULL;
+        }
+        
+        printf("[PARSER] Successfully parsed statement, adding to block\n");
+        add_statement_to_block(block_statements, stmt);
+        
+        ast_free(stmt);
+    }
+    
+    printf("[PARSER] Finished parsing, returning block with statements\n");
+    return block_statements;
+}
+
+
+
