@@ -10,6 +10,4 @@ WORKDIR /workspace
 
 COPY . .
 
-RUN chmod +x scripts/*.sh
-
 CMD ["make", "test"]

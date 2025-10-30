@@ -31,15 +31,15 @@ test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC)
 	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) -o $@
 
 test: all
-	@echo "Running AST tests..."
+	@echo "[Make] Running AST tests..."
 	./test_ast || exit 1
-	@echo "Running Lexer tests..."
+	@echo "[Make] Running Lexer tests..."
 	./test_lexer || exit 1
-	@echo "Running Parser tests..."
+	@echo "[Make] Running Parser tests..."
 	./test_parser || exit 1
-	@echo "Running Bytecode tests..."
+	@echo "[Make] Running Bytecode tests..."
 	./test_bytecode || exit 1
-	@echo "All tests passed!"
+	@echo "[Make] tests passed!"
 
 clean:
 	rm -f test_ast test_lexer test_parser test_bytecode

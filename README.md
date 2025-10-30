@@ -1,4 +1,13 @@
 # rename
 
-## 24.09-31.09
-Реализация лексера и парсера в минимальнорабочем формате способном анализировать benchmarks/first_program.lang, начало написания компилятора байт-кода и вм
+## Запуск тестов: 
+```
+make test clean
+```
+или
+```
+# Собираем образ
+docker build -t my-compiler-test .
+# Запускаем тесты
+docker run --rm -it my-compiler-test
+```
