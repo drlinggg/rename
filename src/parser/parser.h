@@ -14,19 +14,6 @@ typedef struct Parser {
     SourceLocation current_location;
 } Parser;
 
-typedef enum {
-    PRECEDENCE_NONE = 0,
-    PRECEDENCE_ASSIGNMENT = 1,  // =, +=, -=
-    PRECEDENCE_OR = 2,          // or
-    PRECEDENCE_AND = 3,         // and
-    PRECEDENCE_EQUALITY = 4,    // ==, !=
-    PRECEDENCE_COMPARISON = 5,  // <, >, <=, >=
-    PRECEDENCE_TERM = 6,        // +, -
-    PRECEDENCE_FACTOR = 7,      // *, /, %
-    PRECEDENCE_UNARY = 8,       // !, -, +
-    PRECEDENCE_CALL = 9,        // ., ()
-} Precedence;
-
 static Precedence get_precedence(TokenType type);
 
 Parser* parser_create(Token* tokens, size_t token_count);

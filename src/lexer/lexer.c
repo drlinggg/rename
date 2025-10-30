@@ -1,6 +1,7 @@
 #include "lexer.h"
 
 lexer* lexer_create(const char* filename) {
+    // initialize lexer from file function
     lexer *l = malloc(sizeof(lexer));
     if (!l) return NULL;
     
@@ -17,6 +18,21 @@ lexer* lexer_create(const char* filename) {
     
     return l;
 }
+
+lexer* lexer_create_from_stream(FILE* file, const char* filename) {
+    // todo info
+    lexer *l = malloc(sizeof(lexer));
+    if (!l) return NULL;
+    
+    l->file = file;
+    l->current_char = fgetc(l->file);
+    l->line = 1;
+    l->column = 1;
+    l->filename = strdup(filename);
+    
+    return l;
+}
+
 
 void lexer_destroy(lexer *l) {
     if (l) {
@@ -162,6 +178,8 @@ Token* lexer_next_token(lexer *l) {
 }
 
 Token* lexer_parse_file(lexer* lexer, const char* filename) {
+    // if lexer is NULL creates new one from filename
+    // if filename is NULL uses given lexer with opened file inside
     if (!lexer) {
         lexer = lexer_create(filename);
         if (!lexer) return NULL;
@@ -205,17 +223,3 @@ Token* lexer_parse_file(lexer* lexer, const char* filename) {
     free(tokens);
     return result;
 }
-
-lexer* lexer_create_from_stream(FILE* file, const char* filename) {
-    lexer *l = malloc(sizeof(lexer));
-    if (!l) return NULL;
-    
-    l->file = file;
-    l->current_char = fgetc(l->file);
-    l->line = 1;
-    l->column = 1;
-    l->filename = strdup(filename);
-    
-    return l;
-}
-

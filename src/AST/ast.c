@@ -63,6 +63,8 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
 
 
 static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
+    // generall allocator for ast_node with node_type and loc
+    // use this one to allocate smth
     ASTNode* node = NULL;
     
     switch (node_type) {
@@ -248,6 +250,7 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
 }
 
 
+// copy specific ast_node functions
 static BinaryExpression* copy_binary_expression(ASTNode* original) {
     if (!original) return NULL;
     BinaryExpression* orig = (BinaryExpression*)original;
@@ -536,6 +539,7 @@ static FunctionDeclarationStatement* copy_function_declaration_statement(ASTNode
 }
 
 static ASTNode* ast_node_copy(ASTNode* original) {
+    // General ast_node copy function, use this one to copy smth
     if (!original) return NULL;
     
     switch (original->node_type) {

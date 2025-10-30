@@ -4,8 +4,10 @@
 ├── benchmarks
 │   ├── factorial.lang
 │   └── first_program.lang
-├── docs - дока проекта
+├── docs
 │   ├── project-structure.md
+│   ├── bytecode.md
+│   ├── vm.md
 │   └── specification.md
 ├── README.md 
 └── src 
@@ -15,12 +17,12 @@
     │   ├── lexer.c
     │   ├── lexer.h
     │   ├── token.h
-    │   └── todo
     ├── parser
-    │   ├── ast.h
     │   ├── parser.c
     │   ├── parser.h
-    │   └── todo
+    ├── AST
+    │   ├── ast.c
+    │   └── ast.h
     └── runtime
         ├── gc
         │   └── todo
@@ -31,10 +33,15 @@
 ```
 ## lexer
 Берет текст и преобразует его в последовательность токенов описанных в src/lexer/token.h, выбрасывает лексические ошибки
+data: filestream -> lexer -> Token* token_array
+## AST
+Эта реализация содержит AST узлы которыми можно представить любой набор кода на языке, они итерируемы от корня к листьям и представляют собой полное описание всего происходящего в коде
 ## Parser
-Берет последовательность токенов описанных в src/lexer/token.h и создает из них AST-дерево, также в этой директории описаны соответствующие экспрешены, литералы, стейтменты которые находятся внутри ast-дерева
+Берет последовательность токенов описанных в src/lexer/token.h и создает из них AST-дерево
+data: Token* token_array -> parser -> ast_node* tree
 ## compiler
-Получает ast-дерево и создает набор инструкций байт-кода #todo описание
+Получает ast-дерево и создает набор инструкций байт-кода
+data: ast_node* tree -> compiler -> bytecode* array | binary_file
 ## runtime
 Здесь содержатся jit, gc и сама виртуальная машина которая будет прогонять байт-код (наверное, в процессе обсуждения)
 

@@ -7,6 +7,7 @@
 
 
 static Precedence get_precedence(TokenType type) {
+    // Function for getting precedence for each binary token operation
     switch (type) {
         case OP_OR: return PRECEDENCE_OR;
         case OP_AND: return PRECEDENCE_AND;
@@ -20,6 +21,9 @@ static Precedence get_precedence(TokenType type) {
 
 
 Parser* parser_create(Token* tokens, size_t token_count) {
+    // Parser create fuction
+    // Args: c-style Token array and size
+    // Returns: initialized parser
     Parser* parser = malloc(sizeof(Parser));
     parser->tokens = tokens;
     parser->token_count = token_count;
@@ -40,6 +44,7 @@ bool parser_is_at_end(Parser* parser) {
 }
 
 void report_error(Parser* parser, const char* error_message) {
+    // Diagnostic function used to print errors in stdout
     if (error_message == NULL); return;
     printf("%s\n", error_message);
     printf("%s", "current token is ");
@@ -73,6 +78,7 @@ Token* parser_previous(Parser* parser) {
 }
 
 Token* parser_retreat(Parser* parser) {
+    // Goes back and return previous token
     if (parser->current == 0) {
         return NULL;
     }
@@ -103,6 +109,7 @@ Token* parser_advance(Parser* parser) {
 
 
 bool parser_check(Parser* parser, TokenType type) {
+    // returns comparesment beetwen given and current token type
     if (parser_is_at_end(parser)) return false;
     Token* token = parser_peek(parser);
     return token->type == type;
@@ -638,6 +645,7 @@ ASTNode* parser_parse_statement(Parser* parser) {
 }
 
 ASTNode* parser_parse(Parser* parser) {
+    // Main function for starting parsing, use it with initialized parser to get ast_tree
     printf("[PARSER] Starting parsing\n");
     
     ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);

@@ -42,27 +42,27 @@ STORE_FAST     0   # Сохраняем результат
 
 ## bytecode operations documentation:
 
-### - load_fast 0x01:
+### - LOAD_FAST 0x01:
 push(locals[arg])
 
-### - load_const 0x02:
+### - LOAD_CONST 0x02:
 push(arg)
 
-### - load_global 0x03
+### - LOAD_GLOBAL 0x03
 push_null = arg % 2 != 0 # if function => pushing null
 push(globals[arg>>1] or builtins[arg>>1])
 lowest bit says if you need to push null
 
-### - load name 0x04
+### - LOAD_NAME 0x04
 push(locals[arg] or globals[arg] or builtins[arg])
 
-### - store_fast 0x05
+### - STORE_FAST 0x05
 locals[arg] = pop().
 
-### - store_global 0x06
+### - STORE_GLOBAL 0x06
 globals[arg] = pop().
 
-### - store_name 0x07
+### - STORE_NAME 0x07
 ???
 
 ### - BINARY_OP 0x08
@@ -70,50 +70,50 @@ right = pop()
 left = pop()
 push(left arg right)
 ```
-       op_map = {
-            0: '+',    # BINARY_OP_ADD
-            1: '&',    # BINARY_OP_AND
-            2: '//',   # BINARY_OP_FLOOR_DIVIDE
-            3: '<<',   # BINARY_OP_LSHIFT
-            4: '@',    # BINARY_OP_MATRIX_MULTIPLY
-            5: '*',    # BINARY_OP_MULTIPLY
-            6: '%',    # BINARY_OP_REMAINDER
-            7: '|',    # BINARY_OP_OR
-            8: '**',   # BINARY_OP_POWER
-            9: '>>',   # BINARY_OP_RSHIFT
-            10: '-',   # BINARY_OP_SUBTRACT
-            11: '/',   # BINARY_OP_TRUE_DIVIDE
-            12: '^',   # BINARY_OP_XOR
-            # Inplace operations
-            13: '+',   # BINARY_OP_INPLACE_ADD
-            14: '&',   # BINARY_OP_INPLACE_AND
-            15: '//',  # BINARY_OP_INPLACE_FLOOR_DIVIDE
-            16: '<<',  # BINARY_OP_INPLACE_LSHIFT
-            17: '@',   # BINARY_OP_INPLACE_MATRIX_MULTIPLY
-            18: '*',   # BINARY_OP_INPLACE_MULTIPLY
-            19: '%',   # BINARY_OP_INPLACE_REMAINDER
-            20: '|',   # BINARY_OP_INPLACE_OR
-            21: '**',  # BINARY_OP_INPLACE_POWER
-            22: '>>',  # BINARY_OP_INPLACE_RSHIFT
-            23: '-',   # BINARY_OP_INPLACE_SUBTRACT
-            24: '/',   # BINARY_OP_INPLACE_TRUE_DIVIDE
-            25: '^',   # BINARY_OP_INPLACE_XOR
-        }
+   op_map = {
+        0x00: '+',    # BINARY_OP_ADD
+        0x01: '&',    # BINARY_OP_AND
+        0x02: '//',   # BINARY_OP_FLOOR_DIVIDE
+        0x03: '<<',   # BINARY_OP_LSHIFT
+        0x04: '@',    # BINARY_OP_MATRIX_MULTIPLY
+        0x05: '*',    # BINARY_OP_MULTIPLY
+        0x06: '%',    # BINARY_OP_REMAINDER
+        0x07: '|',    # BINARY_OP_OR
+        0x08: '**',   # BINARY_OP_POWER
+        0x09: '>>',   # BINARY_OP_RSHIFT
+        0x0A: '-',   # BINARY_OP_SUBTRACT
+        0x0B: '/',   # BINARY_OP_TRUE_DIVIDE
+        0x0C: '^',   # BINARY_OP_XOR
+        # Inplace operations
+        0x0D: '+',   # BINARY_OP_INPLACE_ADD
+        0x0E: '&',   # BINARY_OP_INPLACE_AND
+        0x0F: '//',  # BINARY_OP_INPLACE_FLOOR_DIVIDE
+        0x10: '<<',  # BINARY_OP_INPLACE_LSHIFT
+        0x11: '@',   # BINARY_OP_INPLACE_MATRIX_MULTIPLY
+        0x12: '*',   # BINARY_OP_INPLACE_MULTIPLY
+        0x13: '%',   # BINARY_OP_INPLACE_REMAINDER
+        0x14: '|',   # BINARY_OP_INPLACE_OR
+        0x15: '**',  # BINARY_OP_INPLACE_POWER
+        0x16: '>>',  # BINARY_OP_INPLACE_RSHIFT
+        0x17: '-',   # BINARY_OP_INPLACE_SUBTRACT
+        0x18: '/',   # BINARY_OP_INPLACE_TRUE_DIVIDE
+        0x19: '^',   # BINARY_OP_INPLACE_XOR
+    }
 ```
 
-### - CALL_FUNCTION_OP 0x09
+### - CALL_FUNCTION 0x09
 callee = pop()
 null = pop()
 args = n times pop()
 push(callee(args))
 
-### - to_bool_op 0x0A
+### - TO_BOOL 0x0A
 push(bool(pop()))
 
-### - to_int_op 0x0B
+### - TO_INT 0x0B
 push(int(pop()))
 
-### - to_long_op 0x0C
+### - TO_LONG 0x0C
 push(long(pop()))
 
 ### - STORE_SUBSCR 0x0D
@@ -122,7 +122,7 @@ container = pop()
 value = pop()
 container[key] = value
 
-### - del_subscr 0x0E
+### - DEL_SUBSCR 0x0E
 key = STACK.pop()
 container = STACK.pop()
 del container[key]
@@ -146,13 +146,13 @@ STACK.push(STACK[-i])
 ### - SWAP 0x14
 STACK[-i], STACK[-1] = STACK[-1], STACK[-i]
 
-### - unary_negative 0x15
+### - UNARY_NEGATIVE 0x15
 STACK[-1] = -STACK[-1]
 
 ### - UNARY_NOT 0x16
 STACK[-1] = not STACK[-1]
 
-### - BUILD_LIST 0x17
+### - BUILD_ARRAY 0x17
 if arg == 0:
     value = ()
 else:
@@ -162,48 +162,27 @@ else:
 STACK.append(value)
 
 ### - COMPARE_OP 0x18
-```
-        match arg:
-            case '<':
-                result = self.compare_lt_op(None)
-            case '<=':
-                result = self.compare_le_op(None)
-            case '==':
-                result = self.compare_eq_op(None)
-            case '!=':
-                result = self.compare_ne_op(None)
-            case '>':
-                result = self.compare_gt_op(None)
-            case '>=':
-                result = self.compare_ge_op(None)
-            case 'in':
-                result = self.compare_in_op(None)
-            case 'not in':
-                result = self.compare_not_in_op(None)
-            case _:
-                raise NotImplementedError(f"Compare operation {op} not implemented")
-```
 
 ### - JUMP_FORWARD 0x19
-Increments bytecode counter by `arg` (offset).
+Increments instruction pointer by `arg` (offset).
 
 ### - JUMP_BACKWARD 0x1A  
-Decrements bytecode counter by `arg` (offset). Checks for interrupts.
+Decrements instruction pointer by `arg` (offset). Checks for interrupts.
 
 ### - JUMP_BACKWARD_NO_INTERRUPT 0x1B
-Decrements bytecode counter by `arg` (offset). Does not check for interrupts.
+Decrements instruction pointer by `arg` (offset). Does not check for interrupts.
 
 ### - POP_JUMP_IF_TRUE 0x1C
-If `STACK[-1]` is true, increments bytecode counter by `arg`. Pops `STACK[-1]`.
+If `STACK[-1]` is true, increments instruction pointer by `arg`. Pops `STACK[-1]`.
 
 ### - POP_JUMP_IF_FALSE 0x1D
-If `STACK[-1]` is false, increments bytecode counter by `arg`. Pops `STACK[-1]`.
+If `STACK[-1]` is false, increments instruction pointer by `arg`. Pops `STACK[-1]`.
 
 ### - POP_JUMP_IF_NOT_NONE 0x1E
-If `STACK[-1]` is not None, increments bytecode counter by `arg`. Pops `STACK[-1]`.
+If `STACK[-1]` is not None, increments instruction pointer by `arg`. Pops `STACK[-1]`.
 
 ### - POP_JUMP_IF_NONE 0x1F
-If `STACK[-1]` is None, increments bytecode counter by `arg`. Pops `STACK[-1]`.
+If `STACK[-1]` is None, increments instruction pointer by `arg`. Pops `STACK[-1]`.
 
 ### - PUSH_NULL 0x20
 Pushes a NULL to the stack. Used for function call preparation.
