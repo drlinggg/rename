@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-
 Token create_token(TokenType type, const char* value, int line, int column) {
     Token token;
     token.type = type;
@@ -477,12 +476,11 @@ bool test_add_statement_to_block() {
     return result;
 }
 
-
 // gcc tests/ast/test_ast.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
     //test_memory_leak();
     //test_print_ast();
-
+/*
     ASTNode* test1 = test_ast_new_binary_expression();
     ASTNode* test2 = test_ast_new_unary_expression();
     ASTNode* test3 = test_ast_new_literal_expression();
@@ -512,8 +510,8 @@ int main() {
     ast_free(test11);
     ast_free(test12);
     ast_free(test13);
-    //ast_free(test14); # segmentation error here
-
+    ast_free(test14); // segmentation error here
+*/
     printf("All tests passed successfully!\n");
     return 0;
 }

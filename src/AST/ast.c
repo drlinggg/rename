@@ -44,25 +44,9 @@
 ............................................:::::.::..:::::::.............................::::
 ..............................................:::::::::::::::::...........................::::*/
 
-const TypeVar token_type_to_type_var(TokenType token_type) {
-    switch (token_type) {
-        case KW_INT:
-            return TYPE_INT;
-        case KW_BOOL:
-            return TYPE_BOOL;
-        case KW_LONG:
-            return TYPE_LONG;
-        case KW_ARRAY:
-            return TYPE_ARRAY;
-        case KW_STRUCT:
-            return TYPE_STRUCT;
-        default:
-            return TYPE_INT; //TODO FIX HERE
-    }
-}
+static ASTNode* ast_node_copy(ASTNode* node);
 
-
-ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
+static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     // generall allocator for ast_node with node_type and loc
     // use this one to allocate smth
     ASTNode* node = NULL;
@@ -248,7 +232,6 @@ ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     
     return node;
 }
-
 
 // copy specific ast_node functions
 static BinaryExpression* copy_binary_expression(ASTNode* original) {
@@ -599,7 +582,6 @@ static ASTNode* ast_node_copy(ASTNode* original) {
     }
 }
 
-
 // Statements constructors
 
 //ASTNode* ast_new_program(SourceLocation loc) {
@@ -777,6 +759,23 @@ ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** 
     }
     
     return node;
+}
+
+const TypeVar token_type_to_type_var(TokenType token_type) {
+    switch (token_type) {
+        case KW_INT:
+            return TYPE_INT;
+        case KW_BOOL:
+            return TYPE_BOOL;
+        case KW_LONG:
+            return TYPE_LONG;
+        case KW_ARRAY:
+            return TYPE_ARRAY;
+        case KW_STRUCT:
+            return TYPE_STRUCT;
+        default:
+            return TYPE_INT; //TODO FIX HERE
+    }
 }
 
 void ast_free(ASTNode* node) {
@@ -1303,4 +1302,6 @@ bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt) {
     casted_node->statements[casted_node->statement_count - 1] = ast_node_copy(stmt);
     return 1;
 }
+
+
 

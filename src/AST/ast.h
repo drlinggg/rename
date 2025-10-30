@@ -152,8 +152,23 @@ typedef struct {
 } ForStatement;
 
 
-ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc);
 void ast_free(ASTNode* node);
+
+ASTNode* ast_new_binary_expression(SourceLocation loc, ASTNode* left, Token op, ASTNode* right);
+ASTNode* ast_new_unary_expression(SourceLocation loc, Token op, ASTNode* operand);
+ASTNode* ast_new_literal_expression(SourceLocation loc, TypeVar type, int64_t value);
+ASTNode* ast_new_variable_expression(SourceLocation loc, const char* name);
+
+ASTNode* ast_new_assignment_statement(SourceLocation loc, ASTNode* left, ASTNode* right);
+ASTNode* ast_new_variable_declaration_statement(SourceLocation loc, TypeVar var_type, const char* name, ASTNode* initializer);
+ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression);
+ASTNode* ast_new_if_statement(SourceLocation loc, ASTNode* condition, ASTNode* then_branch);
+ASTNode* ast_new_while_statement(SourceLocation loc, ASTNode* condition, ASTNode* body);
+ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type, Parameter* parameters, size_t parameter_count, ASTNode* body);
+ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** args, int arg_count);
+ASTNode* ast_new_for_statement(SourceLocation loc, ASTNode* initializer, ASTNode* condition, ASTNode* increment, ASTNode* body);
+ASTNode* ast_new_expression_statement(SourceLocation loc, ASTNode* expression);
+ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_t count);
 
 Parameter* ast_new_parameter(const char* name, TypeVar type);
 void parameter_free(Parameter* param);

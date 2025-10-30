@@ -234,6 +234,7 @@ void test_function() {
     printf("Function test passed!\n\n");
 }
 
+// gcc tests/lexer/test_lexer.c src/lexer/lexer.c
 int main() {
     printf("Starting lexer tests...\n\n");
     

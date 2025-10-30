@@ -772,6 +772,3 @@ ASTNode* parser_parse(Parser* parser) {
     printf("[PARSER] Finished parsing, returning block with statements\n");
     return block_statements;
 }
-
-
-
