@@ -2,51 +2,39 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, test ]
+    branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  test:
+  test-native:
+    name: Native Ubuntu Tests
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc make
     
-    - name: Compile and run AST tests
+    - name: Run all tests
       run: |
-        echo "Compiling AST tests..."
-        gcc -I src -I src/AST -I src/lexer -I src/parser tests/ast/test_ast.c src/AST/ast.c -o test_ast
-        echo "Running AST tests..."
-        ./test_ast || exit 1
-    
-    - name: Compile and run Lexer tests
-      run: |
-        echo "Compiling Lexer tests..."
-        gcc -I src -I src/lexer tests/lexer/test_lexer.c src/lexer/lexer.c -o test_lexer
-        echo "Running Lexer tests..."
-        ./test_lexer || exit 1
-    
-    - name: Compile and run Parser tests
-      run: |
-        echo "Compiling Parser tests..."
-        gcc -I src -I src/AST -I src/lexer -I src/parser tests/parser/test_parser.c src/AST/ast.c src/parser/parser.c src/lexer/lexer.c -o test_parser
-        echo "Running Parser tests..."
-        ./test_parser || exit 1
-    
-    - name: Compile and run Bytecode tests
-      run: |
-        echo "Compiling Bytecode tests..."
-        gcc -I src -I src/bytecode tests/bytecode/test_bytecode.c src/compiler/bytecode.c -o test_bytecode
-        echo "Running Bytecode tests..."
-        ./test_bytecode || exit 1
+        make test || exit 1
     
     - name: Cleanup
+      run: make clean
+
+  test-docker:
+    name: Docker Tests
+    runs-on: ubuntu-latest
+    if: false  # Отключено по умолчанию, можно включить при необходимости
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build and test in Docker
       run: |
-        rm -f test_ast test_lexer test_parser test_bytecode
+        docker build -t my-compiler-test .
+        docker run --rm my-compiler-test
