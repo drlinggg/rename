@@ -35,7 +35,7 @@ methods:
 
 ### instructions format:
 ```
-opcode (1 байт) | arg (2 байта)
+opcode (1 byte) | arg (3 bytes)
 ```
 
 ### constants pool

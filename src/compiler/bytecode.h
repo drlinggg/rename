@@ -45,3 +45,10 @@ bytecode bytecode_create_from_array(uint8_t op_code, const uint8_t argument[3]);
 bytecode bytecode_create_with_number(uint8_t op_code, uint32_t number);
 
 uint32_t bytecode_get_arg(const bytecode bc);
+
+typedef struct __attribute__((packed, aligned(1))) {
+    bytecode* bytecode;
+    uint32_t count;
+} bytecode_array;
+
+bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count);

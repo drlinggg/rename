@@ -10,6 +10,7 @@ typedef struct compilation_result{
 
 typedef struct compiler {
     ASTNode* ast_tree;
+    size_t ptr;
     compilation_result* result;
 } compiler;
 
