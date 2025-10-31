@@ -645,7 +645,17 @@ ASTNode* ast_new_block_statement(SourceLocation loc, ASTNode** statements, size_
     ASTNode* node = ast_node_allocate(NODE_BLOCK_STATEMENT, loc);
     if (!node) return NULL;
     BlockStatement* casted_node = (BlockStatement*) node;
-    casted_node->statements = statements;
+    
+    casted_node->statements = malloc(statement_count * sizeof(ASTNode*));
+    if (!casted_node->statements) {
+        free(node);
+        return NULL;
+    }
+    
+    for (size_t i = 0; i < statement_count; i++) {
+        casted_node->statements[i] = statements[i];
+    }
+    
     casted_node->statement_count = statement_count;
     return node;
 }
