@@ -27,4 +27,4 @@ obj/
 *.swp
 *~
 
-*.h.gch
+*.gch

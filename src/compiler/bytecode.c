@@ -45,3 +45,7 @@ bytecode bytecode_create_with_number(uint8_t op_code, uint32_t number) {
     bytecode_set_arg(&bc, number);
     return bc;
 }
+
+bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count) {
+    return (bytecode_array) {bytecode, count};
+}

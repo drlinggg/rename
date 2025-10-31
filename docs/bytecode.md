@@ -2,7 +2,7 @@
 
 ### instructions format:
 ```
-opcode (1 байт) | arg (3 байта) |
+opcode (1 byte) | arg (3 bytes) |
 ```
 
 ## Примеры байткода
