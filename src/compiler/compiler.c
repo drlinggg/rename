@@ -8,6 +8,7 @@
 
 // Forward declarations
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node);
+static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* node);
 
 static bytecode_array concat_bytecode_arrays(bytecode_array a, bytecode_array b) {
     bytecode* new_bytecodes = malloc((a.count + b.count) * sizeof(bytecode));
@@ -17,12 +18,6 @@ static bytecode_array concat_bytecode_arrays(bytecode_array a, bytecode_array b)
     memcpy(new_bytecodes + a.count, b.bytecodes, b.count * sizeof(bytecode));
     
     return create_bytecode_array(new_bytecodes, a.count + b.count);
-}
-
-static void free_bytecode_array(bytecode_array array) {
-    if (array.bytecodes) {
-        free(array.bytecodes);
-    }
 }
 
 static void emit_bytecode(compilation_result* result, bytecode_array array) {
@@ -40,8 +35,8 @@ static void emit_single_bytecode(compilation_result* result, bytecode bc) {
     emit_bytecode(result, array);
 }
 
-static size_t compiler_add_constant(compiler* comp, Value value) {
-    compilation_result* result = comp->result;
+static size_t compiler_add_constant(compilation_result* result, Value value) {
+    if (!result) return SIZE_MAX;
     
     for (size_t i = 0; i < result->constants_count; i++) {
         if (values_equal(result->constants[i], value)) {
@@ -60,6 +55,10 @@ static size_t compiler_add_constant(compiler* comp, Value value) {
     
     result->constants[result->constants_count] = value;
     return result->constants_count++;
+}
+
+static size_t compiler_add_constant_to_compiler(compiler* comp, Value value) {
+    return compiler_add_constant(comp->result, value);
 }
 
 static size_t compiler_add_global_name(compiler* comp, const char* name) {
@@ -89,7 +88,123 @@ static size_t compiler_resolve_variable(compiler* comp, const char* name) {
 
 // Statements
 static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    FunctionDeclarationStatement* func_decl = (FunctionDeclarationStatement*)node;
+    if (node->node_type != NODE_FUNCTION_DECLARATION_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    // 1. Создаем отдельный compilation_result для тела функции
+    compilation_result* body_result = malloc(sizeof(compilation_result));
+    body_result->code_array = create_bytecode_array(NULL, 0);
+    body_result->constants = NULL;
+    body_result->constants_count = 0;
+    body_result->constants_capacity = 0;
+    
+    // Сохраняем текущий контекст
+    CompilerScope* previous_scope = comp->current_scope;
+    compilation_result* previous_result = comp->result;
+    
+    // Устанавливаем новый контекст для компиляции тела функции
+    comp->current_scope = scope_create(previous_scope);
+    comp->result = body_result;  // Временно подменяем result
+    
+    // 2. Добавляем параметры в область видимости
+    for (size_t i = 0; i < func_decl->parameter_count; i++) {
+        Parameter* param = &func_decl->parameters[i];
+        scope_add_local(comp->current_scope, param->name);
+    }
+    
+    // 3. Компилируем тело функции
+    if (func_decl->body != NULL && func_decl->body->node_type == NODE_BLOCK_STATEMENT) {
+        BlockStatement* body_block = (BlockStatement*)func_decl->body;
+        for (uint32_t i = 0; i < body_block->statement_count; i++) {
+            bytecode_array stmt_bc = compiler_compile_statement(comp, body_block->statements[i]);
+            emit_bytecode(body_result, stmt_bc);
+            free_bytecode_array(stmt_bc);
+        }
+    }
+    
+    // 4. Добавляем неявный RETURN если нужно
+    if (func_decl->return_type == TYPE_NONE && body_result->code_array.count > 0) {
+        bytecode* last_bc = &body_result->code_array.bytecodes[body_result->code_array.count - 1];
+        if (last_bc->op_code != RETURN_VALUE) {
+            Value none_value = value_create_none();
+            // Используем body_result вместо comp
+            uint32_t none_index = compiler_add_constant(body_result, none_value);
+            bytecode load_none = bytecode_create_with_number(LOAD_CONST, none_index);
+            bytecode return_bc = bytecode_create(RETURN_VALUE, 0, 0, 0);
+            
+            bytecode* return_arr = malloc(2 * sizeof(bytecode));
+            return_arr[0] = load_none;
+            return_arr[1] = return_bc;
+            bytecode_array return_array = create_bytecode_array(return_arr, 2);
+            emit_bytecode(body_result, return_array);
+            free_bytecode_array(return_array);
+        }
+    }
+    
+    // 5. Создаем CodeObj
+    CodeObj* code_obj = malloc(sizeof(CodeObj));
+    code_obj->code = body_result->code_array;
+    code_obj->name = strdup(func_decl->name);
+    code_obj->arg_count = func_decl->parameter_count;
+    code_obj->local_count = comp->current_scope->locals->count;
+    code_obj->constants = body_result->constants;
+    code_obj->constants_count = body_result->constants_count;
+    
+    // 6. Создаем Value с CodeObj и добавляем в константы основного компилятора
+    Value code_value = value_create_code(code_obj);
+    
+    // Восстанавливаем основной result перед добавлением константы
+    comp->result = previous_result;
+    uint32_t code_index = compiler_add_constant(comp->result, code_value);
+    
+    // 7. Восстанавливаем контекст
+    comp->current_scope = previous_scope;
+    
+    // 8. Генерируем байткод для создания функции
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // LOAD_CONST для code object
+    bytecode load_code = bytecode_create_with_number(LOAD_CONST, code_index);
+    bytecode* load_code_arr = malloc(sizeof(bytecode));
+    load_code_arr[0] = load_code;
+    bytecode_array load_code_array = create_bytecode_array(load_code_arr, 1);
+    result = concat_bytecode_arrays(result, load_code_array);
+    free_bytecode_array(load_code_array);
+    
+    // MAKE_FUNCTION
+    bytecode make_func = bytecode_create(MAKE_FUNCTION, 0, 0, 0);
+    bytecode* make_func_arr = malloc(sizeof(bytecode));
+    make_func_arr[0] = make_func;
+    bytecode_array make_func_array = create_bytecode_array(make_func_arr, 1);
+    result = concat_bytecode_arrays(result, make_func_array);
+    free_bytecode_array(make_func_array);
+    
+    // STORE в переменную
+    size_t func_index;
+    if (comp->current_scope != NULL && comp->current_scope->parent != NULL) {
+        func_index = scope_add_local(comp->current_scope, func_decl->name);
+        bytecode store_func = bytecode_create_with_number(STORE_FAST, func_index);
+        bytecode* store_func_arr = malloc(sizeof(bytecode));
+        store_func_arr[0] = store_func;
+        bytecode_array store_func_array = create_bytecode_array(store_func_arr, 1);
+        result = concat_bytecode_arrays(result, store_func_array);
+        free_bytecode_array(store_func_array);
+    } else {
+        func_index = compiler_add_global_name(comp, func_decl->name);
+        bytecode store_func = bytecode_create_with_number(STORE_GLOBAL, func_index);
+        bytecode* store_func_arr = malloc(sizeof(bytecode));
+        store_func_arr[0] = store_func;
+        bytecode_array store_func_array = create_bytecode_array(store_func_arr, 1);
+        result = concat_bytecode_arrays(result, store_func_array);
+        free_bytecode_array(store_func_array);
+    }
+    
+    // Освобождаем body_result (но не его содержимое - оно теперь в code_obj)
+    free(body_result);
+    
+    return result;
 }
 
 static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTNode* node) {
@@ -117,10 +232,10 @@ static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTN
                 default_value = value_create_bool(false);
                 break;
             default:
-                default_value = value_create_null();
+                default_value = value_create_none();
                 break;
         }
-        uint32_t const_index = compiler_add_constant(comp, default_value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, default_value);
         bytecode load_default = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* load_default_arr = malloc(sizeof(bytecode));
         load_default_arr[0] = load_default;
@@ -355,7 +470,7 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     if (literal->type == TYPE_INT) {
         int64_t value = literal->value;
         Value constant_value = value_create_int(value);
-        uint32_t const_index = compiler_add_constant(comp, constant_value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
         bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* bc_array = malloc(sizeof(bytecode));
         bc_array[0] = bc;
@@ -364,7 +479,7 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     else if (literal->type == TYPE_LONG) {
         fprintf(stderr, "Error: long literals are not supported in this version\n");
         Value constant_value = value_create_int(0);
-        uint32_t const_index = compiler_add_constant(comp, constant_value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
         bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* bc_array = malloc(sizeof(bytecode));
         bc_array[0] = bc;
@@ -373,7 +488,7 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     else if (literal->type == TYPE_BOOL) {
         bool value = (bool)literal->value;
         Value constant_value = value_create_bool(value);
-        uint32_t const_index = compiler_add_constant(comp, constant_value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
         bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* bc_array = malloc(sizeof(bytecode));
         bc_array[0] = bc;
@@ -381,8 +496,8 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     }
     else {
         fprintf(stderr, "Error: type %d is not supported in this version\n", literal->type);
-        Value constant_value = value_create_null();
-        uint32_t const_index = compiler_add_constant(comp, constant_value);
+        Value constant_value = value_create_none();
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
         bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* bc_array = malloc(sizeof(bytecode));
         bc_array[0] = bc;

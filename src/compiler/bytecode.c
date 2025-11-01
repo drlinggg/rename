@@ -1,6 +1,7 @@
 #include "bytecode.h"
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static inline void bytecode_set_arg(bytecode* bc, uint32_t arg) {
     bc->argument[0] = (arg >> 16) & 0xFF;
@@ -40,6 +41,7 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case POP_JUMP_IF_NOT_NONE: return "POP_JUMP_IF_NOT_NONE";
         case POP_JUMP_IF_NONE: return "POP_JUMP_IF_NONE";
         case PUSH_NULL: return "PUSH_NULL";
+        case MAKE_FUNCTION: return "MAKE_FUNCTION";
         default: return "UNKNOWN";
     }
 }
@@ -202,4 +204,10 @@ bytecode bytecode_create_with_number(uint8_t op_code, uint32_t number) {
 
 bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count) {
     return (bytecode_array) {bytecode, count};
+}
+
+void free_bytecode_array(bytecode_array array) {
+    if (array.bytecodes) {
+        free(array.bytecodes);
+    }
 }

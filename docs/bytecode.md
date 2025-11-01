@@ -194,3 +194,6 @@ If `STACK[-1]` is None, increments instruction pointer by `arg`. Pops `STACK[-1]
 
 ### - PUSH_NULL 0x20
 Pushes a NULL to the stack. Used for function call preparation.
+
+### - MAKE_FUNCTION 0x21
+Pushes a new function object on the stack built from the code object at `STACK[-1].`

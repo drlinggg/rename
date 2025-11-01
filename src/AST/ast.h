@@ -12,7 +12,7 @@ typedef struct { // debug info
 } SourceLocation;
 
 typedef enum {
-     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_ARRAY, TYPE_STRUCT,   
+     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_ARRAY, TYPE_STRUCT, TYPE_NONE,
 } TypeVar;
 
 typedef enum NodeType { // ASTNode could have one of the statement/expression type

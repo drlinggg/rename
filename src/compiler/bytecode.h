@@ -34,6 +34,7 @@
 #define PUSH_NULL 0x20
 #define UNARY_OP 0x15
 #define FREE_TO_SET 0x16
+#define MAKE_FUNCTION 0x21
 
 typedef struct __attribute__((packed, aligned(1))) {
     uint8_t op_code;
@@ -54,4 +55,5 @@ typedef struct __attribute__((packed, aligned(1))) {
 } bytecode_array;
 
 bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count);
+void free_bytecode_array(bytecode_array array);
 void bytecode_array_print(bytecode_array* bc);
