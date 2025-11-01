@@ -142,7 +142,7 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
             free_bytecode_array(return_array);
         }
     }
-    
+
     // 5. Создаем CodeObj
     CodeObj* code_obj = malloc(sizeof(CodeObj));
     code_obj->code = body_result->code_array;
