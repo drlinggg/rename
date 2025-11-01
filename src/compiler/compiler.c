@@ -93,7 +93,68 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
 }
 
 static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    VariableDeclarationStatement* var_decl = (VariableDeclarationStatement*)node;
+    if (node->node_type != NODE_VARIABLE_DECLARATION_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    bytecode_array result = create_bytecode_array(NULL, 0);
+
+    // add load initializer bytecode
+    if (var_decl->initializer != NULL) {
+        bytecode_array initializer_bc = compiler_compile_expression(comp, var_decl->initializer);
+        result = concat_bytecode_arrays(result, initializer_bc);
+        free_bytecode_array(initializer_bc);
+    } else {
+        Value default_value;
+        switch (var_decl->var_type) {
+            case TYPE_INT:
+            /*
+            case TYPE_LONG:
+            */
+                default_value = value_create_int(0);
+                break;
+            case TYPE_BOOL:
+                default_value = value_create_bool(false);
+                break;
+            default:
+                default_value = value_create_null();
+                break;
+        }
+        uint32_t const_index = compiler_add_constant(comp, default_value);
+        bytecode load_default = bytecode_create_with_number(LOAD_CONST, const_index);
+        bytecode* load_default_arr = malloc(sizeof(bytecode));
+        load_default_arr[0] = load_default;
+        bytecode_array load_default_array = create_bytecode_array(load_default_arr, 1);
+        result = concat_bytecode_arrays(result, load_default_array);
+        free_bytecode_array(load_default_array);
+    }
+
+    // add declared variable in compiler variables
+    size_t var_index;
+    bool is_local = false;
+    // not in global scenario
+    if (comp->current_scope != NULL && comp->current_scope->parent != NULL) {
+        var_index = scope_add_local(comp->current_scope, var_decl->name);
+        is_local = true;
+    } else {
+        // global scenario
+        var_index = compiler_add_global_name(comp, var_decl->name);
+    }
+
+    // add store variable bytecode
+    bytecode store_bc;
+    if (is_local) {
+        store_bc = bytecode_create_with_number(STORE_FAST, var_index);
+    } else {
+        store_bc = bytecode_create_with_number(STORE_GLOBAL, var_index);
+    }
+    bytecode* store_arr = malloc(sizeof(bytecode));
+    store_arr[0] = store_bc;
+    bytecode_array store_array = create_bytecode_array(store_arr, 1);
+    result = concat_bytecode_arrays(result, store_array);
+    free_bytecode_array(store_array);
+    
+    return result;
 }
 
 static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode* node) {
