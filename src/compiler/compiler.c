@@ -174,7 +174,48 @@ static bytecode_array compiler_compile_binary_expression(compiler* comp, ASTNode
 }
 
 static bytecode_array compiler_compile_unary_expression(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    UnaryExpression* unary_expr = (UnaryExpression*)node;
+    if (node->node_type != NODE_UNARY_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    bytecode_array bc_operand = compiler_compile_expression(comp, unary_expr->operand);
+    
+    bytecode operator_bc;
+    uint8_t op_code_value;
+    
+    switch (unary_expr->operator_.type) {
+        case OP_PLUS:
+            op_code_value = 0x00;  // +x
+            break;
+        case OP_MINUS:
+            op_code_value = 0x0A;  // -x
+            break;
+        case OP_NOT:
+            op_code_value = 0x05;  // not x
+            break;
+        default:
+            fprintf(stderr, "Invalid token for unary operation: %d\n", unary_expr->operator_);
+            free_bytecode_array(bc_operand);
+            return create_bytecode_array(NULL, 0);
+    }
+    
+    operator_bc = bytecode_create_with_number(UNARY_OP, op_code_value);
+    
+    bytecode* operator_array = malloc(sizeof(bytecode));
+    if (!operator_array) {
+        free_bytecode_array(bc_operand);
+        return create_bytecode_array(NULL, 0);
+    }
+    operator_array[0] = operator_bc;
+    
+    bytecode_array operator_bc_array = create_bytecode_array(operator_array, 1);
+    bytecode_array result = concat_bytecode_arrays(bc_operand, operator_bc_array);
+    
+    free_bytecode_array(bc_operand);
+    free_bytecode_array(operator_bc_array);
+    
+    return result;
 }
 
 static bytecode_array compiler_compile_variable_expression(compiler* comp, ASTNode* node) {

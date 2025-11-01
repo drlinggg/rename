@@ -146,11 +146,19 @@ STACK.push(STACK[-i])
 ### - SWAP 0x14
 STACK[-i], STACK[-1] = STACK[-1], STACK[-i]
 
-### - UNARY_NEGATIVE 0x15
-STACK[-1] = -STACK[-1]
+### - UNARY_OP 0x15
+```
+   unary_op_map = {
+        0x00: '+',    # UNARY_POSITIVE (унарный плюс)
+        0x01: '-',    # UNARY_NEGATIVE (унарный минус)  
+        0x02: '~',    # UNARY_INVERT (побитовое отрицание) # not implemented yet
+        0x03: 'not',  # UNARY_NOT (логическое отрицание)
+    }
+```
+stack[-1] = unary_op(stack[-1])
 
-### - UNARY_NOT 0x16
-STACK[-1] = not STACK[-1]
+### - FREE_TO_SET 0x16
+free pos for bytecode
 
 ### - BUILD_ARRAY 0x17
 if arg == 0:

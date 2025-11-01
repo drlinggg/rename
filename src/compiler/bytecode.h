@@ -32,8 +32,8 @@
 #define COPY 0x13
 #define SWAP 0x14
 #define PUSH_NULL 0x20
-#define UNARY_NEGATIVE 0x15
-#define UNARY_NOT 0x16
+#define UNARY_OP 0x15
+#define FREE_TO_SET 0x16
 
 typedef struct __attribute__((packed, aligned(1))) {
     uint8_t op_code;
@@ -43,6 +43,7 @@ typedef struct __attribute__((packed, aligned(1))) {
 bytecode bytecode_create(uint8_t op_code, uint8_t argument1, uint8_t argument2, uint8_t argument3);
 bytecode bytecode_create_from_array(uint8_t op_code, const uint8_t argument[3]);
 bytecode bytecode_create_with_number(uint8_t op_code, uint32_t number);
+void bytecode_print(bytecode* bc);
 
 uint32_t bytecode_get_arg(const bytecode bc);
 
@@ -53,3 +54,4 @@ typedef struct __attribute__((packed, aligned(1))) {
 } bytecode_array;
 
 bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count);
+void bytecode_array_print(bytecode_array* bc);
