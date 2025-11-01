@@ -106,7 +106,7 @@ None outer() {
 |------|------|-------|------------------|
 | `bool` | 1 byte | `true`, `false` | `true`, `false` |
 | `int` | 8 bytes | -2⁶³ to 2⁶³-1 | `42`, `-10`, `0` |
-| `long` | 16 bytes | -2¹²⁷ to 2¹²⁷-1 | `123L`, `-999L` |
+| `long NOT SUPPORTED` | 16 bytes | -2¹²⁷ to 2¹²⁷-1 | `123L`, `-999L` |
 
 ### Reference Types (Heap-allocated)
 | Type | Description | Example |

@@ -146,11 +146,19 @@ STACK.push(STACK[-i])
 ### - SWAP 0x14
 STACK[-i], STACK[-1] = STACK[-1], STACK[-i]
 
-### - UNARY_NEGATIVE 0x15
-STACK[-1] = -STACK[-1]
+### - UNARY_OP 0x15
+```
+   unary_op_map = {
+        0x00: '+',    # UNARY_POSITIVE
+        0x01: '-',    # UNARY_NEGATIVE
+        0x02: '~',    # UNARY_INVERT # not implemented yet
+        0x03: 'not',  # UNARY_NOT
+    }
+```
+stack[-1] = unary_op(stack[-1])
 
-### - UNARY_NOT 0x16
-STACK[-1] = not STACK[-1]
+### - FREE_TO_SET 0x16
+free pos for bytecode
 
 ### - BUILD_ARRAY 0x17
 if arg == 0:
@@ -186,3 +194,6 @@ If `STACK[-1]` is None, increments instruction pointer by `arg`. Pops `STACK[-1]
 
 ### - PUSH_NULL 0x20
 Pushes a NULL to the stack. Used for function call preparation.
+
+### - MAKE_FUNCTION 0x21
+Pushes a new function object on the stack built from the code object at `STACK[-1].`

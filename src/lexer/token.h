@@ -62,3 +62,6 @@ typedef struct {
     int line; // used for showing in lexical exceptions
     int column; // used for showing in lexical exceptions
 } Token;
+
+Token* token_create(TokenType type, const char* value, int line, int column);
+void token_free(Token *token);

@@ -9,8 +9,6 @@ static void lexer_skip_whitespace(lexer *l);
 static Token* lexer_parse_identifier(lexer *l);
 static Token* lexer_next_token(lexer *l);
 static Token* lexer_parse_number(lexer *l);
-static Token* token_create(TokenType type, const char* value, int line, int column);
-static void token_free(Token *token);
 
 static void lexer_advance(lexer *l) {
     if (l->current_char == '\n') {
@@ -25,22 +23,6 @@ static void lexer_advance(lexer *l) {
 static void lexer_skip_whitespace(lexer *l) {
     while (l->current_char != EOF && isspace(l->current_char)) {
         lexer_advance(l);
-    }
-}
-
-static Token* token_create(TokenType type, const char* value, int line, int column) {
-    Token *token = malloc(sizeof(Token));
-    token->type = type;
-    token->value = strdup(value);
-    token->line = line;
-    token->column = column;
-    return token;
-}
-
-static void token_free(Token *token) {
-    if (token) {
-        if (token->value) free(token->value);
-        free(token);
     }
 }
 

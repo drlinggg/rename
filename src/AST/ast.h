@@ -12,7 +12,7 @@ typedef struct { // debug info
 } SourceLocation;
 
 typedef enum {
-     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_ARRAY, TYPE_STRUCT,   
+     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_ARRAY, TYPE_STRUCT, TYPE_NONE,
 } TypeVar;
 
 typedef enum NodeType { // ASTNode could have one of the statement/expression type
@@ -52,9 +52,9 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* callee;
-    ASTNode** arguments;
-    int argument_count;
+    ASTNode* callee; // VariableExpression
+    ASTNode** arguments; // Any Expressions
+    int8_t argument_count;
 } FunctionCallExpression;
 
 typedef struct {
@@ -86,15 +86,15 @@ typedef struct {
 
 typedef struct  {
     ASTNode base;
-    ASTNode* left;
-    ASTNode* right;
+    ASTNode* left; // VariableExpression
+    ASTNode* right; // Any Expression
 } AssignmentStatement;
 
 typedef struct {
     ASTNode base;
     TypeVar var_type;
     char* name;
-    ASTNode* initializer;
+    ASTNode* initializer; // Any Expression
 } VariableDeclarationStatement;
 
 typedef struct {
@@ -108,12 +108,12 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* expression; // ExpressionStatement
+    ASTNode* expression; // Any Expression
 } ReturnStatement;
 
 typedef struct {
     ASTNode base;
-    ASTNode* expression;
+    ASTNode* expression; // Any Expression
 } ExpressionStatement;
 
 typedef struct {
@@ -126,10 +126,10 @@ typedef struct {
 typedef struct {
     ASTNode base;
     
-    ASTNode* condition;   // ExpressionStatement
+    ASTNode* condition;   // Any Expression
     ASTNode* then_branch; // BlockStatement
     
-    ASTNode** elif_conditions;    // ExpressionStatement
+    ASTNode** elif_conditions;    // Any Expression
     ASTNode** elif_branches;      // BlockStatement
     size_t elif_count;
     
@@ -138,14 +138,14 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* condition;    // ExpressionStatement
+    ASTNode* condition;    // Any Expression
     ASTNode* body;         // BlockStatement
 } WhileStatement;
 
 // Структура для ForStatement
 typedef struct {
     ASTNode base;
-    ASTNode* initializer;  // VariableDeclaration or ExpressionStatement or NULL
+    ASTNode* initializer;  // VariableDeclarationStatement or NULL
     ASTNode* condition;    // ExpressionStatement or NULL
     ASTNode* increment;    // ExpressionStatement or NULL
     ASTNode* body;         // BlockStatement

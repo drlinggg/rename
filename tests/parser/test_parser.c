@@ -221,7 +221,7 @@ void test_function_declaration_statement() {
     printf("\n\n");
 }
 
-// gcc tests/parser/test_parser.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
+// gcc tests/parser/test_parser.c src/lexer/token.c src/AST/ast.c src/parser/parser.c
 int main() {
     
     test_simple_expressions();
