@@ -52,9 +52,9 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* callee;
-    ASTNode** arguments;
-    int argument_count;
+    ASTNode* callee; // VariableExpression
+    ASTNode** arguments; // Any Expressions
+    int8_t argument_count;
 } FunctionCallExpression;
 
 typedef struct {
@@ -86,15 +86,15 @@ typedef struct {
 
 typedef struct  {
     ASTNode base;
-    ASTNode* left;
-    ASTNode* right;
+    ASTNode* left; // VariableExpression
+    ASTNode* right; // Any Expression
 } AssignmentStatement;
 
 typedef struct {
     ASTNode base;
     TypeVar var_type;
     char* name;
-    ASTNode* initializer; // Expression
+    ASTNode* initializer; // Any Expression
 } VariableDeclarationStatement;
 
 typedef struct {

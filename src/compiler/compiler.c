@@ -248,7 +248,44 @@ static bytecode_array compiler_compile_variable_expression(compiler* comp, ASTNo
 }
 
 static bytecode_array compiler_compile_function_call_expression(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    FunctionCallExpression* func_call = (FunctionCallExpression*)node;
+    if (node->node_type != NODE_FUNCTION_CALL_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    bytecode_array result_array = create_bytecode_array(NULL, 0);
+    
+    // 1. Callee
+    bytecode_array callee_bc = compiler_compile_expression(comp, func_call->callee);
+    emit_bytecode(comp->result, callee_bc);
+    free_bytecode_array(callee_bc);
+    
+    // 2. Null
+    bytecode push_null_bc = bytecode_create(PUSH_NULL, 0, 0, 0);
+    bytecode* push_null_array = malloc(sizeof(bytecode));
+    push_null_array[0] = push_null_bc;
+    bytecode_array push_null_bc_array = create_bytecode_array(push_null_array, 1);
+    emit_bytecode(comp->result, push_null_bc_array);
+    free_bytecode_array(push_null_bc_array);
+    
+    // 3. Args
+    int arg_count = 0;
+    for (int i = 0; i < func_call->argument_count; i++) {
+        bytecode_array arg_bc = compiler_compile_expression(comp, func_call->arguments[i]);
+        emit_bytecode(comp->result, arg_bc);
+        free_bytecode_array(arg_bc);
+        arg_count++;
+    }
+    
+    // 4. call_func
+    bytecode call_func_bc = bytecode_create_with_number(CALL_FUNCTION, arg_count);
+    bytecode* call_func_array = malloc(sizeof(bytecode));
+    call_func_array[0] = call_func_bc;
+    bytecode_array call_func_bc_array = create_bytecode_array(call_func_array, 1);
+    emit_bytecode(comp->result, call_func_bc_array);
+    free_bytecode_array(call_func_bc_array);
+    
+    return result_array;
 }
 
 static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNode* node) {

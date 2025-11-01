@@ -149,10 +149,10 @@ STACK[-i], STACK[-1] = STACK[-1], STACK[-i]
 ### - UNARY_OP 0x15
 ```
    unary_op_map = {
-        0x00: '+',    # UNARY_POSITIVE (унарный плюс)
-        0x01: '-',    # UNARY_NEGATIVE (унарный минус)  
-        0x02: '~',    # UNARY_INVERT (побитовое отрицание) # not implemented yet
-        0x03: 'not',  # UNARY_NOT (логическое отрицание)
+        0x00: '+',    # UNARY_POSITIVE
+        0x01: '-',    # UNARY_NEGATIVE
+        0x02: '~',    # UNARY_INVERT # not implemented yet
+        0x03: 'not',  # UNARY_NOT
     }
 ```
 stack[-1] = unary_op(stack[-1])
