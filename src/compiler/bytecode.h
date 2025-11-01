@@ -47,8 +47,9 @@ bytecode bytecode_create_with_number(uint8_t op_code, uint32_t number);
 uint32_t bytecode_get_arg(const bytecode bc);
 
 typedef struct __attribute__((packed, aligned(1))) {
-    bytecode* bytecode;
+    bytecode* bytecodes;
     uint32_t count;
+    uint32_t capacity;
 } bytecode_array;
 
 bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count);

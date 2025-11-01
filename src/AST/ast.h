@@ -94,7 +94,7 @@ typedef struct {
     ASTNode base;
     TypeVar var_type;
     char* name;
-    ASTNode* initializer;
+    ASTNode* initializer; // Expression
 } VariableDeclarationStatement;
 
 typedef struct {
@@ -108,7 +108,7 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* expression; // ExpressionStatement
+    ASTNode* expression; // Any Expression
 } ReturnStatement;
 
 typedef struct {
@@ -126,10 +126,10 @@ typedef struct {
 typedef struct {
     ASTNode base;
     
-    ASTNode* condition;   // ExpressionStatement
+    ASTNode* condition;   // Any Expression
     ASTNode* then_branch; // BlockStatement
     
-    ASTNode** elif_conditions;    // ExpressionStatement
+    ASTNode** elif_conditions;    // Any Expression
     ASTNode** elif_branches;      // BlockStatement
     size_t elif_count;
     
@@ -138,14 +138,14 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* condition;    // ExpressionStatement
+    ASTNode* condition;    // Any Expression
     ASTNode* body;         // BlockStatement
 } WhileStatement;
 
 // Структура для ForStatement
 typedef struct {
     ASTNode base;
-    ASTNode* initializer;  // VariableDeclaration or ExpressionStatement or NULL
+    ASTNode* initializer;  // VariableDeclarationStatement or NULL
     ASTNode* condition;    // ExpressionStatement or NULL
     ASTNode* increment;    // ExpressionStatement or NULL
     ASTNode* body;         // BlockStatement
