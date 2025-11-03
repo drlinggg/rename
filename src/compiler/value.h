@@ -28,9 +28,11 @@ typedef struct {
 
 typedef struct CodeObj {
     bytecode_array code;
+
     char* name;
     uint8_t arg_count;
     uint8_t local_count;
+
     Value* constants;
     size_t constants_count;
 } CodeObj;

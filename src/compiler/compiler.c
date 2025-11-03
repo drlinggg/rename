@@ -9,8 +9,14 @@
 // Forward declarations
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node);
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* node);
+static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* node);
 
 static bytecode_array concat_bytecode_arrays(bytecode_array a, bytecode_array b) {
+    size_t total_count = a.count + b.count;
+    if (total_count == 0) {
+        return create_bytecode_array(NULL, 0);
+    }
+
     bytecode* new_bytecodes = malloc((a.count + b.count) * sizeof(bytecode));
     if (!new_bytecodes) return create_bytecode_array(NULL, 0);
     
@@ -93,43 +99,40 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         return create_bytecode_array(NULL, 0);
     }
 
-    // 1. Создаем отдельный compilation_result для тела функции
+    // 1. new comp res
     compilation_result* body_result = malloc(sizeof(compilation_result));
     body_result->code_array = create_bytecode_array(NULL, 0);
     body_result->constants = NULL;
     body_result->constants_count = 0;
     body_result->constants_capacity = 0;
     
-    // Сохраняем текущий контекст
+    // save current context
     CompilerScope* previous_scope = comp->current_scope;
     compilation_result* previous_result = comp->result;
     
-    // Устанавливаем новый контекст для компиляции тела функции
+    // change context
     comp->current_scope = scope_create(previous_scope);
-    comp->result = body_result;  // Временно подменяем result
+    comp->result = body_result;  
     
-    // 2. Добавляем параметры в область видимости
+    // 2. adding params into local scope
     for (size_t i = 0; i < func_decl->parameter_count; i++) {
         Parameter* param = &func_decl->parameters[i];
         scope_add_local(comp->current_scope, param->name);
     }
     
-    // 3. Компилируем тело функции
-    if (func_decl->body != NULL && func_decl->body->node_type == NODE_BLOCK_STATEMENT) {
-        BlockStatement* body_block = (BlockStatement*)func_decl->body;
-        for (uint32_t i = 0; i < body_block->statement_count; i++) {
-            bytecode_array stmt_bc = compiler_compile_statement(comp, body_block->statements[i]);
-            emit_bytecode(body_result, stmt_bc);
-            free_bytecode_array(stmt_bc);
-        }
-    }
-    
-    // 4. Добавляем неявный RETURN если нужно
+    // 3. compiling body
+    if (func_decl->body != NULL) {
+        bytecode_array body_bc = compiler_compile_block_statement(comp, func_decl->body);
+        emit_bytecode(body_result, body_bc);
+        free_bytecode_array(body_bc);
+    }    
+
+    // 4. add return if there is no
     if (func_decl->return_type == TYPE_NONE && body_result->code_array.count > 0) {
         bytecode* last_bc = &body_result->code_array.bytecodes[body_result->code_array.count - 1];
         if (last_bc->op_code != RETURN_VALUE) {
             Value none_value = value_create_none();
-            // Используем body_result вместо comp
+            // use body_result but not comp
             uint32_t none_index = compiler_add_constant(body_result, none_value);
             bytecode load_none = bytecode_create_with_number(LOAD_CONST, none_index);
             bytecode return_bc = bytecode_create(RETURN_VALUE, 0, 0, 0);
@@ -143,7 +146,7 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         }
     }
 
-    // 5. Создаем CodeObj
+    // 5. create CodeObj
     CodeObj* code_obj = malloc(sizeof(CodeObj));
     code_obj->code = body_result->code_array;
     code_obj->name = strdup(func_decl->name);
@@ -152,20 +155,18 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     code_obj->constants = body_result->constants;
     code_obj->constants_count = body_result->constants_count;
     
-    // 6. Создаем Value с CodeObj и добавляем в константы основного компилятора
+    // 6. create Value with CodeObj, add into constants
     Value code_value = value_create_code(code_obj);
     
-    // Восстанавливаем основной result перед добавлением константы
+    // resolve state
     comp->result = previous_result;
     uint32_t code_index = compiler_add_constant(comp->result, code_value);
-    
-    // 7. Восстанавливаем контекст
     comp->current_scope = previous_scope;
     
-    // 8. Генерируем байткод для создания функции
+    // 8. generate bytecode for func creation
     bytecode_array result = create_bytecode_array(NULL, 0);
     
-    // LOAD_CONST для code object
+    // LOAD_CONST for code object
     bytecode load_code = bytecode_create_with_number(LOAD_CONST, code_index);
     bytecode* load_code_arr = malloc(sizeof(bytecode));
     load_code_arr[0] = load_code;
@@ -181,7 +182,7 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     result = concat_bytecode_arrays(result, make_func_array);
     free_bytecode_array(make_func_array);
     
-    // STORE в переменную
+    // STORE into
     size_t func_index;
     if (comp->current_scope != NULL && comp->current_scope->parent != NULL) {
         func_index = scope_add_local(comp->current_scope, func_decl->name);
@@ -201,7 +202,6 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         free_bytecode_array(store_func_array);
     }
     
-    // Освобождаем body_result (но не его содержимое - оно теперь в code_obj)
     free(body_result);
     
     return result;
@@ -273,23 +273,78 @@ static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTN
 }
 
 static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_RETURN_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    ReturnStatement* return_stmt = (ReturnStatement*) node;
+    return compiler_compile_expression(comp, return_stmt->expression);
 }
 
 static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_IF_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_WHILE_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_FOR_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    printf("DEBUG: compile_assignment_statement started\n");
+    if (node->node_type != NODE_ASSIGNMENT_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    AssignmentStatement* stmt = (AssignmentStatement*) node;
+    if (!stmt->left || stmt->left->node_type != NODE_VARIABLE_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+    // 1. right side   
+    bytecode_array bc_right = compiler_compile_expression(comp, stmt->right);
+    
+    // 2. left side var name
+    VariableExpression* var_expr = (VariableExpression*)stmt->left;
+    const char* var_name = var_expr->name;
+    
+    // 3. find var 
+    int32_t local_index = scope_find_local(comp->current_scope, var_name);
+    
+    bytecode_array result = bc_right;
+    
+    // if local => store_fast
+    if (local_index >= 0) {
+        bytecode store_bc = bytecode_create_with_number(STORE_FAST, local_index);
+        bytecode* store_arr = malloc(sizeof(bytecode));
+        store_arr[0] = store_bc;
+        bytecode_array store_array = create_bytecode_array(store_arr, 1);
+        result = concat_bytecode_arrays(result, store_array);
+        free_bytecode_array(store_array);
+    } else {
+        // else => store_global
+        int32_t global_index = string_table_find(comp->global_names, var_name);
+        if (global_index < 0) {
+            global_index = compiler_add_global_name(comp, var_name);
+        }
+        
+        bytecode store_bc = bytecode_create_with_number(STORE_GLOBAL, global_index);
+        bytecode* store_arr = malloc(sizeof(bytecode));
+        store_arr[0] = store_bc;
+        bytecode_array store_array = create_bytecode_array(store_arr, 1);
+        
+        result = concat_bytecode_arrays(result, store_array);
+        free_bytecode_array(store_array);
+    }
+    
+    return result;
 }
 
 // Expressions
@@ -548,6 +603,24 @@ static bytecode_array compiler_compile_expression_statement(compiler* comp, ASTN
 }
 
 static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* node) {
+    if (node->node_type != NODE_BLOCK_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    BlockStatement* block = (BlockStatement*)node;
+    bytecode_array result = create_bytecode_array(NULL, 0);
+
+    for (uint32_t i = 0; i < block->statement_count; i++) {
+        bytecode_array stmt_bc = compiler_compile_statement(comp, block->statements[i]);
+        bytecode_array new_result = concat_bytecode_arrays(result, stmt_bc);
+        
+        free_bytecode_array(result);
+        free_bytecode_array(stmt_bc);
+        
+        result = new_result;
+    }
+
+    return result;
 }
 
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statement) {
@@ -607,7 +680,6 @@ compiler* compiler_create(ASTNode* ast_tree) {
 
 void compiler_destroy(compiler* comp) {
     if (!comp) return;
-
     if (comp->result) {
         free_bytecode_array(comp->result->code_array);
         free(comp->result->constants);
