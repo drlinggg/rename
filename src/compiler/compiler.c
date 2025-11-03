@@ -98,28 +98,28 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         return create_bytecode_array(NULL, 0);
     }
 
-    // 1. Создаем отдельный compilation_result для тела функции
+    // 1. new comp res
     compilation_result* body_result = malloc(sizeof(compilation_result));
     body_result->code_array = create_bytecode_array(NULL, 0);
     body_result->constants = NULL;
     body_result->constants_count = 0;
     body_result->constants_capacity = 0;
     
-    // Сохраняем текущий контекст
+    // save current context
     CompilerScope* previous_scope = comp->current_scope;
     compilation_result* previous_result = comp->result;
     
-    // Устанавливаем новый контекст для компиляции тела функции
+    // change context
     comp->current_scope = scope_create(previous_scope);
-    comp->result = body_result;  // Временно подменяем result
+    comp->result = body_result;  
     
-    // 2. Добавляем параметры в область видимости
+    // 2. adding params into local scope
     for (size_t i = 0; i < func_decl->parameter_count; i++) {
         Parameter* param = &func_decl->parameters[i];
         scope_add_local(comp->current_scope, param->name);
     }
     
-    // 3. Компилируем тело функции
+    // 3. compiling body
     if (func_decl->body != NULL && func_decl->body->node_type == NODE_BLOCK_STATEMENT) {
         BlockStatement* body_block = (BlockStatement*)func_decl->body;
         for (uint32_t i = 0; i < body_block->statement_count; i++) {
@@ -129,12 +129,12 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         }
     }
     
-    // 4. Добавляем неявный RETURN если нужно
+    // 4. add return if there is no
     if (func_decl->return_type == TYPE_NONE && body_result->code_array.count > 0) {
         bytecode* last_bc = &body_result->code_array.bytecodes[body_result->code_array.count - 1];
         if (last_bc->op_code != RETURN_VALUE) {
             Value none_value = value_create_none();
-            // Используем body_result вместо comp
+            // use body_result but not comp
             uint32_t none_index = compiler_add_constant(body_result, none_value);
             bytecode load_none = bytecode_create_with_number(LOAD_CONST, none_index);
             bytecode return_bc = bytecode_create(RETURN_VALUE, 0, 0, 0);
@@ -148,7 +148,7 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         }
     }
 
-    // 5. Создаем CodeObj
+    // 5. create CodeObj
     CodeObj* code_obj = malloc(sizeof(CodeObj));
     code_obj->code = body_result->code_array;
     code_obj->name = strdup(func_decl->name);
@@ -157,20 +157,18 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     code_obj->constants = body_result->constants;
     code_obj->constants_count = body_result->constants_count;
     
-    // 6. Создаем Value с CodeObj и добавляем в константы основного компилятора
+    // 6. create Value with CodeObj, add into constants
     Value code_value = value_create_code(code_obj);
     
-    // Восстанавливаем основной result перед добавлением константы
+    // resolve state
     comp->result = previous_result;
     uint32_t code_index = compiler_add_constant(comp->result, code_value);
-    
-    // 7. Восстанавливаем контекст
     comp->current_scope = previous_scope;
     
-    // 8. Генерируем байткод для создания функции
+    // 8. generate bytecode for func creation
     bytecode_array result = create_bytecode_array(NULL, 0);
     
-    // LOAD_CONST для code object
+    // LOAD_CONST for code object
     bytecode load_code = bytecode_create_with_number(LOAD_CONST, code_index);
     bytecode* load_code_arr = malloc(sizeof(bytecode));
     load_code_arr[0] = load_code;
@@ -186,7 +184,7 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     result = concat_bytecode_arrays(result, make_func_array);
     free_bytecode_array(make_func_array);
     
-    // STORE в переменную
+    // STORE into
     size_t func_index;
     if (comp->current_scope != NULL && comp->current_scope->parent != NULL) {
         func_index = scope_add_local(comp->current_scope, func_decl->name);
