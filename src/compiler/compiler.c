@@ -11,6 +11,11 @@ static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node)
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* node);
 
 static bytecode_array concat_bytecode_arrays(bytecode_array a, bytecode_array b) {
+    size_t total_count = a.count + b.count;
+    if (total_count == 0) {
+        return create_bytecode_array(NULL, 0);
+    }
+
     bytecode* new_bytecodes = malloc((a.count + b.count) * sizeof(bytecode));
     if (!new_bytecodes) return create_bytecode_array(NULL, 0);
     
@@ -201,7 +206,6 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
         free_bytecode_array(store_func_array);
     }
     
-    // Освобождаем body_result (но не его содержимое - оно теперь в code_obj)
     free(body_result);
     
     return result;
@@ -273,23 +277,78 @@ static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTN
 }
 
 static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_RETURN_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    ReturnStatement* return_stmt = (ReturnStatement*) node;
+    return compiler_compile_expression(comp, return_stmt->expression);
 }
 
 static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_IF_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_WHILE_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    if (node->node_type != NODE_FOR_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
 }
 
 static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTNode* node) {
-    return create_bytecode_array(NULL, 0);
+    printf("DEBUG: compile_assignment_statement started\n");
+    if (node->node_type != NODE_ASSIGNMENT_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    AssignmentStatement* stmt = (AssignmentStatement*) node;
+    if (!stmt->left || stmt->left->node_type != NODE_VARIABLE_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+    // 1. right side   
+    bytecode_array bc_right = compiler_compile_expression(comp, stmt->right);
+    
+    // 2. left side var name
+    VariableExpression* var_expr = (VariableExpression*)stmt->left;
+    const char* var_name = var_expr->name;
+    
+    // 3. find var 
+    int32_t local_index = scope_find_local(comp->current_scope, var_name);
+    
+    bytecode_array result = bc_right;
+    
+    // if local => store_fast
+    if (local_index >= 0) {
+        bytecode store_bc = bytecode_create_with_number(STORE_FAST, local_index);
+        bytecode* store_arr = malloc(sizeof(bytecode));
+        store_arr[0] = store_bc;
+        bytecode_array store_array = create_bytecode_array(store_arr, 1);
+        result = concat_bytecode_arrays(result, store_array);
+        free_bytecode_array(store_array);
+    } else {
+        // else => store_global
+        int32_t global_index = string_table_find(comp->global_names, var_name);
+        if (global_index < 0) {
+            global_index = compiler_add_global_name(comp, var_name);
+        }
+        
+        bytecode store_bc = bytecode_create_with_number(STORE_GLOBAL, global_index);
+        bytecode* store_arr = malloc(sizeof(bytecode));
+        store_arr[0] = store_bc;
+        bytecode_array store_array = create_bytecode_array(store_arr, 1);
+        
+        result = concat_bytecode_arrays(result, store_array);
+        free_bytecode_array(store_array);
+    }
+    
+    return result;
 }
 
 // Expressions
@@ -607,7 +666,6 @@ compiler* compiler_create(ASTNode* ast_tree) {
 
 void compiler_destroy(compiler* comp) {
     if (!comp) return;
-
     if (comp->result) {
         free_bytecode_array(comp->result->code_array);
         free(comp->result->constants);
