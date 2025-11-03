@@ -9,6 +9,7 @@
 // Forward declarations
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node);
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* node);
+static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* node);
 
 static bytecode_array concat_bytecode_arrays(bytecode_array a, bytecode_array b) {
     size_t total_count = a.count + b.count;
@@ -120,15 +121,12 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     }
     
     // 3. compiling body
-    if (func_decl->body != NULL && func_decl->body->node_type == NODE_BLOCK_STATEMENT) {
-        BlockStatement* body_block = (BlockStatement*)func_decl->body;
-        for (uint32_t i = 0; i < body_block->statement_count; i++) {
-            bytecode_array stmt_bc = compiler_compile_statement(comp, body_block->statements[i]);
-            emit_bytecode(body_result, stmt_bc);
-            free_bytecode_array(stmt_bc);
-        }
-    }
-    
+    if (func_decl->body != NULL) {
+        bytecode_array body_bc = compiler_compile_block_statement(comp, func_decl->body);
+        emit_bytecode(body_result, body_bc);
+        free_bytecode_array(body_bc);
+    }    
+
     // 4. add return if there is no
     if (func_decl->return_type == TYPE_NONE && body_result->code_array.count > 0) {
         bytecode* last_bc = &body_result->code_array.bytecodes[body_result->code_array.count - 1];
@@ -605,6 +603,24 @@ static bytecode_array compiler_compile_expression_statement(compiler* comp, ASTN
 }
 
 static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* node) {
+    if (node->node_type != NODE_BLOCK_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    BlockStatement* block = (BlockStatement*)node;
+    bytecode_array result = create_bytecode_array(NULL, 0);
+
+    for (uint32_t i = 0; i < block->statement_count; i++) {
+        bytecode_array stmt_bc = compiler_compile_statement(comp, block->statements[i]);
+        bytecode_array new_result = concat_bytecode_arrays(result, stmt_bc);
+        
+        free_bytecode_array(result);
+        free_bytecode_array(stmt_bc);
+        
+        result = new_result;
+    }
+
+    return result;
 }
 
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statement) {
