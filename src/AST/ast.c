@@ -1,6 +1,7 @@
 #include "ast.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include "../debug.h"
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
@@ -790,10 +791,10 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
 
 void ast_free(ASTNode* node) {
     if (!node) {
-        printf("ast_free: NULL node\n");
+        DPRINT("ast_free: NULL node\n");
         return;
     }
-    printf("ast_free: node_type=%s\n", ast_node_type_to_string(node->node_type));
+    DPRINT("ast_free: node_type=%s\n", ast_node_type_to_string(node->node_type));
     switch (node->node_type) {
 
             /*
@@ -973,7 +974,7 @@ void ast_free(ASTNode* node) {
         }
 
         default: {
-            printf("Freeing node type: %d at %p\n", ast_node_type_to_string(node->node_type), (void*)node);
+            DPRINT("Freeing node type: %d at %p\n", ast_node_type_to_string(node->node_type), (void*)node);
             free(node);
             node = NULL;
             break;
@@ -1105,18 +1106,20 @@ const char* token_type_to_string(int token_type) {
 
 void ast_print_tree(ASTNode* node, int indent) {
     if (!node) return;
+    if (!debug_enabled) return;
     
-    for (int i = 0; i < indent; i++) printf("  ");
-    printf("\nAST TREE:\n");
+    for (int i = 0; i < indent; i++) DPRINT("  ");
+    DPRINT("\nAST TREE:\n");
     ast_print(node, indent);
-    printf("\n");
+    DPRINT("\n");
 }
 
 void ast_print(ASTNode* node, int indent) {
     if (!node) return;
+    if (!debug_enabled) return;
     
-    for (int i = 0; i < indent; i++) printf("  ");
-    printf("%s\n", ast_node_type_to_string(node->node_type));
+    for (int i = 0; i < indent; i++) DPRINT("  ");
+    DPRINT("%s\n", ast_node_type_to_string(node->node_type));
     
     switch (node->node_type) {
         case NODE_PROGRAM: {
@@ -1127,12 +1130,12 @@ void ast_print(ASTNode* node, int indent) {
         case NODE_FUNCTION_DECLARATION_STATEMENT: {
             FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
 
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Function: %s (returns type %s)\n", casted_node->name, type_var_to_string(casted_node->return_type));
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Function: %s (returns type %s)\n", casted_node->name, type_var_to_string(casted_node->return_type));
             
             for (size_t i = 0; i < casted_node->parameter_count; i++) {
-                for (int j = 0; j < indent + 1; j++) printf("  ");
-                printf("Parameter: %s (type %s)\n", 
+                for (int j = 0; j < indent + 1; j++) DPRINT("  ");
+                DPRINT("Parameter: %s (type %s)\n", 
                        casted_node->parameters[i].name, 
                        type_var_to_string(casted_node->parameters[i].type));
             }
@@ -1142,10 +1145,10 @@ void ast_print(ASTNode* node, int indent) {
         
         case NODE_VARIABLE_DECLARATION_STATEMENT: {
             VariableDeclarationStatement* casted_node = (VariableDeclarationStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Variable: %s (type %s)\n", casted_node->name, type_var_to_string(casted_node->var_type));
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Initializer: ");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Variable: %s (type %s)\n", casted_node->name, type_var_to_string(casted_node->var_type));
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Initializer: ");
             ast_print(casted_node->initializer, indent + 1);
             break;
         }
@@ -1158,8 +1161,8 @@ void ast_print(ASTNode* node, int indent) {
             
         case NODE_RETURN_STATEMENT: {
             ReturnStatement* casted_node = (ReturnStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Return\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Return\n");
             ast_print(casted_node->expression, indent + 1);
             break;
         }
@@ -1174,24 +1177,24 @@ void ast_print(ASTNode* node, int indent) {
             
         case NODE_IF_STATEMENT: {
             IfStatement* casted_node = (IfStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("If Condition:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("If Condition:\n");
             ast_print(casted_node->condition, indent + 2);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Then Branch:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Then Branch:\n");
             ast_print(casted_node->then_branch, indent + 2);
             
             for (size_t i = 0; i < casted_node->elif_count; i++) {
-                for (int j = 0; j < indent + 1; j++) printf("  ");
-                printf("Elif Condition %zu:\n", i + 1);
+                for (int j = 0; j < indent + 1; j++) DPRINT("  ");
+                DPRINT("Elif Condition %zu:\n", i + 1);
                 ast_print(casted_node->elif_conditions[i], indent + 2);
                 ast_print(casted_node->elif_branches[i], indent + 2);
             }
             
             if (casted_node->else_branch) {
-                for (int i = 0; i < indent + 1; i++) printf("  ");
-                printf("Else Branch:\n");
+                for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+                DPRINT("Else Branch:\n");
                 ast_print(casted_node->else_branch, indent + 2);
             }
             break;
@@ -1199,40 +1202,40 @@ void ast_print(ASTNode* node, int indent) {
             
         case NODE_WHILE_STATEMENT: {
             WhileStatement* casted_node = (WhileStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("While Condition:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("While Condition:\n");
             ast_print(casted_node->condition, indent + 2);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("While Body:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("While Body:\n");
             ast_print(casted_node->body, indent + 2);
             break;
         }
             
         case NODE_FOR_STATEMENT: {
             ForStatement* casted_node = (ForStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("For Initializer:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("For Initializer:\n");
             ast_print(casted_node->initializer, indent + 2);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("For Condition:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("For Condition:\n");
             ast_print(casted_node->condition, indent + 2);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("For Increment:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("For Increment:\n");
             ast_print(casted_node->increment, indent + 2);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("For Body:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("For Body:\n");
             ast_print(casted_node->body, indent + 2);
             break;
         }
 
         case NODE_ASSIGNMENT_STATEMENT: {
             AssignmentStatement* casted_node = (AssignmentStatement*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Assignment:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Assignment:\n");
             ast_print(casted_node->left, indent + 2);
             ast_print(casted_node->right, indent + 2);
             break;
@@ -1240,8 +1243,8 @@ void ast_print(ASTNode* node, int indent) {
             
         case NODE_BINARY_EXPRESSION: {
             BinaryExpression* casted_node = (BinaryExpression*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Operator: %s\n", token_type_to_string(casted_node->operator_.type));
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Operator: %s\n", token_type_to_string(casted_node->operator_.type));
             ast_print(casted_node->left, indent + 1);
             ast_print(casted_node->right, indent + 1);
             break;
@@ -1249,35 +1252,35 @@ void ast_print(ASTNode* node, int indent) {
         
         case NODE_UNARY_EXPRESSION: {
             UnaryExpression* casted_node = (UnaryExpression*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Unary Operator: %s\n", token_type_to_string(casted_node->operator_.type));
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Unary Operator: %s\n", token_type_to_string(casted_node->operator_.type));
             ast_print(casted_node->operand, indent + 1);
             break;
         }
             
         case NODE_LITERAL_EXPRESSION: {
             LiteralExpression* casted_node = (LiteralExpression*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Literal: type=%s, value=%lld\n", type_var_to_string(casted_node->type), (long long)casted_node->value);
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Literal: type=%s, value=%lld\n", type_var_to_string(casted_node->type), (long long)casted_node->value);
             break;
         }
             
         case NODE_VARIABLE_EXPRESSION: {
             VariableExpression* casted_node = (VariableExpression*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Variable: %s\n", casted_node->name);
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Variable: %s\n", casted_node->name);
             break;
         }
             
         case NODE_FUNCTION_CALL_EXPRESSION: {
             FunctionCallExpression* casted_node = (FunctionCallExpression*) node;
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Function Call:\n");
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("%s\n",casted_node->callee);
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Function Call:\n");
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("%s\n",casted_node->callee);
             
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Arguments (%d):\n", casted_node->argument_count);
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Arguments (%d):\n", casted_node->argument_count);
             for (int i = 0; i < casted_node->argument_count; i++) {
                 ast_print(casted_node->arguments[i], indent + 2);
             }
@@ -1285,8 +1288,8 @@ void ast_print(ASTNode* node, int indent) {
         }
 
         default: {
-            for (int i = 0; i < indent + 1; i++) printf("  ");
-            printf("Unknown node type: %d\n", node->node_type);
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Unknown node type: %d\n", node->node_type);
             break;
         }
     }
@@ -1312,6 +1315,3 @@ bool add_statement_to_block(ASTNode* block_stmt, ASTNode* stmt) {
     casted_node->statements[casted_node->statement_count - 1] = ast_node_copy(stmt);
     return 1;
 }
-
-
-

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "../debug.h"
 
 static inline void bytecode_set_arg(bytecode* bc, uint32_t arg) {
     bc->argument[0] = (arg >> 16) & 0xFF;
@@ -89,43 +90,43 @@ static const char* unary_op_to_string(uint8_t op_arg) {
 
 void bytecode_print(bytecode* bc) {
     if (!bc) {
-        printf("[NULL bytecode]\n");
+        DPRINT("[NULL bytecode]\n");
         return;
     }
     
     const char* op_name = bytecode_opcode_to_string(bc->op_code);
     uint32_t arg = bytecode_get_arg(*bc);
     
-    printf("[ %-25s 0x%02X | arg: 0x%06X (%u) ", 
+    DPRINT("[ %-25s 0x%02X | arg: 0x%06X (%u) ", 
            op_name, bc->op_code, arg, arg);
     
     switch (bc->op_code) {
         case BINARY_OP:
-            printf("| %s ", binary_op_to_string(arg & 0xFF));
+            DPRINT("| %s ", binary_op_to_string(arg & 0xFF));
             break;
         case UNARY_OP:
-            printf("| %s ", unary_op_to_string(arg & 0xFF));
+            DPRINT("| %s ", unary_op_to_string(arg & 0xFF));
             break;
         case LOAD_CONST:
-            printf("| const_index: %u ", arg);
+            DPRINT("| const_index: %u ", arg);
             break;
         case LOAD_FAST:
-            printf("| local_index: %u ", arg);
+            DPRINT("| local_index: %u ", arg);
             break;
         case STORE_FAST:
-            printf("| local_index: %u ", arg);
+            DPRINT("| local_index: %u ", arg);
             break;
         case LOAD_GLOBAL:
-            printf("| global_index: %u ", arg >> 1);
+            DPRINT("| global_index: %u ", arg >> 1);
             if (arg % 2 != 0) {
-                printf("| push_null ");
+                DPRINT("| push_null ");
             }
             break;
         case STORE_GLOBAL:
-            printf("| global_index: %u ", arg);
+            DPRINT("| global_index: %u ", arg);
             break;
         case CALL_FUNCTION:
-            printf("| argc: %u ", arg);
+            DPRINT("| argc: %u ", arg);
             break;
         case JUMP_FORWARD:
         case JUMP_BACKWARD:
@@ -134,31 +135,31 @@ void bytecode_print(bytecode* bc) {
         case POP_JUMP_IF_FALSE:
         case POP_JUMP_IF_NOT_NONE:
         case POP_JUMP_IF_NONE:
-            printf("| offset: %u ", arg);
+            DPRINT("| offset: %u ", arg);
             break;
         case COPY:
         case SWAP:
-            printf("| position: %u ", arg);
+            DPRINT("| position: %u ", arg);
             break;
     }
     
-    printf("]\n");
+    DPRINT("]\n");
 }
 
 void bytecode_array_print(bytecode_array* bc_array) {
     if (!bc_array) {
-        printf("NULL bytecode array\n");
+        DPRINT("NULL bytecode array\n");
         return;
     }
     
     if (!bc_array->bytecodes || bc_array->count == 0) {
-        printf("Empty bytecode array\n");
+        DPRINT("Empty bytecode array\n");
         return;
     }
     
-    printf("Bytecode array (%u instructions):\n", bc_array->count);
+    DPRINT("Bytecode array (%u instructions):\n", bc_array->count);
     for (uint32_t i = 0; i < bc_array->count; i++) {
-        printf("%4u: ", i);
+        DPRINT("%4u: ", i);
         bytecode_print(&bc_array->bytecodes[i]);
     }
 }

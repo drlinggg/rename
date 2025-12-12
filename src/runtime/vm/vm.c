@@ -2,6 +2,7 @@
 #include "../../runtime/gc/gc.h"
 #include "../../runtime/jit/jit.h"
 #include <stdio.h>
+#include "../../debug.h"
 #include <string.h>
 
 struct VM {
@@ -157,7 +158,7 @@ Object* frame_execute(Frame* frame) {
         switch (bc.op_code) {
             case LOAD_CONST: {
                 if (arg >= code->constants_count) {
-                    fprintf(stderr, "VM: LOAD_CONST index out of range %u\n", arg);
+                    DPRINT("VM: LOAD_CONST index out of range %u\n", arg);
                     frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
                     break;
                 }
@@ -168,7 +169,7 @@ Object* frame_execute(Frame* frame) {
             }
             case LOAD_FAST: {
                 if (arg >= code->local_count) {
-                    fprintf(stderr, "VM: LOAD_FAST index out of range %u\n", arg);
+                    DPRINT("VM: LOAD_FAST index out of range %u\n", arg);
                     frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
                     break;
                 }
@@ -178,7 +179,7 @@ Object* frame_execute(Frame* frame) {
             }
             case STORE_FAST: {
                 if (arg >= code->local_count) {
-                    fprintf(stderr, "VM: STORE_FAST index out of range %u\n", arg);
+                    DPRINT("VM: STORE_FAST index out of range %u\n", arg);
                     Object* v = frame_stack_pop(frame);
                     if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, v);
                     break;
@@ -228,13 +229,13 @@ Object* frame_execute(Frame* frame) {
                             else ret = heap_alloc_int(frame->vm->heap, a / b);
                             break;
                         default:
-                            fprintf(stderr, "VM: Unsupported binary_op on ints: %u\n", op);
+                            DPRINT("VM: Unsupported binary_op on ints: %u\n", op);
                             ret = heap_alloc_none(frame->vm->heap);
                             break;
                     }
                 } else {
                     // fallback: string concat if strings? not implemented.
-                    fprintf(stderr, "VM: BINARY_OP for non-int operands not implemented\n");
+                    DPRINT("VM: BINARY_OP for non-int operands not implemented\n");
                     ret = heap_alloc_none(frame->vm->heap);
                 }
                 // cleanup
@@ -307,7 +308,7 @@ Object* frame_execute(Frame* frame) {
                     ret = _vm_execute_with_args(frame->vm, callee_code, args, argc);
                 } else {
                     if (callee_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, callee_obj);
-                    fprintf(stderr, "VM: CALL_FUNCTION callee not a function\n");
+                    DPRINT("VM: CALL_FUNCTION callee not a function\n");
                 }
                 // cleanup args array
                 for (uint32_t i = 0; i < argc; i++) if (args && args[i] && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, args[i]);
@@ -327,7 +328,7 @@ Object* frame_execute(Frame* frame) {
             }
             default:
                 // For unsupported operations, print and continue
-                fprintf(stderr, "VM: Unsupported op code: 0x%02X\n", bc.op_code);
+                DPRINT("VM: Unsupported op code: 0x%02X\n", bc.op_code);
                 break;
         }
     }

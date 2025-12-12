@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../debug.h"
 
 typedef enum {
     PRECEDENCE_NONE = 0,
@@ -90,9 +91,9 @@ static bool parser_is_at_end(Parser* parser) {
 void report_error(Parser* parser, const char* error_message) {
     // Diagnostic function used to print errors in stdout
     if (error_message == NULL); return;
-    printf("%s\n", error_message);
-    printf("%s", "current token is ");
-    printf(" %s\n", parser->tokens[parser->current].value);
+    DPRINT("%s\n", error_message);
+    DPRINT("%s", "current token is ");
+    DPRINT(" %s\n", parser->tokens[parser->current].value);
 }
 
 // if current token is the same as expected -> 
@@ -160,27 +161,27 @@ bool parser_check(Parser* parser, TokenType type) {
 }
 
 static ASTNode* parser_parse_function_call_expression(Parser* parser) {
-    printf("[PARSER] [FUNCTION CALL] parse_function_call_expression started\n");
+    DPRINT("[PARSER] [FUNCTION CALL] parse_function_call_expression started\n");
     
     Token* current = parser_advance(parser);
     SourceLocation loc = (SourceLocation){current->line, current->column};
-    printf("[PARSER] [FUNCTION CALL] Function name: '%s' at line %d, col %d\n", current->value, loc.line, loc.column);
+    DPRINT("[PARSER] [FUNCTION CALL] Function name: '%s' at line %d, col %d\n", current->value, loc.line, loc.column);
     
     parser_consume(parser, LPAREN, "call expression should have opening parenthesis");
-    printf("[PARSER] [FUNCTION CALL] Found opening parenthesis\n");
+    DPRINT("[PARSER] [FUNCTION CALL] Found opening parenthesis\n");
 
     ASTNode* function_identifier = ast_new_variable_expression(loc, current->value);
-    printf("[PARSER] [FUNCTION CALL] Created function identifier node\n");
+    DPRINT("[PARSER] [FUNCTION CALL] Created function identifier node\n");
 
     size_t argument_count = 0;
     size_t capacity = 4;
     ASTNode** function_arguments = malloc(capacity * sizeof(ASTNode*));
     if (!function_arguments) {
-        printf("[PARSER] [FUNCTION CALL] ERROR: Failed to allocate arguments array\n");
+        DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to allocate arguments array\n");
         ast_free(function_identifier);
         return NULL;
     }
-    printf("[PARSER] [FUNCTION CALL] Initialized arguments array with capacity %zu\n", capacity);
+    DPRINT("[PARSER] [FUNCTION CALL] Initialized arguments array with capacity %zu\n", capacity);
 
     while (true) {
         parser_peek(parser);
@@ -188,10 +189,10 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
         
         if (argument_count >= capacity) {
             capacity *= 2;
-            printf("[PARSER] [FUNCTION CALL] Expanding arguments array to capacity %zu\n", capacity);
+            DPRINT("[PARSER] [FUNCTION CALL] Expanding arguments array to capacity %zu\n", capacity);
             ASTNode** new_args = realloc(function_arguments, capacity * sizeof(ASTNode*));
             if (!new_args) {
-                printf("[PARSER] [FUNCTION CALL] ERROR: Failed to reallocate arguments array\n");
+                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to reallocate arguments array\n");
                 for (size_t i = 0; i < argument_count; i++) {
                     ast_free(function_arguments[i]);
                 }
@@ -204,7 +205,7 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
 
         ASTNode* argument = parser_parse_expression(parser);
         if (!argument) {
-            printf("[PARSER] [FUNCTION CALL] ERROR: Failed to parse argument %zu\n", argument_count);
+            DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to parse argument %zu\n", argument_count);
             for (size_t i = 0; i < argument_count; i++) {
                 ast_free(function_arguments[i]);
             }
@@ -218,10 +219,10 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
         Token* next_after_arg = parser_peek(parser);
         
         if (next_after_arg->type != COMMA) {
-            printf("[PARSER] [FUNCTION CALL] No comma found, expecting closing parenthesis\n");
+            DPRINT("[PARSER] [FUNCTION CALL] No comma found, expecting closing parenthesis\n");
             
             if (!parser_consume(parser, RPAREN, "call expression should have closing parenthesis")) {
-                printf("[PARSER] [FUNCTION CALL] ERROR: Missing closing parenthesis\n");
+                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Missing closing parenthesis\n");
                 for (size_t i = 0; i < argument_count; i++) {
                     ast_free(function_arguments[i]);
                 }
@@ -230,19 +231,19 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
                 return NULL;
             }
             
-            printf("[PARSER] [FUNCTION CALL] Found closing parenthesis, function call has %zu arguments\n", argument_count);
+            DPRINT("[PARSER] [FUNCTION CALL] Found closing parenthesis, function call has %zu arguments\n", argument_count);
             
             if (argument_count < capacity) {
                 ASTNode** trimmed_args = realloc(function_arguments, argument_count * sizeof(ASTNode*));
                 if (trimmed_args) {
                     function_arguments = trimmed_args;
-                    printf("[PARSER] [FUNCTION CALL] Trimmed arguments array to size %zu\n", argument_count);
+                    DPRINT("[PARSER] [FUNCTION CALL] Trimmed arguments array to size %zu\n", argument_count);
                 }
             }
 
             ASTNode* function_call_expr = ast_new_call_expression(loc, function_identifier, function_arguments, argument_count);
             if (!function_call_expr) {
-                printf("[PARSER] [FUNCTION CALL] ERROR: Failed to create function call expression node\n");
+                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to create function call expression node\n");
                 for (size_t i = 0; i < argument_count; i++) {
                     ast_free(function_arguments[i]);
                 }
@@ -257,10 +258,10 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
             }
             free(function_arguments);
             
-            printf("[PARSER] Successfully created function call expression\n");
+            DPRINT("[PARSER] Successfully created function call expression\n");
             return function_call_expr;
         } else {
-            printf("[PARSER] Found comma, continuing to next argument\n");
+            DPRINT("[PARSER] Found comma, continuing to next argument\n");
             parser_advance(parser);
         }
     }
@@ -291,6 +292,7 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     Token* token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){token->line, token->column};
     ASTNode* initializer = NULL;
+    DPRINT("[PARSER] parse_variable_declaration start: type=%d value=%s\n", token->type, token->value);
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "declaration should have a naming");
     if (!identifier) return NULL;
@@ -304,6 +306,7 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     if (initializer) {
         ast_free(initializer);
     }
+    DPRINT("[PARSER] parse_variable_declaration finished for name=%s\n", identifier->value);
     
     return node;
 }
@@ -321,7 +324,7 @@ static Parameter* parser_parse_parameter(Parser* parser) {
 
 
 static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
-    printf("[PARSER] Starting to parse function declaration\n");
+    DPRINT("[PARSER] Starting to parse function declaration\n");
     Token* return_type_token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){return_type_token->line, return_type_token->column};
 
@@ -395,65 +398,86 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
 
 
 static ASTNode* parser_parse_declaration_statement(Parser* parser) {
-    printf("[PARSER] Starting to parse declaration statement\n");
+    DPRINT("[PARSER] Starting to parse declaration statement\n");
     Token* current = parser_advance(parser);
     if (!current) {
-        printf("[PARSER] ERROR: No current token\n");
+        DPRINT("[PARSER] ERROR: No current token\n");
         return NULL;
     }
     
     SourceLocation loc = (SourceLocation){current->line, current->column};
-    printf("[PARSER] Declaration type: %d, value: %s\n", current->type, current->value);
+    DPRINT("[PARSER] Declaration type: %d, value: %s\n", current->type, current->value);
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "declaration should have a naming");
     if (!identifier) {
-        printf("[PARSER] ERROR: No identifier in declaration\n");
+        DPRINT("[PARSER] ERROR: No identifier in declaration\n");
         return NULL;
     }
 
     if (parser_peek(parser)->type == OP_ASSIGN) {
-        printf("[PARSER] Parsing variable declaration\n");
+        DPRINT("[PARSER] Parsing variable declaration\n");
         parser_retreat(parser);
         parser_retreat(parser);
         return parser_parse_variable_declaration_statement(parser);
     }
     
-    printf("[PARSER] Parsing function declaration\n");
+    DPRINT("[PARSER] Parsing function declaration\n");
     parser_retreat(parser);
     parser_retreat(parser);
     return parser_parse_function_declaration_statement(parser);
 }
 
 static ASTNode* parser_parse_assignment_statement(Parser* parser) {
-    // TODO: реализовать
-    return NULL;
+    DPRINT("[PARSER] Starting to parse assignment statement\n");
+    Token* identifier = parser_consume(parser, IDENTIFIER, "Expected identifier in assignment");
+    if (!identifier) return NULL;
+
+    Token* assign = parser_consume(parser, OP_ASSIGN, "Expected '=' in assignment");
+    if (!assign) {
+        return NULL;
+    }
+
+    ASTNode* rhs = parser_parse_expression(parser);
+    if (!rhs) return NULL;
+
+    SourceLocation loc = (SourceLocation){identifier->line, identifier->column};
+    ASTNode* lhs = ast_new_variable_expression(loc, identifier->value);
+    if (!lhs) {
+        ast_free(rhs);
+        return NULL;
+    }
+
+    ASTNode* assign_node = ast_new_assignment_statement(loc, lhs, rhs);
+    ast_free(lhs);
+    ast_free(rhs);
+    return assign_node;
 }
 
 static ASTNode* parser_parse_primary_expression(Parser* parser) {
     Token* current = parser_peek(parser);
     SourceLocation loc = (SourceLocation){current->line, current->column};
     
-    printf("[PARSER] parse_primary_expression: token_type=%d, value='%s' at line %d, col %d\n", 
+    DPRINT("[PARSER] parse_primary_expression: token_type=%d, value='%s' at line %d, col %d\n", 
            current->type, current->value, loc.line, loc.column);
     
     switch (current->type) {
         case IDENTIFIER: {
-            printf("[PARSER] Found IDENTIFIER: '%s'\n", current->value);
+            DPRINT("[PARSER] Found IDENTIFIER: '%s'\n", current->value);
             parser_advance(parser);
             Token* next = parser_peek(parser);
-            printf("[PARSER] Next token after identifier: type=%d, value='%s'\n", next->type, next->value);
+            DPRINT("[PARSER] Next token after identifier: type=%d, value='%s'\n", next->type, next->value);
             
             switch (next->type) {
                 case LPAREN: {
-                    printf("[PARSER] Identifier followed by LPAREN -> parsing function call\n");
+                    DPRINT("[PARSER] Identifier followed by LPAREN -> parsing function call\n");
                     parser_retreat(parser);
                     return parser_parse_function_call_expression(parser);
                 }
                 default: {
-                    printf("[PARSER] Creating VariableExpression for '%s'\n", current->value);
+                    DPRINT("[PARSER] Creating VariableExpression for '%s'\n", current->value);
                     ASTNode* node = ast_new_variable_expression(loc, current->value);
                     if (!node) {
-                        printf("[PARSER] ERROR: Failed to create VariableExpression\n");
+                        DPRINT("[PARSER] ERROR: Failed to create VariableExpression\n");
                         return NULL;
                     }
                     return node;
@@ -462,10 +486,10 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
         }
         case INT_LITERAL: {
             int value = atoi(current->value);
-            printf("[PARSER] Found INT_LITERAL: value=%d\n", value);
+            DPRINT("[PARSER] Found INT_LITERAL: value=%d\n", value);
             ASTNode* node = ast_new_literal_expression(loc, TYPE_INT, value);
             if (!node) {
-                printf("[PARSER] ERROR: Failed to create LiteralExpression for int\n");
+                DPRINT("[PARSER] ERROR: Failed to create LiteralExpression for int\n");
                 return NULL;
             }
             parser_advance(parser);
@@ -473,10 +497,10 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
         }
         case BOOL_LITERAL: {
             int value = (strcmp(current->value, "true") == 0) ? 1 : 0;
-            printf("[PARSER] Found BOOL_LITERAL: value='%s' -> %d\n", current->value, value);
+            DPRINT("[PARSER] Found BOOL_LITERAL: value='%s' -> %d\n", current->value, value);
             ASTNode* node = ast_new_literal_expression(loc, TYPE_BOOL, value);
             if (!node) {
-                printf("[PARSER] ERROR: Failed to create LiteralExpression for bool\n");
+                DPRINT("[PARSER] ERROR: Failed to create LiteralExpression for bool\n");
                 return NULL;
             }
             parser_advance(parser);
@@ -484,17 +508,27 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
         }
         case LONG_LITERAL: {
             long value = atol(current->value);
-            printf("[PARSER] Found LONG_LITERAL: value=%ld\n", value);
+            DPRINT("[PARSER] Found LONG_LITERAL: value=%ld\n", value);
             ASTNode* node = ast_new_literal_expression(loc, TYPE_LONG, value);
             if (!node) {
-                printf("[PARSER] ERROR: Failed to create LiteralExpression for long\n");
+                DPRINT("[PARSER] ERROR: Failed to create LiteralExpression for long\n");
                 return NULL;
             }
             parser_advance(parser);
             return node;
         }
+        case LPAREN: {
+            // Parenthesized expression
+            parser_advance(parser); // consume LPAREN
+            ASTNode* inner = parser_parse_expression(parser);
+            if (!parser_consume(parser, RPAREN, "Expected ')' after expression")) {
+                ast_free(inner);
+                return NULL;
+            }
+            return inner;
+        }
         default: {
-            printf("[PARSER] ERROR: Unexpected token type %d, value='%s'\n", current->type, current->value);
+            DPRINT("[PARSER] ERROR: Unexpected token type %d, value='%s'\n", current->type, current->value);
             report_error(parser, "couldn't parse token");
             return NULL;
         }
@@ -521,10 +555,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
         case INT_LITERAL:
         case BOOL_LITERAL:
         case LONG_LITERAL:
-            left = parser_parse_primary_expression(parser);
-            break;
         case LPAREN:
-            left = parser_parse_expression(parser);
+            left = parser_parse_primary_expression(parser);
             break;
         default:
             return NULL;
@@ -650,7 +682,7 @@ static ASTNode* parser_parse_statement(Parser* parser) {
             break;
 
         case LBRACE:
-            res = parser_parse(parser);
+            res = parser_parse_block(parser);
             break;
 
         case END_OF_FILE:
@@ -689,57 +721,59 @@ static ASTNode* parser_parse_statement(Parser* parser) {
 }
 
 static ASTNode* parser_parse_block(Parser* parser) {
-    printf("[PARSER] Starting to parse block\n");
+    DPRINT("[PARSER] Starting to parse block\n");
     
     Token* lbrace = parser_consume(parser, LBRACE, "Expected '{' to start block");
     if (!lbrace) {
-        printf("[PARSER] ERROR: Missing opening bracket for block\n");
+        DPRINT("[PARSER] ERROR: Missing opening bracket for block\n");
         return NULL;
     }
     
     SourceLocation loc = (SourceLocation){lbrace->line, lbrace->column};
-    printf("[PARSER] Block starts at line %d, column %d\n", loc.line, loc.column);
+    DPRINT("[PARSER] Block starts at line %d, column %d\n", loc.line, loc.column);
     
     ASTNode* block = ast_new_block_statement(loc, NULL, 0);
     if (!block) {
-        printf("[PARSER] ERROR: Failed to create block statement\n");
+        DPRINT("[PARSER] ERROR: Failed to create block statement\n");
         return NULL;
     }
 
     while (!parser_is_at_end(parser) && parser_peek(parser) != NULL && parser_peek(parser)->type != RBRACE) {
         Token* current = parser_peek(parser);
-        printf("[PARSER] Parsing statement in block: type=%s, value='%s'\n", 
+        DPRINT("[PARSER] Parsing statement in block: type=%s, value='%s'\n", 
                token_type_to_string(current->type), current->value);
         
         ASTNode* stmt = parser_parse_statement(parser);
         if (!stmt) {
-            printf("[PARSER] ERROR: Failed to parse statement in block\n");
+            DPRINT("[PARSER] ERROR: Failed to parse statement in block\n");
+            Token* cur = parser_peek(parser);
+            if (cur) DPRINT("[PARSER] Current token at fail: type=%s value='%s'\n", token_type_to_string(cur->type), cur->value);
             ast_free(block);
             return NULL;
         }
         
         add_statement_to_block(block, stmt);
-        printf("[PARSER] Successfully added statement to block\n");
+        DPRINT("[PARSER] Successfully added statement to block\n");
     }
 
     if (!parser_consume(parser, RBRACE, "Expected '}' after block")) {
-        printf("[PARSER] ERROR: Missing closing bracket for block\n");
+        DPRINT("[PARSER] ERROR: Missing closing bracket for block\n");
         ast_free(block);
         return NULL;
     }
     
-    printf("[PARSER] Successfully parsed block\n");
+    DPRINT("[PARSER] Successfully parsed block\n");
     //printf(token_type_to_string(parser->tokens[parser->current].type));
     return block;
 }
 
 ASTNode* parser_parse(Parser* parser) {
     // Main function for starting parsing, use it with initialized parser to get ast_tree
-    printf("[PARSER] Starting parsing\n");
+    DPRINT("[PARSER] Starting parsing\n");
     
     ASTNode* block_statements = ast_new_block_statement((SourceLocation){.line=0, .column=0}, NULL, 0);
     if (!block_statements) {
-        printf("[PARSER] ERROR: Failed to create block statement\n");
+        DPRINT("[PARSER] ERROR: Failed to create block statement\n");
         return NULL;
     }
 
@@ -747,28 +781,28 @@ ASTNode* parser_parse(Parser* parser) {
         Token* current = parser_peek(parser);
         
         if (current->type == END_OF_FILE) {
-            printf("[PARSER] Reached end of file\n");
+            DPRINT("[PARSER] Reached end of file\n");
             break;
         }
         
-        printf("[PARSER] Parsing statement, current token: type=%d, value='%s'\n", 
+        DPRINT("[PARSER] Parsing statement, current token: type=%d, value='%s'\n", 
                current->type, current->value);
         
         ASTNode* stmt = parser_parse_statement(parser);
         if (!stmt) {
             Token* error_token = parser_peek(parser);
-            printf("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n", 
+            DPRINT("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n", 
                    token_type_to_string(error_token->type), error_token->value);
             ast_free(block_statements);
             return NULL;
         }
         
-        printf("[PARSER] Successfully parsed statement, adding to block\n");
+        DPRINT("[PARSER] Successfully parsed statement, adding to block\n");
         add_statement_to_block(block_statements, stmt);
         
         ast_free(stmt);
     }
     
-    printf("[PARSER] Finished parsing, returning block with statements\n");
+    DPRINT("[PARSER] Finished parsing, returning block with statements\n");
     return block_statements;
 }

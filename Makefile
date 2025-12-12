@@ -57,8 +57,21 @@ test_vm: $(TEST_DIR)/runtime/test_vm.c $(BYTECODE_SRC) $(VALUE_SRC) $(BYTECODE_S
 
 .PHONY: test_vm
 
+runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) src/runtime/vm/object.c src/runtime/vm/heap.c src/runtime/vm/vm.c src/runtime/gc/gc.c src/runtime/jit/jit.c src/lexer/lexer.c src/parser/parser.c
+	@mkdir -p bin
+	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) src/debug.c $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) src/runtime/vm/object.c src/runtime/vm/heap.c src/runtime/vm/vm.c src/runtime/gc/gc.c src/runtime/jit/jit.c src/lexer/lexer.c src/parser/parser.c -o bin/rename
+
+.PHONY: runner
+
+run_benchmark: runner
+	@echo "[Make] Running benchmark: benchmarks/first_program.lang"
+	./bin/rename benchmarks/first_program.lang
+
+.PHONY: run_benchmark
+
 clean:
 	@echo "[Make] Cleaning ..."
 	rm -f test_ast test_lexer test_parser test_bytecode test_compiler
+	rm -f bin/rename
 
 .PHONY: all test clean
