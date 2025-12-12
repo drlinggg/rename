@@ -52,6 +52,11 @@ test: all
 	./test_compiler || exit 1
 	@echo "[Make] All tests passed!"
 
+test_vm: $(TEST_DIR)/runtime/test_vm.c $(BYTECODE_SRC) $(VALUE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(TOKEN_SRC) src/runtime/vm/object.c src/runtime/vm/heap.c src/runtime/vm/vm.c src/runtime/gc/gc.c src/runtime/jit/jit.c
+	$(CC) $(CFLAGS) $(TEST_DIR)/runtime/test_vm.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) src/runtime/vm/object.c src/runtime/vm/heap.c src/runtime/vm/vm.c src/runtime/gc/gc.c src/runtime/jit/jit.c -o $@
+
+.PHONY: test_vm
+
 clean:
 	@echo "[Make] Cleaning ..."
 	rm -f test_ast test_lexer test_parser test_bytecode test_compiler
