@@ -150,6 +150,7 @@ Reserved words that cannot be used as variable names:
 - Multiplication: `*`
 - Division: `/`
 - Remainder: `%`
+- -
 
 ### Logical operations
 - AND: `and`
