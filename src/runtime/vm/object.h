@@ -12,6 +12,7 @@ typedef enum {
     OBJ_CODE,
     OBJ_FUNCTION,
     OBJ_ARRAY,
+    OBJ_STRING,
 } ObjectType;
 
 typedef struct Object Object;
@@ -28,6 +29,10 @@ struct Object {
             size_t count;
             size_t capacity;
         } array;
+        struct {
+            char* data;
+            size_t len;
+        } string;
     } as;
 };
 
@@ -43,4 +48,5 @@ void object_decref(Object* o);
 
 // Helpers
 bool object_is_truthy(Object* o);
+char* object_to_string(Object* o);
 
