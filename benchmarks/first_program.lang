@@ -2,6 +2,10 @@ int main() {
     int x = 5;
     int y = x + 3;
     int z = x * y / 3 + (2+4);
-    z = x;
-    return y;
+    int a = fake_main();
+    return 2 + 2 * 2 * z + a;
+}
+
+int fake_main() {
+    return 3;
 }

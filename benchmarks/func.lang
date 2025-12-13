@@ -1,0 +1,8 @@
+int fake_main() {
+    return 3;
+}
+
+int main() {
+    return fake_main();
+}
+

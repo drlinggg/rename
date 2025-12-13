@@ -202,20 +202,21 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
             }
             function_arguments = new_args;
         }
-
         ASTNode* argument = parser_parse_expression(parser);
         if (!argument) {
-            DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to parse argument %zu\n", argument_count);
-            for (size_t i = 0; i < argument_count; i++) {
-                ast_free(function_arguments[i]);
+            DPRINT("[PARSER] [FUNCTION CALL] Failed to parse argument %zu\n", argument_count);
+
+            if (parser_peek(parser)->type != RPAREN) {
+                for (size_t i = 0; i < argument_count; i++) {
+                    ast_free(function_arguments[i]);
+                }
+                free(function_arguments);
+                ast_free(function_identifier);
+                return NULL;
             }
-            free(function_arguments);
-            ast_free(function_identifier);
-            return NULL;
         }
         
-        function_arguments[argument_count++] = argument;
-        
+      
         Token* next_after_arg = parser_peek(parser);
         
         if (next_after_arg->type != COMMA) {
@@ -233,7 +234,11 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
             
             DPRINT("[PARSER] [FUNCTION CALL] Found closing parenthesis, function call has %zu arguments\n", argument_count);
             
-            if (argument_count < capacity) {
+            if (argument_count == 0) {
+                free(function_arguments);
+                function_arguments = NULL; 
+
+            } else if (argument_count < capacity) {
                 ASTNode** trimmed_args = realloc(function_arguments, argument_count * sizeof(ASTNode*));
                 if (trimmed_args) {
                     function_arguments = trimmed_args;
@@ -251,16 +256,17 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
                 ast_free(function_identifier);
                 return NULL;
             }
-            
-            ast_free(function_identifier);
-            for (size_t i = 0; i < argument_count; i++) {
-                ast_free(function_arguments[i]);
-            }
-            free(function_arguments);
-            
+
+            //ast_free(function_identifier);
+            //for (size_t i = 0; i < argument_count; i++) {
+            //    ast_free(function_arguments[i]);
+            //}
+            //free(function_arguments);
             DPRINT("[PARSER] Successfully created function call expression\n");
+            ast_print(function_call_expr, 0);
             return function_call_expr;
         } else {
+            function_arguments[argument_count++] = argument;
             DPRINT("[PARSER] Found comma, continuing to next argument\n");
             parser_advance(parser);
         }

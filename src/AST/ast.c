@@ -768,7 +768,6 @@ ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** 
         casted_node->arguments = NULL;
         casted_node->argument_count = 0;
     }
-    
     return node;
 }
 
@@ -778,12 +777,12 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
             return TYPE_INT;
         case KW_BOOL:
             return TYPE_BOOL;
-        case KW_LONG:
-            return TYPE_LONG;
+        //case KW_LONG:
+        //    return TYPE_LONG;
         case KW_ARRAY:
             return TYPE_ARRAY;
-        case KW_STRUCT:
-            return TYPE_STRUCT;
+        //case KW_STRUCT:
+        //    return TYPE_STRUCT;
         default:
             return TYPE_INT; //TODO FIX HERE
     }
@@ -1277,7 +1276,8 @@ void ast_print(ASTNode* node, int indent) {
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
             DPRINT("Function Call:\n");
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
-            DPRINT("%s\n",casted_node->callee);
+            VariableExpression* casted_callee = (VariableExpression* ) casted_node->callee;
+            DPRINT("%s\n",casted_callee->name);
             
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
             DPRINT("Arguments (%d):\n", casted_node->argument_count);
