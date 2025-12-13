@@ -278,7 +278,21 @@ static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode*
         return create_bytecode_array(NULL, 0);
     }
     ReturnStatement* return_stmt = (ReturnStatement*) node;
-    return compiler_compile_expression(comp, return_stmt->expression);
+    bytecode_array expr_bc = compiler_compile_statement(comp, return_stmt->expression);
+
+    bytecode return_bc = bytecode_create(RETURN_VALUE, 0, 0, 0);
+    bytecode* return_arr = malloc(sizeof(bytecode));
+    return_arr[0] = return_bc;
+    bytecode_array return_array = create_bytecode_array(return_arr, 1);
+    
+    // Объединяем: сначала вычисляем выражение, затем возвращаем
+    bytecode_array result = concat_bytecode_arrays(expr_bc, return_array);
+    
+    // Очищаем временные массивы
+    free_bytecode_array(expr_bc);
+    free_bytecode_array(return_array);
+    
+    return result;
 }
 
 static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* node) {
@@ -575,7 +589,7 @@ static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node)
         case NODE_FUNCTION_CALL_EXPRESSION:
             return compiler_compile_function_call_expression(comp, node);
         default:
-            fprintf(stderr, "Unknown expression node type: %d\n", node->node_type);
+            fprintf(stderr, "Unknown expression node type: %s\n", ast_node_type_to_string(node->node_type));
             return create_bytecode_array(NULL, 0);
     }
 }
@@ -645,7 +659,7 @@ static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statem
         case NODE_ASSIGNMENT_STATEMENT:
             return compiler_compile_assignment_statement(comp, statement);
         default:
-            fprintf(stderr, "Unknown statement node type: %d\n", statement->node_type);
+            fprintf(stderr, "Unknown statement node type: %s\n", ast_node_type_to_string(statement->node_type));
             return create_bytecode_array(NULL, 0);
     }
 }

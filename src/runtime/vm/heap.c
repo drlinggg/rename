@@ -79,6 +79,10 @@ Object* heap_from_value(Heap* heap, Value val) {
             return heap_alloc_int(heap, val.int_val);
         case VAL_BOOL:
             return heap_alloc_bool(heap, val.bool_val);
+        case VAL_CODE:
+            return heap_alloc_code(heap, val.code_val);
+        case VAL_FUNCTION:
+            return heap_alloc_function(heap, val.code_val);
         case VAL_NONE:
         default:
             return heap_alloc_none(heap);
