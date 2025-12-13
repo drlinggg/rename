@@ -326,6 +326,9 @@ Object* frame_execute(Frame* frame) {
                 }
                 return val;
             }
+            case NOP: {
+                break;
+            }
             default:
                 // For unsupported operations, print and continue
                 DPRINT("VM: Unsupported op code: 0x%02X\n", bc.op_code);

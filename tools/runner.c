@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     lexer_destroy(l);
     DPRINT("[RUNNER] Parsing completed\n");
     DPRINT("[RUNNER]\n");
-    ast_print(ast, 4);
+    ast_print(ast, 0);
 
     if (!ast) {
         fprintf(stderr, "Parsing failed\n");
