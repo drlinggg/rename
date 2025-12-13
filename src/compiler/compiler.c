@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include "../debug.h"
 
 // Forward declarations
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node);
@@ -299,7 +300,7 @@ static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* no
 }
 
 static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTNode* node) {
-    printf("DEBUG: compile_assignment_statement started\n");
+    DPRINT("DEBUG: compile_assignment_statement started\n");
     if (node->node_type != NODE_ASSIGNMENT_STATEMENT) {
         return create_bytecode_array(NULL, 0);
     }

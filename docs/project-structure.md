@@ -43,5 +43,4 @@ data: Token* token_array -> parser -> ast_node* tree
 Получает ast-дерево и создает набор инструкций байт-кода
 data: ast_node* tree -> compiler -> bytecode* array | binary_file
 ## runtime
-Здесь содержатся jit, gc и сама виртуальная машина которая будет прогонять байт-код (наверное, в процессе обсуждения)
-
+...

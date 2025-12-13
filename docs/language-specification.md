@@ -3,7 +3,7 @@
 ## Concepts
 
 ## 0. Namespaces and storage
-An object has a storage duration that determines its lifetime. #todo add about GC
+An object has a storage duration that determines its lifetime.
 
 ### Scopes
 #### Variable Scoping
@@ -49,9 +49,6 @@ None main() {
     int result = factorial(5);  // Assuming proper inclusion/linking
 }
 ```
-
-### Import System (if implemented)
-pass
 
 ### Shadowing
 Inner scopes can shadow variables from outer scopes.
@@ -106,7 +103,6 @@ None outer() {
 |------|------|-------|------------------|
 | `bool` | 1 byte | `true`, `false` | `true`, `false` |
 | `int` | 8 bytes | -2⁶³ to 2⁶³-1 | `42`, `-10`, `0` |
-| `long NOT SUPPORTED` | 16 bytes | -2¹²⁷ to 2¹²⁷-1 | `123L`, `-999L` |
 | `None` | 1 byte | 1 | None |
 
 ### Reference Types (Heap-allocated)
@@ -133,7 +129,7 @@ b = 5;            // Error: b not declared
 
 ### Keywords
 Reserved words that cannot be used as variable names:
-- **Types**: `bool`, `int`, `long`, `array`, `NoneType`
+- **Types**: `bool`, `int`, `array`, `NoneType`
 - **Control flow**: `if`, `elif`, `else`, `for`, `while`, `break`, `continue`, `return`
 - **Other**: `true`, `false`
 
@@ -150,7 +146,7 @@ Reserved words that cannot be used as variable names:
 - Multiplication: `*`
 - Division: `/`
 - Remainder: `%`
-- -
+- Substraction: '-'
 
 ### Logical operations
 - AND: `and`
@@ -159,7 +155,6 @@ Reserved words that cannot be used as variable names:
 
 ### Assignment Operations
 - Assignment: `=`
-- Compound assignments: `+=`, `-=`, `*=`, `/=` # dead rn, maybe later
 
 ### Comparison Operations
 - Equality: `==`
@@ -174,13 +169,11 @@ Reserved words that cannot be used as variable names:
 - `{ }` - code blocks  
 - `;` - statement terminator
 - `,` - parameter separation
-- `.` - member access
 
 ## 6. Constants
 - Boolean: `true`, `false`
 - Integer: `42`, `-10`, `0`
 - None: special thing
-- No floating-point or character constants in initial version
 
 Each constant has a type determined by its form and value.
 
@@ -192,14 +185,14 @@ An expression is a sequence of operators and operands that specifies a computati
 
 | Precedence | Operator | Description | Associativity |
 |------------|----------|-------------|---------------|
-| 1 | `()` `[]` `.` | Function call, subscript, member access | Left-to-right |
+| 1 | `()` `[]` | Function call, subscript | Left-to-right |
 | 2 | `*` `/` `%` | Multiplication, division, remainder | Left-to-right |
 | 3 | `+` `-` | Addition, subtraction | Left-to-right |
 | 4 | `<` `<=` `>` `>=` | Relational operators | Left-to-right |
 | 5 | `==` `!=` | Equality operators | Left-to-right |
 | 6 | `and` | Logical AND | Left-to-right |
 | 7 | `or` | Logical OR | Left-to-right |
-| 8 | `=` `+=` `-=` `*=` `/=` | Assignment operators | Right-to-left |
+| 8 | `=` | Assignment operators | Right-to-left |
 
 ### 7.2 Expression Types
 
@@ -266,15 +259,6 @@ max(a, b, c)         // multiple arguments
 - Parentheses can override default precedence
 - Function arguments are evaluated before function call
 
-#### Short-Circuit Evaluation
-```
-// If 'x' is false, 'y' is not evaluated
-bool result = x and y;
-
-// If 'a' is true, 'b' is not evaluated  
-bool value = a or b;
-```
-
 ### 7.5 Side Effects
 
 Expressions may have side effects that change program state:
@@ -282,7 +266,6 @@ Expressions may have side effects that change program state:
 #### Assignment Side Effects
 ```
 x = 5;              // changes value of x
-counter += 1;       // modifies counter
 ```
 
 #### Function Call Side Effects
@@ -372,47 +355,12 @@ int result = add(5, 3);
 int max_value = max(add(2, 3), multiply(4, 5));
 ```
 
-## 9. Structs and Methods
-
-### Struct Declaration
-Structs create new namespaces for their fields and methods.
-
-```
-struct Vector2 {
-    x: double;
-    y: double;
-}
-
-struct Rectangle {
-    position: Vector2;
-    width: double;
-    height: double;
-}
-```
-
-### Struct Instantiation
-```
-None create_geometry(): {
-    Vector2 point = Vector2(x: 10.5, y: 20.3);
-    Rectangle rect = Rectangle(
-        position: point, 
-        width: 100.0, 
-        height: 50.0 
-    );
-}
-```
-
-## 10. Control Structures
+## 9. Control Structures
 
 ### Conditional Statements
 
 ### Loops
 
-## 11. Arrays
+## 10. Arrays
 
 ### Array Declaration and Usage
-
-
-#todo
-1)Именованные аргументы при вызове функций по желанию
-2)Встроенный менеджер пакетов и система сборки
