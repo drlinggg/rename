@@ -11,7 +11,7 @@ typedef enum {
     VAL_BOOL,
     VAL_NONE,
     VAL_CODE,
-//    VAL_FUNCTION,
+    VAL_FUNCTION,
 } ValueType;
 
 // Forward declaration

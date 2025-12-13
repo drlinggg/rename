@@ -65,6 +65,8 @@ int main(int argc, char** argv) {
     parser_destroy(parser);
     lexer_destroy(l);
     DPRINT("[RUNNER] Parsing completed\n");
+    DPRINT("[RUNNER]\n");
+    ast_print(ast, 4);
 
     if (!ast) {
         fprintf(stderr, "Parsing failed\n");
@@ -85,9 +87,15 @@ int main(int argc, char** argv) {
     }
     DPRINT("[RUNNER] Compilation completed: bytecodes=%u constants=%zu\n", result->code_array.count, result->constants_count);
 
+    DPRINT("[RUNNER] Constants:\n");
+    for (size_t i = 0; i < result->constants_count; i++) {
+        DPRINT(" [%zu] type=%d\n", i, result->constants[i].type);
+    }
+
     // Optional: dump bytecode
     DPRINT("[RUNNER] Dumping module bytecode:\n");
     bytecode_array_print(&result->code_array);
+
 
     // Free token memory (values) - lexer_parse_file allocated strings
     for (size_t i = 0; i < token_count; i++) {
@@ -138,8 +146,18 @@ int main(int argc, char** argv) {
         compiler_destroy(comp);
         return 1;
     }
-    DPRINT("[RUNNER] main global type: %d\n", main_obj->type);
 
+    DPRINT("main_obj address: %p\n", (void*)main_obj);
+    DPRINT("main_obj type: %d\n", main_obj->type);
+    DPRINT("main_obj ref_count: %u\n", main_obj->ref_count);
+    
+    if (main_obj->type == OBJ_FUNCTION) {
+        DPRINT("main_obj is a function\n");
+    } else if (main_obj->type == OBJ_CODE) {
+        DPRINT("main_obj is a code object\n");
+    } else if (main_obj->type == OBJ_NONE) {
+        DPRINT("main_obj is None\n");
+    }
     // Build call-main code: LOAD_GLOBAL main_index, PUSH_NULL, CALL_FUNCTION 0, RETURN_VALUE
     bytecode* codes = malloc(4 * sizeof(bytecode));
     codes[0] = bytecode_create_with_number(LOAD_GLOBAL, (uint32_t)(main_index << 1)); // << 1 because VM decodes >> 1
@@ -158,10 +176,10 @@ int main(int argc, char** argv) {
     Object* ret = vm_execute(vm, &call_main);
     char* s = object_to_string(ret);
     if (s) {
-        printf("Proccess finished with status: %s\n", s);
+        printf("Proccess finished with return: %s\n", s);
         free(s);
     } else {
-        printf("Proccess finished with status: 0\n");
+        printf("Proccess finished with return: 0\n");
     }
 
     // Cleanup
