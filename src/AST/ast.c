@@ -1047,7 +1047,7 @@ const char* token_type_to_string(int token_type) {
         
         // 3. Literals
         case INT_LITERAL: return "INT_LITERAL";
-        case BOOL_LITERAL: return "BOOL_LITERAL";
+        //case BOOL_LITERAL: return "BOOL_LITERAL";
         case LONG_LITERAL: return "LONG_LITERAL";
 
         // 4. Operators

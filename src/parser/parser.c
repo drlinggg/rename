@@ -309,11 +309,11 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
 
     ASTNode* node = ast_new_variable_declaration_statement(loc, token_type_to_type_var(token->type), identifier->value, initializer);
     
-    if (initializer) {
-        ast_free(initializer);
-    }
+    //if (initializer) {
+    //    ast_free(initializer);
+    //}
     DPRINT("[PARSER] parse_variable_declaration finished for name=%s\n", identifier->value);
-    
+    ast_print(initializer, 0);
     return node;
 }
 
@@ -501,7 +501,8 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
             parser_advance(parser);
             return node;
         }
-        case BOOL_LITERAL: {
+        case KW_TRUE:
+        case KW_FALSE: {
             int value = (strcmp(current->value, "true") == 0) ? 1 : 0;
             DPRINT("[PARSER] Found BOOL_LITERAL: value='%s' -> %d\n", current->value, value);
             ASTNode* node = ast_new_literal_expression(loc, TYPE_BOOL, value);
@@ -559,7 +560,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
             break;
         case IDENTIFIER:
         case INT_LITERAL:
-        case BOOL_LITERAL:
+        case KW_TRUE:
+        case KW_FALSE:
         case LONG_LITERAL:
         case LPAREN:
             left = parser_parse_primary_expression(parser);
@@ -696,7 +698,8 @@ static ASTNode* parser_parse_statement(Parser* parser) {
             break;
 
         case INT_LITERAL:
-        case BOOL_LITERAL:
+        case KW_TRUE:
+        case KW_FALSE:
         case LONG_LITERAL:
         case OP_PLUS:
         case OP_MINUS:
@@ -804,6 +807,7 @@ ASTNode* parser_parse(Parser* parser) {
         }
         
         DPRINT("[PARSER] Successfully parsed statement, adding to block\n");
+        ast_print(stmt,0);
         add_statement_to_block(block_statements, stmt);
         
         ast_free(stmt);

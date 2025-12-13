@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 
     DPRINT("[RUNNER] token_count=%zu\n", token_count);
     for (size_t ti = 0; ti < token_count; ti++) {
-        DPRINT("[RUNNER] token[%zu] type=%d value='%s'\n", ti, tokens[ti].type, tokens[ti].value ? tokens[ti].value : "NULL");
+        DPRINT("[RUNNER] token[%zu] type=%s value='%s'\n", ti, token_type_to_string(tokens[ti].type), tokens[ti].value ? tokens[ti].value : "NULL");
     }
     Parser* parser = parser_create(tokens, token_count);
     if (!parser) {
