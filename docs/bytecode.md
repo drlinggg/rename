@@ -170,6 +170,19 @@ else:
 STACK.append(value)
 
 ### - COMPARE_OP 0x18
+```
+compare_map = {
+    0x00: '==',
+    0x01: '!=',
+    0x02: '<',
+    0x03: '<=',
+    0x04: '>',
+    0x05: '>='
+}
+right = stack.pop()
+left = stack.pop()
+stack.append( compare(left, right, operation) ) # l == r; l <= r; ...
+```
 
 ### - JUMP_FORWARD 0x19
 Increments instruction pointer by `arg` (offset).
