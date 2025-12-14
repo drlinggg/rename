@@ -32,18 +32,30 @@ struct Frame {
     size_t ip;
 };
 
+
 Object* vm_get_none(VM* vm) {
-    return vm ? vm->none_object : NULL;
+    if (!vm->none_object) {
+        vm->none_object = heap_alloc_none(vm->heap);
+        vm->none_object->ref_count = 0x7FFFFFFF;
+    }
+    return vm->none_object;
 }
 
 Object* vm_get_true(VM* vm) {
-    return vm ? vm->true_object : NULL;
+    if (!vm->true_object) {
+        vm->true_object = heap_alloc_bool(vm->heap, true);
+        vm->true_object->ref_count = 0x7FFFFFFF;
+    }
+    return vm->true_object;
 }
 
 Object* vm_get_false(VM* vm) {
-    return vm ? vm->false_object : NULL;
+    if (!vm->false_object) {
+        vm->false_object = heap_alloc_bool(vm->heap, false);
+        vm->false_object->ref_count = 0x7FFFFFFF;
+    }
+    return vm->false_object;
 }
-
 
 static void frame_stack_ensure_capacity(Frame* frame, size_t additional) {
     if (frame->stack_capacity == 0) {
@@ -91,9 +103,7 @@ VM* vm_create(Heap* heap, size_t global_count) {
     vm->true_object = heap_alloc_bool(heap, true);
     vm->false_object = heap_alloc_bool(heap, false);
     
-    // Устанавливаем большой счетчик ссылок для синглтонов
     if (vm->gc) {
-        // Устанавливаем счетчик в максимальное значение для 32-битного int
         vm->none_object->ref_count = 0x7FFFFFFF;
         vm->true_object->ref_count = 0x7FFFFFFF;
         vm->false_object->ref_count = 0x7FFFFFFF;
@@ -199,6 +209,7 @@ Object* frame_execute(Frame* frame) {
                     frame_stack_push(frame, vm_get_none(frame->vm));
                     break;
                 }
+    
                 Value c = code->constants[arg];
                 Object* o = NULL;
     
@@ -209,6 +220,7 @@ Object* frame_execute(Frame* frame) {
                 } else {
                     o = heap_from_value(frame->vm->heap, c);
                 }
+    
                 frame_stack_push(frame, o);
                 break;
             }
