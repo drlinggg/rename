@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#include "../../src/runtime/vm/vm.h"
 #include <string.h>
+#include "../../src/debug.h"
+#include "../../src/runtime/vm/vm.h"
 #include "../../src/compiler/bytecode.h"
 #include "../../src/compiler/value.h"
 
 int main() {
+    debug_enabled = 1;
     // Build constants
     Value* consts = malloc(2 * sizeof(Value));
     consts[0] = value_create_int(2);

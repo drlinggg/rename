@@ -1,6 +1,7 @@
 #include "../../src/parser/parser.h"
 #include "../../src/lexer/token.h"
 #include "../../src/AST/ast.h"
+#include "../../src/debug.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -478,6 +479,7 @@ bool test_add_statement_to_block() {
 
 // gcc tests/ast/test_ast.c src/lexer/token.h src/AST/ast.c src/parser/parser.c
 int main() {
+    debug_enabled = 1;
     //test_memory_leak();
     //test_print_ast();
     ASTNode* test1 = test_ast_new_binary_expression();

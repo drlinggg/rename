@@ -1,4 +1,5 @@
 #include "../../src/compiler/bytecode.h"
+#include "../../src/debug.h"
 #include <stdio.h>
 #include <assert.h>
 
@@ -58,6 +59,7 @@ void test_all_opcodes() {
 
 // gcc tests/bytecode/test_bytecode.c src/compiler/bytecode.c
 int main() {
+    debug_enabled = 1;
     test_bytecode_size();
     test_bytecode_create();
     test_bytecode_create_from_array();

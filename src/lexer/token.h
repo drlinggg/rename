@@ -22,7 +22,9 @@ typedef enum TokenType {
     IDENTIFIER,
     
     // 3. Literals
-    INT_LITERAL, BOOL_LITERAL, LONG_LITERAL,
+    INT_LITERAL, 
+    //BOOL_LITERAL, 
+    LONG_LITERAL,
     
     // 4. Operators
 

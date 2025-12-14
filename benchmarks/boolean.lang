@@ -1,0 +1,4 @@
+bool main() {
+    bool var = true;
+    return var;
+}
