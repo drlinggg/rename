@@ -23,7 +23,7 @@ CodeObj* jit_compile_function(JIT* jit, CodeObj* code) {
     // int a = 1 + 2 + 3;
     // Bytecode array (6 instructions):
     //   0: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
-    //  1: [ LOAD_CONST                0x02 | arg: 0x000001 (1) | const_index: 1 ]
+    //   1: [ LOAD_CONST                0x02 | arg: 0x000001 (1) | const_index: 1 ]
     //   2: [ BINARY_OP                 0x08 | arg: 0x000000 (0) | ADD ]
     //   3: [ LOAD_CONST                0x02 | arg: 0x000002 (2) | const_index: 2 ]
     //   4: [ BINARY_OP                 0x08 | arg: 0x000000 (0) | ADD ]    
