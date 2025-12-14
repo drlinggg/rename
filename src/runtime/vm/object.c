@@ -37,7 +37,9 @@ Object* object_new_function(CodeObj* code) {
     Object* o = malloc(sizeof(Object));
     o->type = OBJ_FUNCTION;
     o->ref_count = 1;
-    o->as.codeptr = code;
+    o->as.function.executed_times = 0;
+    o->as.function.codeptr = code;
+    o->as.function.jit_codeptr = NULL;
     return o;
 }
 
