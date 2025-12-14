@@ -1,6 +1,3 @@
-int main() {
     bool var = true;
-    bool var1 = true;
+    bool var1 = false;
     bool var2 = true;
-    return var;
-}
