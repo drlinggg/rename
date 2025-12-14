@@ -1,10 +1,12 @@
 int factorial(int n) {
-    if (n <= 1) return 1;
+    if (n <= 1) {
+        return 1;
+    }
     return n * factorial(n - 1);
 }
 
 int main(){
-    int n = input();
+    int n = 10;
     int result = factorial(n);
-    print(result);
+    return result;
 }
