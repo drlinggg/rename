@@ -29,3 +29,7 @@ Object* frame_execute(Frame* frame);
 GC* vm_get_gc(VM* vm);
 JIT* vm_get_jit(VM* vm);
 
+Object* vm_get_none(VM* vm);
+Object* vm_get_true(VM* vm);
+Object* vm_get_false(VM* vm);
+

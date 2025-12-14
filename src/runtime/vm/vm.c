@@ -12,6 +12,10 @@ struct VM {
 
     Object** globals;
     size_t globals_count;
+
+    Object* none_object;
+    Object* true_object;
+    Object* false_object;
 };
 
 struct Frame {
@@ -27,6 +31,19 @@ struct Frame {
 
     size_t ip;
 };
+
+Object* vm_get_none(VM* vm) {
+    return vm ? vm->none_object : NULL;
+}
+
+Object* vm_get_true(VM* vm) {
+    return vm ? vm->true_object : NULL;
+}
+
+Object* vm_get_false(VM* vm) {
+    return vm ? vm->false_object : NULL;
+}
+
 
 static void frame_stack_ensure_capacity(Frame* frame, size_t additional) {
     if (frame->stack_capacity == 0) {
@@ -69,11 +86,24 @@ VM* vm_create(Heap* heap, size_t global_count) {
     } else {
         vm->globals = NULL;
     }
+
+    vm->none_object = heap_alloc_none(heap);
+    vm->true_object = heap_alloc_bool(heap, true);
+    vm->false_object = heap_alloc_bool(heap, false);
+    
+    // Устанавливаем большой счетчик ссылок для синглтонов
+    if (vm->gc) {
+        // Устанавливаем счетчик в максимальное значение для 32-битного int
+        vm->none_object->ref_count = 0x7FFFFFFF;
+        vm->true_object->ref_count = 0x7FFFFFFF;
+        vm->false_object->ref_count = 0x7FFFFFFF;
+    }
     return vm;
 }
 
 void vm_destroy(VM* vm) {
     if (!vm) return;
+    
     // no vm-level stack; frames own stacks
     if (vm->globals) {
         for (size_t i = 0; i < vm->globals_count; i++) {
@@ -81,6 +111,13 @@ void vm_destroy(VM* vm) {
         }
         free(vm->globals);
     }
+    
+    if (vm->gc) {
+        vm->none_object->ref_count = 0;
+        vm->true_object->ref_count = 0;
+        vm->false_object->ref_count = 0;
+    }
+    
     if (vm->gc) gc_destroy(vm->gc);
     if (vm->jit) jit_destroy(vm->jit);
     free(vm);
@@ -159,11 +196,19 @@ Object* frame_execute(Frame* frame) {
             case LOAD_CONST: {
                 if (arg >= code->constants_count) {
                     DPRINT("VM: LOAD_CONST index out of range %u\n", arg);
-                    frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                    frame_stack_push(frame, vm_get_none(frame->vm));
                     break;
                 }
                 Value c = code->constants[arg];
-                Object* o = heap_from_value(frame->vm->heap, c);
+                Object* o = NULL;
+    
+                if (c.type == VAL_NONE) {
+                    o = vm_get_none(frame->vm);
+                } else if (c.type == VAL_BOOL) {
+                    o = c.bool_val ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                } else {
+                    o = heap_from_value(frame->vm->heap, c);
+                }
                 frame_stack_push(frame, o);
                 break;
             }
@@ -284,7 +329,8 @@ Object* frame_execute(Frame* frame) {
                 Object* callee_obj = frame_stack_pop(frame);
                 Object* ret = heap_alloc_none(frame->vm->heap);
                 if (callee_obj && callee_obj->type == OBJ_FUNCTION) {
-                    CodeObj* callee_code = callee_obj->as.codeptr;
+
+                    CodeObj* callee_code = callee_obj->as.function.codeptr;
                     // prepare local values
                     // create a new frame by recursively calling vm_execute
                     // but we need to set its locals to args

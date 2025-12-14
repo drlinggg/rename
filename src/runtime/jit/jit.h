@@ -8,5 +8,5 @@ JIT* jit_create(void);
 void jit_destroy(JIT* jit);
 
 // placeholder - compile a CodeObj into optimized representation
-void* jit_compile_function(JIT* jit, CodeObj* code);
+CodeObj* jit_compile_function(JIT* jit, CodeObj* code);
 

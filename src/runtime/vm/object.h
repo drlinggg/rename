@@ -22,13 +22,23 @@ struct Object {
     uint32_t ref_count;
     union {
         int64_t int_value;
+
         bool bool_value;
-        CodeObj* codeptr; // for OBJ_CODE and OBJ_FUNCTION
+
+        CodeObj* codeptr; // for OBJ_CODE
+        
+        struct {
+            int64_t executed_times;
+            CodeObj* codeptr;
+            CodeObj* jit_codeptr;
+        } function;
+
         struct {
             Object** items;
             size_t count;
             size_t capacity;
         } array;
+
         struct {
             char* data;
             size_t len;

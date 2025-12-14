@@ -1,4 +1,6 @@
-bool main() {
+int main() {
     bool var = true;
+    bool var1 = true;
+    bool var2 = true;
     return var;
 }
