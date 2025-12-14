@@ -274,18 +274,245 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
 }
 
 static ASTNode* parser_parse_if_statement(Parser* parser) {
-    // TODO: реализовать
-    return NULL;
+    Token* if_token = parser_consume(parser, KW_IF, "if statement should start with 'if' keyword");
+    if (!if_token) return NULL;
+    
+    SourceLocation loc = (SourceLocation){if_token->line, if_token->column};
+    
+    parser_consume(parser, LPAREN, "Expected '(' after 'if'");
+    
+    ASTNode* condition = parser_parse_expression(parser);
+    if (!condition) {
+        report_error(parser, "Expected condition expression in if statement");
+        return NULL;
+    }
+    
+    parser_consume(parser, RPAREN, "Expected ')' after if condition");
+    
+    ASTNode* then_branch = parser_parse_block(parser);
+    if (!then_branch) {
+        ast_free(condition);
+        return NULL;
+    }
+    
+    ASTNode* if_node = ast_new_if_statement(loc, condition, then_branch);
+    IfStatement* if_stmt = (IfStatement*)if_node;
+    
+    // Parse elif branches
+    while (parser_peek(parser) && parser_peek(parser)->type == KW_ELIF) {
+        Token* elif_token = parser_advance(parser);
+        
+        parser_consume(parser, LPAREN, "Expected '(' after 'elif'");
+        
+        ASTNode* elif_condition = parser_parse_expression(parser);
+        if (!elif_condition) {
+            ast_free(if_node);
+            return NULL;
+        }
+        
+        parser_consume(parser, RPAREN, "Expected ')' after elif condition");
+        
+        ASTNode* elif_branch = parser_parse_block(parser);
+        if (!elif_branch) {
+            ast_free(elif_condition);
+            ast_free(if_node);
+            return NULL;
+        }
+        
+        // Reallocate memory for elif arrays
+        size_t new_elif_count = if_stmt->elif_count + 1;
+        ASTNode** new_elif_conditions = realloc(if_stmt->elif_conditions, 
+                                               new_elif_count * sizeof(ASTNode*));
+        ASTNode** new_elif_branches = realloc(if_stmt->elif_branches,
+                                             new_elif_count * sizeof(ASTNode*));
+        
+        if (!new_elif_conditions || !new_elif_branches) {
+            free(new_elif_conditions);
+            free(new_elif_branches);
+            ast_free(elif_condition);
+            ast_free(elif_branch);
+            ast_free(if_node);
+            return NULL;
+        }
+        
+        if_stmt->elif_conditions = new_elif_conditions;
+        if_stmt->elif_branches = new_elif_branches;
+        
+        if_stmt->elif_conditions[if_stmt->elif_count] = elif_condition;
+        if_stmt->elif_branches[if_stmt->elif_count] = elif_branch;
+        if_stmt->elif_count = new_elif_count;
+    }
+    
+    // Parse else branch if present
+    if (parser_peek(parser) && parser_peek(parser)->type == KW_ELSE) {
+        parser_advance(parser); // Consume 'else'
+        
+        ASTNode* else_branch = parser_parse_block(parser);
+        if (!else_branch) {
+            ast_free(if_node);
+            return NULL;
+        }
+        
+        if_stmt->else_branch = else_branch;
+    }
+    
+    return if_node;
 }
 
 static ASTNode* parser_parse_while_statement(Parser* parser) {
-    // TODO: реализовать
-    return NULL;
+    Token* while_token = parser_consume(parser, KW_WHILE, "while statement should start with 'while' keyword");
+    if (!while_token) return NULL;
+    
+    SourceLocation loc = (SourceLocation){while_token->line, while_token->column};
+    
+    parser_consume(parser, LPAREN, "Expected '(' after 'while'");
+    
+    ASTNode* condition = parser_parse_expression(parser);
+    if (!condition) {
+        report_error(parser, "Expected condition expression in while statement");
+        return NULL;
+    }
+    
+    parser_consume(parser, RPAREN, "Expected ')' after while condition");
+    
+    ASTNode* body = parser_parse_block(parser);
+    if (!body) {
+        ast_free(condition);
+        return NULL;
+    }
+    
+    ASTNode* while_node = ast_new_while_statement(loc, condition, body);
+    
+    return while_node;
 }
 
 static ASTNode* parser_parse_for_statement(Parser* parser) {
-    // TODO: реализовать
-    return NULL;
+    Token* for_token = parser_consume(parser, KW_FOR, "for statement should start with 'for' keyword");
+    if (!for_token) {
+        DPRINT("[PARSER] [FOR LOOP] ERROR: No 'for' keyword found\n");
+        return NULL;
+    }
+    
+    SourceLocation loc = (SourceLocation){for_token->line, for_token->column};
+    DPRINT("[PARSER] [FOR LOOP] Starting for loop at line %d, column %d\n", loc.line, loc.column);
+    
+    parser_consume(parser, LPAREN, "Expected '(' after 'for'");
+    DPRINT("[PARSER] [FOR LOOP] Found opening parenthesis\n");
+    
+    // Parse initializer (optional)
+    ASTNode* initializer = NULL;
+    Token* peek_token = parser_peek(parser);
+    
+    DPRINT("[PARSER] [FOR LOOP] Peek token for initializer: type=%s, value='%s'\n", 
+           token_type_to_string(peek_token ? peek_token->type : -1), 
+           peek_token ? peek_token->value : "NULL");
+    
+    if (peek_token && peek_token->type != SEMICOLON) {
+        // Check if it's a variable declaration or expression
+        if (peek_token->type == KW_INT || peek_token->type == KW_LONG || 
+            peek_token->type == KW_BOOL || peek_token->type == KW_ARRAY) {
+            DPRINT("[PARSER] [FOR LOOP] Parsing variable declaration as initializer\n");
+            initializer = parser_parse_variable_declaration_statement(parser);
+            if (initializer) {
+                DPRINT("[PARSER] [FOR LOOP] Successfully parsed variable declaration initializer\n");
+            } else {
+                DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to parse variable declaration initializer\n");
+            }
+        } else {
+            DPRINT("[PARSER] [FOR LOOP] Parsing expression statement as initializer\n");
+            initializer = parser_parse_expression_statement(parser);
+            if (initializer) {
+                DPRINT("[PARSER] [FOR LOOP] Successfully parsed expression statement initializer\n");
+            } else {
+                DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to parse expression statement initializer\n");
+            }
+        }
+        parser_consume(parser, SEMICOLON, "Expected ';' after initializer");
+    } else {
+        DPRINT("[PARSER] [FOR LOOP] No initializer, consuming semicolon\n");
+        parser_consume(parser, SEMICOLON, "Expected ';' after for initializer (even if empty)");
+    }
+
+    // Parse condition (optional)
+    ASTNode* condition = NULL;
+    peek_token = parser_peek(parser);
+    
+    DPRINT("[PARSER] [FOR LOOP] Peek token for condition: type=%s, value='%s'\n", 
+           token_type_to_string(peek_token ? peek_token->type : -1), 
+           peek_token ? peek_token->value : "NULL");
+    
+    if (peek_token && peek_token->type != SEMICOLON) {
+        DPRINT("[PARSER] [FOR LOOP] Parsing condition expression\n");
+        ASTNode* condition_expr = parser_parse_expression(parser);
+        if (condition_expr) {
+            condition = ast_new_expression_statement(condition_expr->location, condition_expr);
+            DPRINT("[PARSER] [FOR LOOP] Successfully parsed condition\n");
+            ast_free(condition_expr);
+        } else {
+            DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to parse condition expression\n");
+        }
+        parser_consume(parser, SEMICOLON, "Expected ';' after condition");
+    } else {
+        DPRINT("[PARSER] [FOR LOOP] No condition, consuming semicolon\n");
+        parser_consume(parser, SEMICOLON, "Expected ';' after for condition");
+    }
+
+    // Parse increment (optional)
+    ASTNode* increment = NULL;
+    peek_token = parser_peek(parser);
+    
+    DPRINT("[PARSER] [FOR LOOP] Peek token for increment: type=%s, value='%s'\n", 
+           token_type_to_string(peek_token ? peek_token->type : -1), 
+           peek_token ? peek_token->value : "NULL");
+    
+    if (peek_token && peek_token->type != RPAREN) {
+        DPRINT("[PARSER] [FOR LOOP] Parsing increment\n");
+        increment = parser_parse_assignment_statement(parser);
+        if (increment) {
+            DPRINT("[PARSER] [FOR LOOP] Successfully parsed increment\n");
+        } else {
+            DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to parse increment\n");
+        }
+    } else {
+        DPRINT("[PARSER] [FOR LOOP] No increment expression\n");
+    }
+    
+    parser_consume(parser, RPAREN, "Expected ')' after for clause");
+    DPRINT("[PARSER] [FOR LOOP] Found closing parenthesis\n");
+    Token* cur_token = parser_peek(parser);
+    
+    // Parse body
+    DPRINT("[PARSER] [FOR LOOP] Parsing body block\n");
+    ASTNode* body = parser_parse_block(parser);
+    if (!body) {
+        DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to parse body block\n");
+        if (initializer) ast_free(initializer);
+        if (condition) ast_free(condition);
+        if (increment) ast_free(increment);
+        return NULL;
+    }
+   
+    DPRINT("[PARSER] [FOR LOOP] Successfully parsed body block\n");
+    
+    DPRINT("[PARSER] [FOR LOOP] Creating for statement node:\n");
+    DPRINT("[PARSER] [FOR LOOP]   - Initializer: %s\n", initializer ? ast_node_type_to_string(initializer->node_type) : "NULL");
+    ast_print(initializer, 0);
+    DPRINT("[PARSER] [FOR LOOP]   - Condition: %s\n", condition ? ast_node_type_to_string(condition->node_type) : "NULL");
+    ast_print(condition, 0);
+    DPRINT("[PARSER] [FOR LOOP]   - Increment: %s\n", increment ? ast_node_type_to_string(increment->node_type) : "NULL");
+    ast_print(increment, 0);
+    DPRINT("[PARSER] [FOR LOOP]   - Body: %s\n", body ? ast_node_type_to_string(body->node_type) : "NULL");
+    ast_print(body, 0);
+    
+    ASTNode* for_node = ast_new_for_statement(loc, initializer, condition, increment, body);
+    
+    if (for_node) {
+        DPRINT("[PARSER] [FOR LOOP] Successfully created for statement node\n");
+    } else {
+        DPRINT("[PARSER] [FOR LOOP] ERROR: Failed to create for statement node\n");
+    }
+    
+    return for_node;
 }
 
 static ASTNode* parser_parse_return_statement(Parser* parser) {

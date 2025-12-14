@@ -147,7 +147,7 @@ typedef struct {
     ASTNode base;
     ASTNode* initializer;  // VariableDeclarationStatement or NULL
     ASTNode* condition;    // ExpressionStatement or NULL
-    ASTNode* increment;    // ExpressionStatement or NULL
+    ASTNode* increment;    // assignment_statement or NULL
     ASTNode* body;         // BlockStatement
 } ForStatement;
 

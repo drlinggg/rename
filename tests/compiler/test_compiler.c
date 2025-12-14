@@ -1,6 +1,7 @@
 #include "../../src/compiler/compiler.h"
 #include "../../src/AST/ast.h"
 #include "../../src/lexer/token.h"
+#include "../../src/debug.h"
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -1312,6 +1313,7 @@ void test_simple_assignment() {
 
 // gcc tests/compiler/test_compiler.c src/compiler/compiler.c src/compiler/value.c src/compiler/scope.c src/compiler/string_table.c src/compiler/bytecode.c src/AST/ast.c src/lexer/token.c
 int main() {
+    debug_enabled = 1;
     printf("Starting Compiler Tests...\n\n");
     test_compiler_creation_and_destruction();
     test_compile_literal_expression();

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include "../../src/debug.h"
+
 
 FILE* create_temp_file(const char* content) {
     FILE* temp = tmpfile();
@@ -236,6 +238,7 @@ void test_function() {
 
 // gcc tests/lexer/test_lexer.c src/lexer/lexer.c src/lexer/token.c
 int main() {
+    debug_enabled = 1;
     printf("Starting lexer tests...\n\n");
     
     test_keywords();
