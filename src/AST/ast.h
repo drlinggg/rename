@@ -108,7 +108,7 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    ASTNode* expression; // ExpressionStatement
+    ASTNode* expression; // Expression!!!!!!!!!!!!!!!!!!
 } ReturnStatement;
 
 typedef struct {

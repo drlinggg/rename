@@ -1,8 +1,9 @@
 #include "vm.h"
 #include "../../runtime/gc/gc.h"
 #include "../../runtime/jit/jit.h"
-#include <stdio.h>
 #include "../../debug.h"
+#include "../../builtins/builtins.h"
+#include <stdio.h>
 #include <string.h>
 
 struct VM {
@@ -32,6 +33,28 @@ struct Frame {
     size_t ip;
 };
 
+
+void vm_register_builtins(VM* vm) {
+    Object* print_func = heap_alloc_native_function(vm->heap, 
+        (NativeCFunc)builtin_print, "print");
+    Object* input_func = heap_alloc_native_function(vm->heap, 
+        (NativeCFunc)builtin_input, "input");
+    
+    print_func->ref_count = 0x7FFFFFFF;
+    input_func->ref_count = 0x7FFFFFFF;
+    
+    size_t print_idx = 0;
+    size_t input_idx = 1;
+    
+    vm_set_global(vm, print_idx, print_func);
+    vm_set_global(vm, input_idx, input_func);
+    DPRINT("[VM] Builtins registered: print at %p, input at %p\n", 
+           (void*)print_func, (void*)input_func);
+}
+
+Heap* vm_get_heap(VM* vm) {
+    return vm ? vm->heap : NULL;
+}
 
 Object* vm_get_none(VM* vm) {
     if (!vm->none_object) {
@@ -71,7 +94,9 @@ static void frame_stack_ensure_capacity(Frame* frame, size_t additional) {
 
 static void frame_stack_push(Frame* frame, Object* o) {
     frame_stack_ensure_capacity(frame, 1);
-    if (o && frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, o);
+    if (o && frame->vm && frame->vm->gc) {
+        gc_incref(frame->vm->gc, o);
+    }
     frame->stack[frame->stack_size++] = o;
 }
 
@@ -131,6 +156,16 @@ void vm_destroy(VM* vm) {
     if (vm->gc) gc_destroy(vm->gc);
     if (vm->jit) jit_destroy(vm->jit);
     free(vm);
+}
+
+static void vm_print_object(VM* vm, Object* obj) {
+    if (!vm || !obj) return;
+    
+    char* str = object_to_string(obj);
+    if (str) {
+        printf("%s", str);
+        free(str);
+    }
 }
 
 void vm_set_global(VM* vm, size_t idx, Object* value) {
@@ -242,6 +277,16 @@ Object* frame_execute(Frame* frame) {
                     break;
                 }
                 Object* v = frame_stack_pop(frame);
+                DPRINT("[VM] STORE_FAST index %u: storing %p", arg, (void*)v);
+                if (v) {
+                    DPRINT(" (type: %d", v->type);
+                    if (v->type == OBJ_INT) {
+                        DPRINT(", value: %lld", (long long)v->as.int_value);
+                    }
+                    DPRINT(")");
+                }
+                DPRINT("\n");
+                
                 if (frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, v);
                 if (frame->locals[arg] && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, frame->locals[arg]);
                 frame->locals[arg] = v;
@@ -328,51 +373,116 @@ Object* frame_execute(Frame* frame) {
             }
             case CALL_FUNCTION: {
                 uint32_t argc = arg;
-                // pop args into array; last arg popped goes into args[argc-1]
+                DPRINT("[VM] CALL_FUNCTION with %u arguments\n", argc);
+                
+                // 1. Собираем аргументы из стека
                 Object** args = NULL;
-                if (argc > 0) args = malloc(argc * sizeof(Object*));
-                for (int i = (int)argc - 1; i >= 0; i--) {
-                    args[i] = frame_stack_pop(frame);
+                if (argc > 0) {
+                    args = malloc(argc * sizeof(Object*));
+                    if (!args) {
+                        DPRINT("[VM] ERROR: Failed to allocate args array\n");
+                        break;
+                    }
+                    for (int i = (int)argc - 1; i >= 0; i--) {
+                        args[i] = frame_stack_pop(frame);
+                        DPRINT("[VM] Popped arg[%d]: %p\n", i, (void*)args[i]);
+                    }
                 }
-                // pop null
+                
+                // 2. Убираем NULL (если есть)
                 Object* maybe_null = frame_stack_pop(frame);
-                if (maybe_null && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, maybe_null);
-                // pop callee
-                Object* callee_obj = frame_stack_pop(frame);
-                Object* ret = heap_alloc_none(frame->vm->heap);
-                if (callee_obj && callee_obj->type == OBJ_FUNCTION) {
-
-                    CodeObj* callee_code = callee_obj->as.function.codeptr;
-                    // prepare local values
-                    // create a new frame by recursively calling vm_execute
-                    // but we need to set its locals to args
-                    // We'll simulate by creating a copy of callee_code where locals[0..argc-1] are set to args
-
-                    // Create a temporary frame locals allocation
-                    // no-op
-
-                    // when executing nested function, vm_execute will create its own locals
-                    // but we want to pass arguments as initial locals -> approach: push args on vm->stack, but vm_execute reads only constants and locals; we need to set the locals array
-                    // For simplicity, we will create a small helper that can execute CodeObj with args assigned into locals
-
-                    // We implement a local helper: run_function
-                    // Release this call's reference to callee_obj
-                    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, callee_obj);
-
-                    // Run nested function
-                    // push args into new locals by creating new local array inside vm_execute
-
-                    // We'll call a new helper _vm_execute_with_args
-                    ret = _vm_execute_with_args(frame->vm, callee_code, args, argc);
-                } else {
-                    if (callee_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, callee_obj);
-                    DPRINT("VM: CALL_FUNCTION callee not a function\n");
+                if (maybe_null && frame->vm && frame->vm->gc) {
+                    gc_decref(frame->vm->gc, maybe_null);
                 }
-                // cleanup args array
-                for (uint32_t i = 0; i < argc; i++) if (args && args[i] && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, args[i]);
-                free(args);
+                
+                // 3. Получаем функцию для вызова
+                Object* callee_obj = frame_stack_pop(frame);
+                if (!callee_obj) {
+                    DPRINT("[VM] ERROR: Callee is NULL\n");
+                    if (args) {
+                        for (uint32_t i = 0; i < argc; i++) {
+                            if (args[i] && frame->vm && frame->vm->gc) {
+                                gc_decref(frame->vm->gc, args[i]);
+                            }
+                        }
+                        free(args);
+                    }
+                    // Пушим None в качестве результата
+                    frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                    break;
+                }
+                
+                DPRINT("[VM] Callee: %p, type: %d", (void*)callee_obj, callee_obj->type);
+                if (callee_obj->type == OBJ_NATIVE_FUNCTION && callee_obj->as.native_function.name) {
+                    DPRINT(" (native '%s')", callee_obj->as.native_function.name);
+                } else if (callee_obj->type == OBJ_FUNCTION && callee_obj->as.function.codeptr && 
+                           callee_obj->as.function.codeptr->name) {
+                    DPRINT(" (function '%s')", callee_obj->as.function.codeptr->name);
+                }
+                DPRINT("\n");
+                
+                // 4. Вызываем функцию
+                Object* ret = NULL;
+                
+                if (callee_obj->type == OBJ_FUNCTION) {
+                    CodeObj* callee_code = callee_obj->as.function.codeptr;
+                    // Уменьшаем счетчик на callee_obj (он больше не нужен)
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, callee_obj);
+                    }
+                    
+                    // Выполняем функцию с аргументами
+                    ret = _vm_execute_with_args(frame->vm, callee_code, args, argc);
+                    
+                    // ret уже имеет правильный счетчик ссылок от _vm_execute_with_args
+                    
+                } else if (callee_obj->type == OBJ_NATIVE_FUNCTION) {
+                    // Вызываем нативную функцию
+                    NativeCFunc native_func = callee_obj->as.native_function.c_func;
+                    ret = native_func(frame->vm, argc, args);
+                    
+                    // Увеличиваем счетчик для возвращаемого значения
+                    // (нативная функция создает объект через heap_alloc_*, который имеет ref_count=1)
+                    if (ret && frame->vm && frame->vm->gc) {
+                        gc_incref(frame->vm->gc, ret);
+                    }
+                    
+                    // Уменьшаем счетчик на callee_obj
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, callee_obj);
+                    }
+                    
+                } else {
+                    DPRINT("[VM] ERROR: Callee is not a function (type=%d)\n", callee_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, callee_obj);
+                    }
+                    // Создаем None как результат
+                    ret = heap_alloc_none(frame->vm->heap);
+                }
+                
+                // 5. Очищаем аргументы
+                if (args) {
+                    for (uint32_t i = 0; i < argc; i++) {
+                        if (args[i] && frame->vm && frame->vm->gc) {
+                            gc_decref(frame->vm->gc, args[i]);
+                        }
+                    }
+                    free(args);
+                }
+                
+                // 6. Если функция вернула NULL, создаем None
+                if (!ret) {
+                    DPRINT("[VM] WARNING: Function returned NULL, using None\n");
+                    ret = heap_alloc_none(frame->vm->heap);
+                }
+                
+                DPRINT("[VM] Function result: %p (type: %d)\n", (void*)ret, ret->type);
+                
+                // 7. Кладем результат в стек
                 frame_stack_push(frame, ret);
-                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, ret);
+                // Не уменьшаем счетчик ret здесь! frame_stack_push сам увеличит счетчик
+                
                 break;
             }
             case RETURN_VALUE: {

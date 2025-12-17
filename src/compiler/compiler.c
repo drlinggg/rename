@@ -1,3 +1,4 @@
+
 #include "compiler.h"
 #include "scope.h"
 #include "string_table.h"
@@ -208,68 +209,72 @@ static bytecode_array compiler_compile_function_declaration(compiler* comp, ASTN
     return result;
 }
 
-static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTNode* node) {
-    VariableDeclarationStatement* var_decl = (VariableDeclarationStatement*)node;
-    if (node->node_type != NODE_VARIABLE_DECLARATION_STATEMENT) {
-        return create_bytecode_array(NULL, 0);
-    }
-    bytecode_array result = create_bytecode_array(NULL, 0);
+static bytecode_array create_single_bytecode_array(bytecode bc) {
+    bytecode* bc_array = malloc(sizeof(bytecode));
+    bc_array[0] = bc;
+    return create_bytecode_array(bc_array, 1);
+}
 
-    // add load initializer bytecode
-    if (var_decl->initializer != NULL) {
-        bytecode_array initializer_bc = compiler_compile_expression(comp, var_decl->initializer);
-        result = concat_bytecode_arrays(result, initializer_bc);
-        free_bytecode_array(initializer_bc);
-    } else {
-        Value default_value;
-        switch (var_decl->var_type) {
-            case TYPE_INT:
-            /*
-            case TYPE_LONG:
-            */
-                default_value = value_create_int(0);
-                break;
-            case TYPE_BOOL:
-                default_value = value_create_bool(false);
-                break;
-            default:
-                default_value = value_create_none();
-                break;
-        }
-        uint32_t const_index = compiler_add_constant_to_compiler(comp, default_value);
-        bytecode load_default = bytecode_create_with_number(LOAD_CONST, const_index);
-        bytecode* load_default_arr = malloc(sizeof(bytecode));
-        load_default_arr[0] = load_default;
-        bytecode_array load_default_array = create_bytecode_array(load_default_arr, 1);
-        result = concat_bytecode_arrays(result, load_default_array);
-        free_bytecode_array(load_default_array);
-    }
-
-    // add declared variable in compiler variables
-    size_t var_index;
-    bool is_local = false;
-    // not in global scenario
-    if (comp->current_scope != NULL && comp->current_scope->parent != NULL) {
-        var_index = scope_add_local(comp->current_scope, var_decl->name);
-        is_local = true;
-    } else {
-        // global scenario
-        var_index = compiler_add_global_name(comp, var_decl->name);
-    }
-
-    // add store variable bytecode
-    bytecode store_bc;
-    if (is_local) {
-        store_bc = bytecode_create_with_number(STORE_FAST, var_index);
-    } else {
-        store_bc = bytecode_create_with_number(STORE_GLOBAL, var_index);
-    }
-    bytecode* store_arr = malloc(sizeof(bytecode));
-    store_arr[0] = store_bc;
-    bytecode_array store_array = create_bytecode_array(store_arr, 1);
-    result = concat_bytecode_arrays(result, store_array);
-    free_bytecode_array(store_array);
+static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTNode* statement) {
+    VariableDeclarationStatement* decl = (VariableDeclarationStatement*)statement;
+    DPRINT("[COMPILER] Compiling variable declaration: %s\n", decl->name);
     
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // 1. Компилируем инициализатор (если есть)
+    if (decl->initializer) {
+        DPRINT("[COMPILER] Has initializer, type: %s\n", 
+               ast_node_type_to_string(decl->initializer->node_type));
+        
+        bytecode_array init_bc = compiler_compile_expression(comp, decl->initializer);
+        DPRINT("[COMPILER] Initializer generated %u bytecodes\n", init_bc.count);
+        
+        if (init_bc.count == 0) {
+            DPRINT("[COMPILER] WARNING: Initializer generated 0 bytecodes!\n");
+        }
+        
+        result = concat_bytecode_arrays(result, init_bc);
+        free_bytecode_array(init_bc);
+    } else {
+        // Если нет инициализатора, пушим None на стек
+        Value none_value = value_create_none();
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, none_value);
+        bytecode load_none = bytecode_create_with_number(LOAD_CONST, const_index);
+        bytecode_array none_bc = create_single_bytecode_array(load_none);
+        result = concat_bytecode_arrays(result, none_bc);
+        free_bytecode_array(none_bc);
+    }
+    
+    // 2. Находим индекс переменной и сохраняем
+    if (comp->current_scope == NULL) {
+        // Глобальная переменная
+        int32_t global_idx = string_table_find(comp->global_names, decl->name);
+        if (global_idx < 0) {
+            global_idx = string_table_add(comp->global_names, decl->name);
+        }
+        DPRINT("[COMPILER] Variable %s is global at index %d\n", decl->name, global_idx);
+        
+        // STORE_GLOBAL
+        bytecode store_global = bytecode_create_with_number(STORE_GLOBAL, global_idx);
+        bytecode_array store_bc = create_single_bytecode_array(store_global);
+        result = concat_bytecode_arrays(result, store_bc);
+        free_bytecode_array(store_bc);
+    } else {
+        // Локальная переменная
+        int32_t local_idx = scope_find_local(comp->current_scope, decl->name);
+        if (local_idx < 0) {
+            local_idx = scope_add_local(comp->current_scope, decl->name);
+        }
+        DPRINT("[COMPILER] Variable %s is local at index %d\n", decl->name, local_idx);
+        
+        // STORE_FAST
+        bytecode store_fast = bytecode_create_with_number(STORE_FAST, local_idx);
+        bytecode_array store_bc = create_single_bytecode_array(store_fast);
+        result = concat_bytecode_arrays(result, store_bc);
+        free_bytecode_array(store_bc);
+    }
+    
+    DPRINT("[COMPILER] Variable declaration generated %u bytecodes\n", result.count);
     return result;
 }
 
@@ -278,7 +283,7 @@ static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode*
         return create_bytecode_array(NULL, 0);
     }
     ReturnStatement* return_stmt = (ReturnStatement*) node;
-    bytecode_array expr_bc = compiler_compile_statement(comp, return_stmt->expression);
+    bytecode_array expr_bc = compiler_compile_expression(comp, return_stmt->expression);
 
     bytecode return_bc = bytecode_create(RETURN_VALUE, 0, 0, 0);
     bytecode* return_arr = malloc(sizeof(bytecode));
@@ -323,6 +328,7 @@ static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTN
     if (!stmt->left || stmt->left->node_type != NODE_VARIABLE_EXPRESSION) {
         return create_bytecode_array(NULL, 0);
     }
+    
     // 1. right side   
     bytecode_array bc_right = compiler_compile_expression(comp, stmt->right);
     
@@ -330,12 +336,15 @@ static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTN
     VariableExpression* var_expr = (VariableExpression*)stmt->left;
     const char* var_name = var_expr->name;
     
-    // 3. find var 
-    int32_t local_index = scope_find_local(comp->current_scope, var_name);
-    
     bytecode_array result = bc_right;
     
-    // if local => store_fast
+    // 3. Проверяем, является ли переменная локальной
+    int32_t local_index = -1;
+    if (comp->current_scope) {
+        local_index = scope_find_local(comp->current_scope, var_name);
+    }
+    
+    // Если найдена локальная переменная => store_fast
     if (local_index >= 0) {
         bytecode store_bc = bytecode_create_with_number(STORE_FAST, local_index);
         bytecode* store_arr = malloc(sizeof(bytecode));
@@ -343,13 +352,24 @@ static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTN
         bytecode_array store_array = create_bytecode_array(store_arr, 1);
         result = concat_bytecode_arrays(result, store_array);
         free_bytecode_array(store_array);
+        DPRINT("[COMPILER] Assignment to local variable %s at index %d\n", var_name, local_index);
     } else {
-        // else => store_global
-        int32_t global_index = string_table_find(comp->global_names, var_name);
+        // Иначе => store_global
+        // Ищем в таблице глобальных имен
+        int32_t global_index = -1;
+        if (comp->global_names) {
+            global_index = string_table_find(comp->global_names, var_name);
+        }
+        
+        // Если не найдена, добавляем
         if (global_index < 0) {
             global_index = compiler_add_global_name(comp, var_name);
         }
         
+        DPRINT("[COMPILER] Assignment to global variable %s at index %d\n", var_name, global_index);
+        
+        // ВАЖНО: НЕ делаем сдвиг влево! Используем индекс как есть
+        // В VM в case STORE_GLOBAL: используется size_t gidx = arg;
         bytecode store_bc = bytecode_create_with_number(STORE_GLOBAL, global_index);
         bytecode* store_arr = malloc(sizeof(bytecode));
         store_arr[0] = store_bc;
@@ -480,7 +500,7 @@ static bytecode_array compiler_compile_variable_expression(compiler* comp, ASTNo
 
     int32_t global_index = string_table_find(comp->global_names, var_expr->name);
     if (global_index >= 0) {
-        bytecode bc = bytecode_create_with_number(LOAD_GLOBAL, global_index);
+        bytecode bc = bytecode_create_with_number(LOAD_GLOBAL, global_index << 1);
         bytecode* bc_array = malloc(sizeof(bytecode));
         bc_array[0] = bc;
         return create_bytecode_array(bc_array, 1);
@@ -499,39 +519,33 @@ static bytecode_array compiler_compile_function_call_expression(compiler* comp, 
         return create_bytecode_array(NULL, 0);
     }
 
-    bytecode_array result_array = create_bytecode_array(NULL, 0);
+    bytecode_array result = create_bytecode_array(NULL, 0);
     
-    // 1. Callee
+    // 1. Callee (функция которую вызываем)
     bytecode_array callee_bc = compiler_compile_expression(comp, func_call->callee);
-    emit_bytecode(comp->result, callee_bc);
+    result = concat_bytecode_arrays(result, callee_bc);
     free_bytecode_array(callee_bc);
     
-    // 2. Null
+    // 2. Null (для вызова функции)
     bytecode push_null_bc = bytecode_create(PUSH_NULL, 0, 0, 0);
-    bytecode* push_null_array = malloc(sizeof(bytecode));
-    push_null_array[0] = push_null_bc;
-    bytecode_array push_null_bc_array = create_bytecode_array(push_null_array, 1);
-    emit_bytecode(comp->result, push_null_bc_array);
+    bytecode_array push_null_bc_array = create_single_bytecode_array(push_null_bc);
+    result = concat_bytecode_arrays(result, push_null_bc_array);
     free_bytecode_array(push_null_bc_array);
     
-    // 3. Args
-    int arg_count = 0;
+    // 3. Аргументы (в прямом порядке)
     for (int i = 0; i < func_call->argument_count; i++) {
         bytecode_array arg_bc = compiler_compile_expression(comp, func_call->arguments[i]);
-        emit_bytecode(comp->result, arg_bc);
+        result = concat_bytecode_arrays(result, arg_bc);
         free_bytecode_array(arg_bc);
-        arg_count++;
     }
     
-    // 4. call_func
-    bytecode call_func_bc = bytecode_create_with_number(CALL_FUNCTION, arg_count);
-    bytecode* call_func_array = malloc(sizeof(bytecode));
-    call_func_array[0] = call_func_bc;
-    bytecode_array call_func_bc_array = create_bytecode_array(call_func_array, 1);
-    emit_bytecode(comp->result, call_func_bc_array);
+    // 4. Вызов функции
+    bytecode call_func_bc = bytecode_create_with_number(CALL_FUNCTION, func_call->argument_count);
+    bytecode_array call_func_bc_array = create_single_bytecode_array(call_func_bc);
+    result = concat_bytecode_arrays(result, call_func_bc_array);
     free_bytecode_array(call_func_bc_array);
     
-    return result_array;
+    return result;
 }
 
 static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNode* node) {
@@ -558,6 +572,15 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     else if (literal->type == TYPE_BOOL) {
         bool value = (bool)literal->value;
         Value constant_value = value_create_bool(value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
+        bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
+        bytecode* bc_array = malloc(sizeof(bytecode));
+        bc_array[0] = bc;
+        return create_bytecode_array(bc_array, 1);
+    }
+    else if (literal->type == TYPE_NONE) {
+        DPRINT("[COMPILER] Compiling NONE literal\n");
+        Value constant_value = value_create_none();
         uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
         bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
         bytecode* bc_array = malloc(sizeof(bytecode));
@@ -626,7 +649,22 @@ static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* 
     bytecode_array result = create_bytecode_array(NULL, 0);
 
     for (uint32_t i = 0; i < block->statement_count; i++) {
+        DPRINT("[COMPILER] Compiling statement %u in block\n", i);
         bytecode_array stmt_bc = compiler_compile_statement(comp, block->statements[i]);
+        
+        // Отладочный вывод байт-кода
+        DPRINT("[COMPILER] Statement %u generated %u bytecodes\n", i, stmt_bc.count);
+        if (stmt_bc.count > 0) {
+            // Используй bytecode_get_arg для получения аргумента
+            uint32_t arg = bytecode_get_arg(stmt_bc.bytecodes[0]);
+            DPRINT("[COMPILER] First bytecode: op=%02X, arg=%u (bytes: %02X %02X %02X)\n", 
+                   stmt_bc.bytecodes[0].op_code, 
+                   arg,
+                   stmt_bc.bytecodes[0].argument[0],
+                   stmt_bc.bytecodes[0].argument[1],
+                   stmt_bc.bytecodes[0].argument[2]);
+        }
+        
         bytecode_array new_result = concat_bytecode_arrays(result, stmt_bc);
         
         free_bytecode_array(result);
@@ -689,6 +727,16 @@ compiler* compiler_create(ASTNode* ast_tree) {
         free(comp);
         return NULL;
     }
+
+    comp->global_names = string_table_create();
+    size_t print_idx = string_table_add(comp->global_names, "print");
+    size_t input_idx = string_table_add(comp->global_names, "input");
+    if (print_idx != 0) {
+        fprintf(stderr, "Warning: print index is %zu, expected 0\n", print_idx);
+    }
+    if (input_idx != 1) {
+        fprintf(stderr, "Warning: input index is %zu, expected 1\n", input_idx);
+    }
     
     return comp;
 }
@@ -730,3 +778,4 @@ compilation_result* compiler_compile(compiler* compiler) {
     }
     return compiler->result;
 }
+

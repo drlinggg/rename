@@ -43,7 +43,7 @@ static Token* lexer_parse_identifier(lexer *l) {
     if (strcmp(buffer, "bool") == 0) return token_create(KW_BOOL, buffer, start_line, start_column);
     if (strcmp(buffer, "long") == 0) return token_create(KW_LONG, buffer, start_line, start_column);
     if (strcmp(buffer, "array") == 0) return token_create(KW_ARRAY, buffer, start_line, start_column);
-    if (strcmp(buffer, "none") == 0) return token_create(KW_NONE, buffer, start_line, start_column);
+    if (strcmp(buffer, "None") == 0) return token_create(KW_NONE, buffer, start_line, start_column);
     if (strcmp(buffer, "true") == 0) return token_create(KW_TRUE, buffer, start_line, start_column);
     if (strcmp(buffer, "false") == 0) return token_create(KW_FALSE, buffer, start_line, start_column);
     if (strcmp(buffer, "if") == 0) return token_create(KW_IF, buffer, start_line, start_column);

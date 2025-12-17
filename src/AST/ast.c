@@ -96,9 +96,9 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
                 node->location = loc;
                 LiteralExpression* literal_expr = (LiteralExpression*) node;
                 literal_expr->value = 0;
+                literal_expr->type = TYPE_INT; // <-- ДОБАВЬ ИНИЦИАЛИЗАЦИЮ ПО УМОЛЧАНИЮ
             }
-            break;
-            
+            break;            
         case NODE_VARIABLE_EXPRESSION:
             node = (ASTNode*)malloc(sizeof(VariableExpression));
             if (node) {

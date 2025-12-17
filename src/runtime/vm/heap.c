@@ -73,6 +73,16 @@ Object* heap_alloc_array(Heap* heap) {
     return o;
 }
 
+Object* heap_alloc_native_function(Heap* heap, NativeCFunc c_func, const char* name) {
+    Object* obj = malloc(sizeof(Object));
+    obj->type = OBJ_NATIVE_FUNCTION;
+    obj->ref_count = 1;
+    obj->as.native_function.c_func = c_func;
+    obj->as.native_function.name = strdup(name);
+    return obj;
+}
+
+
 Object* heap_from_value(Heap* heap, Value val) {
     switch (val.type) {
         case VAL_INT:

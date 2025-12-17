@@ -1,8 +1,41 @@
-int fake_main() {
-    return 3;
+int x = 5;
+
+int change_x() {
+    x = 7;
+    return None;
 }
 
-int main() {
-    return fake_main();
+int fake_main(int a, bool b, array c) {
+    print();
+    print(1);
+    print(1, 2);
+    print(1, 2, 3);
 }
 
+int print_true_none_false_func() {
+    print(true, None, false, fake_main);
+}
+
+bool function() {
+    return true;
+}
+
+bool main() {
+    fake_main(1, true, 2);
+    print();
+
+    change_x();
+    print();
+
+    print_true_none_false_func();
+    print();
+
+    int inputed = input();
+    print(inputed);
+    print();
+
+    print(input());
+    print(x);
+
+    return function();
+}

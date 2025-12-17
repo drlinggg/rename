@@ -13,6 +13,7 @@ COMPILER_SRC = $(SRC_DIR)/compiler/compiler.c
 VALUE_SRC = $(SRC_DIR)/compiler/value.c
 SCOPE_SRC = $(SRC_DIR)/compiler/scope.c
 STRING_TABLE_SRC = $(SRC_DIR)/compiler/string_table.c
+BUILTINS_SRC = $(SRC_DIR)/builtins/builtins.c
 DEBUG_SRC = $(SRC_DIR)/debug.c
 
 # Runtime files
@@ -42,14 +43,14 @@ test_lexer: $(LEXER_TEST) $(LEXER_SRC) $(DEBUG_SRC) $(TOKEN_SRC)
 test_parser: $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(DEBUG_SRC) $(TOKEN_SRC)
 	$(CC) $(CFLAGS) $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(DEBUG_SRC) $(TOKEN_SRC) -o $@
 
-test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC) $(DEBUG_SRC)
-	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(DEBUG_SRC) -o $@
+test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC) $(DEBUG_SRC) $(BUILTINS_SRC)
+	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(DEBUG_SRC) $(BUILTINS_SRC) -o $@
 
-test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(DEBUG_SRC) $(TOKEN_SRC)
+test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(DEBUG_SRC) $(TOKEN_SRC) $(BUILTINS_SRC)
 	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(DEBUG_SRC) $(TOKEN_SRC) -o $@
 
-test_vm: $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC)
-	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) -o $@
+test_vm: $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) $(BUILTINS_SRC)
+	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) $(BUILTINS_SRC) -o $@
 
 test: all
 	@echo "[Make] Running AST tests..."
@@ -66,9 +67,9 @@ test: all
 	./test_vm || exit 1
 	@echo "[Make] All tests passed!"
 
-runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC)
+runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) $(BUILTINS_SRC)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) -o bin/rename
+	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(DEBUG_SRC) $(BUILTINS_SRC) -o bin/rename
 
 run_benchmark: runner
 	@echo "[Make] Running benchmark: benchmarks/first_program.lang"
