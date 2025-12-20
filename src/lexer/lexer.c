@@ -43,7 +43,7 @@ static Token* lexer_parse_identifier(lexer *l) {
     if (strcmp(buffer, "bool") == 0) return token_create(KW_BOOL, buffer, start_line, start_column);
     if (strcmp(buffer, "long") == 0) return token_create(KW_LONG, buffer, start_line, start_column);
     if (strcmp(buffer, "array") == 0) return token_create(KW_ARRAY, buffer, start_line, start_column);
-    if (strcmp(buffer, "none") == 0) return token_create(KW_NONE, buffer, start_line, start_column);
+    if (strcmp(buffer, "None") == 0) return token_create(KW_NONE, buffer, start_line, start_column);
     if (strcmp(buffer, "true") == 0) return token_create(KW_TRUE, buffer, start_line, start_column);
     if (strcmp(buffer, "false") == 0) return token_create(KW_FALSE, buffer, start_line, start_column);
     if (strcmp(buffer, "if") == 0) return token_create(KW_IF, buffer, start_line, start_column);
@@ -55,6 +55,12 @@ static Token* lexer_parse_identifier(lexer *l) {
     if (strcmp(buffer, "continue") == 0) return token_create(KW_CONTINUE, buffer, start_line, start_column);
     if (strcmp(buffer, "return") == 0) return token_create(KW_RETURN, buffer, start_line, start_column);
     if (strcmp(buffer, "struct") == 0) return token_create(KW_STRUCT, buffer, start_line, start_column);
+    if (strcmp(buffer, "is") == 0) return token_create(KW_IS, buffer, start_line, start_column);
+    if (strcmp(buffer, "not") == 0) return token_create(OP_NOT, buffer, start_line, start_column);
+    if (strcmp(buffer, "and") == 0) return token_create(OP_AND, buffer, start_line, start_column);
+    if (strcmp(buffer, "or") == 0) return token_create(OP_OR, buffer, start_line, start_column);
+
+
     
     return token_create(IDENTIFIER, buffer, start_line, start_column);
 }
@@ -96,7 +102,8 @@ static Token* lexer_next_token(lexer *l) {
         return lexer_parse_number(l);
     }
     
-    // Single character tokens
+    // Single character tokens and multi-character tokens
+    char double_char[3] = {l->current_char, 0, '\0'};
     char single_char[2] = {l->current_char, '\0'};
     Token* token = NULL;
     
@@ -106,7 +113,59 @@ static Token* lexer_next_token(lexer *l) {
         case '*': token = token_create(OP_MULT, single_char, start_line, start_column); break;
         case '/': token = token_create(OP_DIV, single_char, start_line, start_column); break;
         case '%': token = token_create(OP_MOD, single_char, start_line, start_column); break;
-        case '=': token = token_create(OP_ASSIGN, single_char, start_line, start_column); break;
+        
+        case '=':
+            // Check for ==
+            double_char[1] = fgetc(l->file);
+            if (double_char[1] == '=') {
+                double_char[2] = '\0';
+                token = token_create(OP_EQ, double_char, start_line, start_column);
+                lexer_advance(l); // Skip the second '='
+            } else {
+                ungetc(double_char[1], l->file);
+                token = token_create(OP_ASSIGN, single_char, start_line, start_column);
+            }
+            break;
+            
+        case '!':
+            // Check for !=
+            double_char[1] = fgetc(l->file);
+            if (double_char[1] == '=') {
+                double_char[2] = '\0';
+                token = token_create(OP_NE, double_char, start_line, start_column);
+                lexer_advance(l); // Skip the '='
+            } else {
+                ungetc(double_char[1], l->file);
+                token = token_create(ERROR, single_char, start_line, start_column);
+            }
+            break;
+            
+        case '<':
+            // Check for <=
+            double_char[1] = fgetc(l->file);
+            if (double_char[1] == '=') {
+                double_char[2] = '\0';
+                token = token_create(OP_LE, double_char, start_line, start_column);
+                lexer_advance(l); // Skip the '='
+            } else {
+                ungetc(double_char[1], l->file);
+                token = token_create(OP_LT, single_char, start_line, start_column);
+            }
+            break;
+            
+        case '>':
+            // Check for >=
+            double_char[1] = fgetc(l->file);
+            if (double_char[1] == '=') {
+                double_char[2] = '\0';
+                token = token_create(OP_GE, double_char, start_line, start_column);
+                lexer_advance(l); // Skip the '='
+            } else {
+                ungetc(double_char[1], l->file);
+                token = token_create(OP_GT, single_char, start_line, start_column);
+            }
+            break;
+            
         case '(': token = token_create(LPAREN, single_char, start_line, start_column); break;
         case ')': token = token_create(RPAREN, single_char, start_line, start_column); break;
         case '{': token = token_create(LBRACE, single_char, start_line, start_column); break;

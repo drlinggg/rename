@@ -98,6 +98,17 @@ push(left arg right)
         0x17: '-',   # BINARY_OP_INPLACE_SUBTRACT
         0x18: '/',   # BINARY_OP_INPLACE_TRUE_DIVIDE
         0x19: '^',   # BINARY_OP_INPLACE_XOR
+
+        0x50: '==',
+        0x51: '!=',
+        0x52: '<',
+        0x53: '<=',
+        0x54: '>',
+        0x55: '>='
+        0x56: 'is'
+
+        0x60: 'and',
+        0x61: 'or'
     }
 ```
 
@@ -168,21 +179,6 @@ else:
     STACK = STACK.pop arg times
 
 STACK.append(value)
-
-### - COMPARE_OP 0x18
-```
-compare_map = {
-    0x00: '==',
-    0x01: '!=',
-    0x02: '<',
-    0x03: '<=',
-    0x04: '>',
-    0x05: '>='
-}
-right = stack.pop()
-left = stack.pop()
-stack.append( compare(left, right, operation) ) # l == r; l <= r; ...
-```
 
 ### - JUMP_FORWARD 0x19
 Increments instruction pointer by `arg` (offset).

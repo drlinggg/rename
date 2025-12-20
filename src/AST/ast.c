@@ -96,9 +96,9 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
                 node->location = loc;
                 LiteralExpression* literal_expr = (LiteralExpression*) node;
                 literal_expr->value = 0;
+                literal_expr->type = TYPE_INT; // <-- ДОБАВЬ ИНИЦИАЛИЗАЦИЮ ПО УМОЛЧАНИЮ
             }
-            break;
-            
+            break;            
         case NODE_VARIABLE_EXPRESSION:
             node = (ASTNode*)malloc(sizeof(VariableExpression));
             if (node) {
@@ -1068,6 +1068,7 @@ const char* token_type_to_string(int token_type) {
         case OP_ASSIGN_MOD: return "OP_ASSIGN_MOD";*/
 
         // 4.3. == != <=>
+        case KW_IS: return "KW_IS";
         case OP_EQ: return "OP_EQ";
         case OP_NE: return "OP_NE";
         case OP_LT: return "OP_LT";

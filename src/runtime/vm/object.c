@@ -67,9 +67,6 @@ void object_decref(Object* o) {
     o->ref_count--;
     if (o->ref_count == 0) {
         switch (o->type) {
-            case OBJ_STRING:
-                if (o->as.string.data) free(o->as.string.data);
-                break;
             case OBJ_ARRAY:
                 if (o->as.array.items) {
                     for (size_t i = 0; i < o->as.array.count; i++) {
@@ -101,8 +98,6 @@ bool object_is_truthy(Object* o) {
             return false;
         case OBJ_ARRAY:
             return o->as.array.count != 0;
-        case OBJ_STRING:
-            return o->as.string.len != 0;
         case OBJ_FUNCTION:
         case OBJ_CODE:
             return true;
@@ -122,8 +117,7 @@ char* object_to_string(Object* o) {
             return strdup(o->as.bool_value ? "true" : "false");
         case OBJ_NONE:
             return strdup("None");
-        case OBJ_STRING:
-            return strdup(o->as.string.data);
+        /*
         case OBJ_ARRAY: {
             char* s = strdup("[");
             for (size_t i = 0; i < o->as.array.count; i++) {
@@ -138,11 +132,23 @@ char* object_to_string(Object* o) {
             strcat(s, "]");
             return s;
         }
+        */
         case OBJ_FUNCTION:
+            if (o->as.function.codeptr && o->as.function.codeptr->name) {
+                snprintf(buf, sizeof(buf), "<function '%s'>", o->as.function.codeptr->name);
+                return strdup(buf);
+            }
             return strdup("<function>");
         case OBJ_CODE:
             return strdup("<code>");
+        case OBJ_NATIVE_FUNCTION:
+            if (o->as.native_function.name) {
+                snprintf(buf, sizeof(buf), "<native function '%s'>", o->as.native_function.name);
+                return strdup(buf);
+            }
+            return strdup("<native function>");
         default:
-            return strdup("<object>");
+            snprintf(buf, sizeof(buf), "<object type=%d>", o->type);
+            return strdup(buf);
     }
 }

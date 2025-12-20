@@ -5,6 +5,12 @@
 #include <stdlib.h>
 #include "../../compiler/value.h"
 
+typedef struct VM VM;
+typedef struct Object Object;
+typedef struct CodeObj CodeObj;
+
+typedef Object* (*NativeCFunc)(VM* heap, int arg_count, Object** args);
+
 typedef enum {
     OBJ_INT,
     OBJ_BOOL,
@@ -12,10 +18,8 @@ typedef enum {
     OBJ_CODE,
     OBJ_FUNCTION,
     OBJ_ARRAY,
-    OBJ_STRING,
+    OBJ_NATIVE_FUNCTION
 } ObjectType;
-
-typedef struct Object Object;
 
 struct Object {
     ObjectType type;
@@ -40,9 +44,9 @@ struct Object {
         } array;
 
         struct {
-            char* data;
-            size_t len;
-        } string;
+            NativeCFunc c_func;
+            const char* name;
+        } native_function;
     } as;
 };
 

@@ -27,7 +27,7 @@ static Precedence get_precedence(TokenType type) {
         case OP_EQ: case OP_NE: return PRECEDENCE_EQUALITY;
         case OP_LT: case OP_GT: case OP_LE: case OP_GE: return PRECEDENCE_COMPARISON;
         case OP_PLUS: case OP_MINUS: return PRECEDENCE_TERM;
-        case OP_MULT: case OP_DIV: case OP_MOD: return PRECEDENCE_FACTOR;
+        case OP_MULT: case OP_DIV: case OP_MOD: case KW_IS: return PRECEDENCE_FACTOR;
         default: return PRECEDENCE_NONE;
     }
 }
@@ -47,7 +47,6 @@ static ASTNode* parser_parse_statement(Parser* parser);
 static ASTNode* parser_parse_expression(Parser* parser);
 static ASTNode* parser_parse_declaration_statement(Parser* parser);
 static ASTNode* parser_parse_variable_declaration_statement(Parser* parser);
-static Parameter* parser_parse_parameter(Parser* parser);
 static ASTNode* parser_parse_function_declaration_statement(Parser* parser);
 static ASTNode* parser_parse_assignment_statement(Parser* parser);
 static ASTNode* parser_parse_if_statement(Parser* parser);
@@ -187,58 +186,13 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
         parser_peek(parser);
         Token* current_arg_token = parser_peek(parser);
         
-        if (argument_count >= capacity) {
-            capacity *= 2;
-            DPRINT("[PARSER] [FUNCTION CALL] Expanding arguments array to capacity %zu\n", capacity);
-            ASTNode** new_args = realloc(function_arguments, capacity * sizeof(ASTNode*));
-            if (!new_args) {
-                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to reallocate arguments array\n");
-                for (size_t i = 0; i < argument_count; i++) {
-                    ast_free(function_arguments[i]);
-                }
-                free(function_arguments);
-                ast_free(function_identifier);
-                return NULL;
-            }
-            function_arguments = new_args;
-        }
-        ASTNode* argument = parser_parse_expression(parser);
-        if (!argument) {
-            DPRINT("[PARSER] [FUNCTION CALL] Failed to parse argument %zu\n", argument_count);
-
-            if (parser_peek(parser)->type != RPAREN) {
-                for (size_t i = 0; i < argument_count; i++) {
-                    ast_free(function_arguments[i]);
-                }
-                free(function_arguments);
-                ast_free(function_identifier);
-                return NULL;
-            }
-        }
-        
-      
-        Token* next_after_arg = parser_peek(parser);
-        
-        if (next_after_arg->type != COMMA) {
-            DPRINT("[PARSER] [FUNCTION CALL] No comma found, expecting closing parenthesis\n");
-            
-            if (!parser_consume(parser, RPAREN, "call expression should have closing parenthesis")) {
-                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Missing closing parenthesis\n");
-                for (size_t i = 0; i < argument_count; i++) {
-                    ast_free(function_arguments[i]);
-                }
-                free(function_arguments);
-                ast_free(function_identifier);
-                return NULL;
-            }
-            
+        // Проверяем, не пустой ли список аргументов или конец
+        if (current_arg_token->type == RPAREN) {
             DPRINT("[PARSER] [FUNCTION CALL] Found closing parenthesis, function call has %zu arguments\n", argument_count);
+            parser_advance(parser);
             
-            if (argument_count == 0) {
-                free(function_arguments);
-                function_arguments = NULL; 
-
-            } else if (argument_count < capacity) {
+            // Обрезаем массив до фактического размера
+            if (argument_count > 0 && argument_count < capacity) {
                 ASTNode** trimmed_args = realloc(function_arguments, argument_count * sizeof(ASTNode*));
                 if (trimmed_args) {
                     function_arguments = trimmed_args;
@@ -246,7 +200,8 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
                 }
             }
 
-            ASTNode* function_call_expr = ast_new_call_expression(loc, function_identifier, function_arguments, argument_count);
+            ASTNode* function_call_expr = ast_new_call_expression(loc, function_identifier, 
+                (argument_count > 0) ? function_arguments : NULL, argument_count);
             if (!function_call_expr) {
                 DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to create function call expression node\n");
                 for (size_t i = 0; i < argument_count; i++) {
@@ -257,18 +212,89 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
                 return NULL;
             }
 
-            //ast_free(function_identifier);
-            //for (size_t i = 0; i < argument_count; i++) {
-            //    ast_free(function_arguments[i]);
-            //}
-            //free(function_arguments);
-            DPRINT("[PARSER] Successfully created function call expression\n");
+            DPRINT("[PARSER] Successfully created function call expression with %zu arguments\n", argument_count);
             ast_print(function_call_expr, 0);
             return function_call_expr;
-        } else {
-            function_arguments[argument_count++] = argument;
-            DPRINT("[PARSER] Found comma, continuing to next argument\n");
+        }
+        
+        // Парсим аргумент
+        ASTNode* argument = parser_parse_expression(parser);
+        if (!argument) {
+            DPRINT("[PARSER] [FUNCTION CALL] Failed to parse argument %zu\n", argument_count);
+            for (size_t i = 0; i < argument_count; i++) {
+                ast_free(function_arguments[i]);
+            }
+            free(function_arguments);
+            ast_free(function_identifier);
+            return NULL;
+        }
+        
+        // Добавляем аргумент в массив
+        if (argument_count >= capacity) {
+            capacity *= 2;
+            DPRINT("[PARSER] [FUNCTION CALL] Expanding arguments array to capacity %zu\n", capacity);
+            ASTNode** new_args = realloc(function_arguments, capacity * sizeof(ASTNode*));
+            if (!new_args) {
+                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to reallocate arguments array\n");
+                ast_free(argument);
+                for (size_t i = 0; i < argument_count; i++) {
+                    ast_free(function_arguments[i]);
+                }
+                free(function_arguments);
+                ast_free(function_identifier);
+                return NULL;
+            }
+            function_arguments = new_args;
+        }
+        
+        function_arguments[argument_count++] = argument;
+        DPRINT("[PARSER] [FUNCTION CALL] Added argument %zu\n", argument_count);
+      
+        // Проверяем следующий токен
+        Token* next_after_arg = parser_peek(parser);
+        
+        if (next_after_arg->type == COMMA) {
+            DPRINT("[PARSER] [FUNCTION CALL] Found comma, continuing to next argument\n");
             parser_advance(parser);
+            continue;
+        }
+        else if (next_after_arg->type == RPAREN) {
+            DPRINT("[PARSER] [FUNCTION CALL] Found closing parenthesis, function call has %zu arguments\n", argument_count);
+            parser_advance(parser);
+            
+            // Обрезаем массив до фактического размера
+            if (argument_count > 0 && argument_count < capacity) {
+                ASTNode** trimmed_args = realloc(function_arguments, argument_count * sizeof(ASTNode*));
+                if (trimmed_args) {
+                    function_arguments = trimmed_args;
+                    DPRINT("[PARSER] [FUNCTION CALL] Trimmed arguments array to size %zu\n", argument_count);
+                }
+            }
+
+            ASTNode* function_call_expr = ast_new_call_expression(loc, function_identifier, 
+                (argument_count > 0) ? function_arguments : NULL, argument_count);
+            if (!function_call_expr) {
+                DPRINT("[PARSER] [FUNCTION CALL] ERROR: Failed to create function call expression node\n");
+                for (size_t i = 0; i < argument_count; i++) {
+                    ast_free(function_arguments[i]);
+                }
+                free(function_arguments);
+                ast_free(function_identifier);
+                return NULL;
+            }
+
+            DPRINT("[PARSER] Successfully created function call expression with %zu arguments\n", argument_count);
+            return function_call_expr;
+        }
+        else {
+            DPRINT("[PARSER] [FUNCTION CALL] ERROR: Expected comma or closing parenthesis, got %s\n", 
+                   token_type_to_string(next_after_arg->type));
+            for (size_t i = 0; i < argument_count; i++) {
+                ast_free(function_arguments[i]);
+            }
+            free(function_arguments);
+            ast_free(function_identifier);
+            return NULL;
         }
     }
 }
@@ -516,9 +542,39 @@ static ASTNode* parser_parse_for_statement(Parser* parser) {
 }
 
 static ASTNode* parser_parse_return_statement(Parser* parser) {
-    parser_consume(parser, KW_RETURN, "return statement should start with return keyword");
-    ASTNode* expr = parser_parse_expression_statement(parser);
-    return ast_new_return_statement(expr->location, expr);
+    DPRINT("[PARSER] parse_return_statement\n");
+    
+    Token* return_token = parser_consume(parser, KW_RETURN, "return statement should start with return keyword");
+    if (!return_token) {
+        DPRINT("[PARSER] ERROR: Missing 'return' keyword\n");
+        return NULL;
+    }
+    
+    SourceLocation loc = (SourceLocation){return_token->line, return_token->column};
+    DPRINT("[PARSER] Return at line %d, column %d\n", loc.line, loc.column);
+    
+    // Парсим выражение после return
+    ASTNode* expr = parser_parse_expression(parser);
+    DPRINT("[PARSER] Return expression: %p\n", (void*)expr);
+    
+    // Если выражение NULL, создаем return с None
+    if (!expr) {
+        DPRINT("[PARSER] WARNING: Return has no expression, using None\n");
+        // Создаем None литерал
+        expr = ast_new_literal_expression(loc, TYPE_NONE, 0);
+        if (!expr) {
+            DPRINT("[PARSER] ERROR: Failed to create None literal\n");
+            return NULL;
+        }
+    }
+    
+    ASTNode* return_node = ast_new_return_statement(loc, expr);
+    DPRINT("[PARSER] Created return statement: %p\n", (void*)return_node);
+    
+    // Освобождаем expr, так как он теперь принадлежит return_node
+    ast_free(expr);
+    
+    return return_node;
 }
 
 static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
@@ -544,18 +600,6 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     return node;
 }
 
-static Parameter* parser_parse_parameter(Parser* parser) {
-    Token* name = parser_consume(parser, IDENTIFIER, "Expected parameter name");
-    if (!name) return NULL;
-    
-    parser_consume(parser, COLON, "Expected ':' after parameter name");
-    
-    TypeVar type = token_type_to_type_var(parser_advance(parser)->type);
-    
-    return ast_new_parameter(name->value, type);
-}
-
-
 static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     DPRINT("[PARSER] Starting to parse function declaration\n");
     Token* return_type_token = parser_advance(parser);
@@ -564,7 +608,9 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     Token* identifier = parser_consume(parser, IDENTIFIER, "Function declaration should have a name");
     if (!identifier) return NULL;
 
-    parser_consume(parser, LPAREN, "Expected '(' after function name");
+    if (!parser_consume(parser, LPAREN, "Expected '(' after function name")) {
+        return NULL;
+    }
     
     Parameter* parameters = NULL;
     size_t param_count = 0;
@@ -573,42 +619,81 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     parameters = malloc(sizeof(Parameter) * param_capacity);
     if (!parameters) return NULL;
 
+    // Парсим список параметров (может быть пустым)
     while (parser_peek(parser)->type != RPAREN && !parser_is_at_end(parser)) {
         if (param_count >= param_capacity) {
             param_capacity *= 2;
             Parameter* new_params = realloc(parameters, sizeof(Parameter) * param_capacity);
             if (!new_params) {
+                for (size_t i = 0; i < param_count; i++) {
+                    free(parameters[i].name);
+                }
                 free(parameters);
                 return NULL;
             }
             parameters = new_params;
         }
 
-        Parameter param;
-        Token* param_name = parser_consume(parser, IDENTIFIER, "Expected parameter name");
-        if (!param_name) {
+        // Парсим тип параметра
+        Token* param_type_token = parser_advance(parser);
+        if (!param_type_token) {
+            for (size_t i = 0; i < param_count; i++) {
+                free(parameters[i].name);
+            }
             free(parameters);
             return NULL;
         }
-
-        parser_consume(parser, COLON, "Expected ':' after parameter name");
         
-        Token* param_type_token = parser_advance(parser);
         TypeVar param_type = token_type_to_type_var(param_type_token->type);
+        if (param_type == TYPE_NONE) {
+            report_error(parser, "Invalid parameter type");
+            for (size_t i = 0; i < param_count; i++) {
+                free(parameters[i].name);
+            }
+            free(parameters);
+            return NULL;
+        }
         
-        param.name = strdup(param_name->value);
-        param.type = param_type;
+        // Парсим имя параметра
+        Token* param_name = parser_consume(parser, IDENTIFIER, "Expected parameter name after type");
+        if (!param_name) {
+            for (size_t i = 0; i < param_count; i++) {
+                free(parameters[i].name);
+            }
+            free(parameters);
+            return NULL;
+        }
         
-        parameters[param_count++] = param;
+        // Сохраняем параметр
+        parameters[param_count].name = strdup(param_name->value);
+        if (!parameters[param_count].name) {
+            for (size_t i = 0; i < param_count; i++) {
+                free(parameters[i].name);
+            }
+            free(parameters);
+            return NULL;
+        }
+        parameters[param_count].type = param_type;
+        param_count++;
 
-        if (parser_peek(parser)->type != COMMA) break;
-        parser_advance(parser);
+        // Проверяем, есть ли следующий параметр (через запятую)
+        if (parser_peek(parser)->type == COMMA) {
+            parser_advance(parser);
+        } else {
+            // Если нет запятой, выходим из цикла
+            break;
+        }
     }
 
-    parser_consume(parser, RPAREN, "Expected ')' after parameters");
+    if (!parser_consume(parser, RPAREN, "Expected ')' after parameters")) {
+        for (size_t i = 0; i < param_count; i++) {
+            free(parameters[i].name);
+        }
+        free(parameters);
+        return NULL;
+    }
 
     ASTNode* function_body = parser_parse_block(parser);
-
     if (!function_body) {
         for (size_t i = 0; i < param_count; i++) {
             free(parameters[i].name);
@@ -620,12 +705,6 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     TypeVar return_type = token_type_to_type_var(return_type_token->type);
     ASTNode* func_node = ast_new_function_declaration_statement(loc, identifier->value, return_type, parameters, param_count, function_body);
     
-    //for (size_t i = 0; i < param_count; i++) {
-    //    free(parameters[i].name);
-    //}
-    //free(parameters);
-    ast_free(function_body);
-
     return func_node;
 }
 
@@ -717,6 +796,18 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
                 }
             }
         }
+        case KW_NONE: {
+            DPRINT("[PARSER] Found KW_NONE, creating literal expression\n");
+            ASTNode* node = ast_new_literal_expression(loc, TYPE_NONE, 0);
+            DPRINT("[PARSER] Created node at %p\n", (void*)node);
+            if (!node) {
+                DPRINT("[PARSER] ERROR: Failed to create LiteralExpression for none\n");
+                return NULL;
+            }
+            parser_advance(parser);
+            DPRINT("[PARSER] Returning node for None\n");
+            return node;
+        }        
         case INT_LITERAL: {
             int value = atoi(current->value);
             DPRINT("[PARSER] Found INT_LITERAL: value=%d\n", value);
@@ -773,17 +864,49 @@ static ASTNode* parser_parse_expression(Parser* parser) {
     return parser_parse_precedence(parser, PRECEDENCE_ASSIGNMENT);
 }
 
+static ASTNode* parser_parse_unary_expression(Parser* parser) {
+    Token* operator_ = parser_advance(parser);
+    SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
+    
+    if (operator_->type != OP_PLUS && operator_->type != OP_MINUS && operator_->type != OP_NOT) {
+        report_error(parser, "Expected unary operator");
+        return NULL;
+    }
+    
+    // Парсим выражение с приоритетом PRECEDENCE_UNARY, чтобы унарный оператор
+    // применялся только к первичным выражениям, а не к бинарным операциям
+    ASTNode* operand = parser_parse_precedence(parser, PRECEDENCE_UNARY);
+    if (!operand) {
+        return NULL;
+    }
+    
+    ASTNode *node = ast_new_unary_expression(loc, *operator_, operand);
+    
+    ast_free(operand);
+    
+    return node;
+}
+
 static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence) {
     Token* current = parser_peek(parser);
+    if (!current) return NULL;
+    
     SourceLocation loc = (SourceLocation){current->line, current->column};
     
-    // Parse left
+    // Parse left - унарные операторы имеют высший приоритет (PRECEDENCE_UNARY = 8)
     ASTNode* left = NULL;
     switch (current->type) {
         case OP_PLUS:
         case OP_MINUS:
         case OP_NOT:
-            left = parser_parse_unary_expression(parser);
+            // Парсим унарные операторы только если текущий минимальный приоритет позволяет
+            if (min_precedence <= PRECEDENCE_UNARY) {
+                left = parser_parse_unary_expression(parser);
+            } else {
+                // Если мы внутри выражения с более высоким приоритетом (чего не может быть, 
+                // так как UNARY самый высокий), то это ошибка
+                return NULL;
+            }
             break;
         case IDENTIFIER:
         case INT_LITERAL:
@@ -791,6 +914,7 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
         case KW_FALSE:
         case LONG_LITERAL:
         case LPAREN:
+        case KW_NONE:
             left = parser_parse_primary_expression(parser);
             break;
         default:
@@ -802,6 +926,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
     // parse operations while their precedence >= min_precedence
     while (true) {
         Token* next = parser_peek(parser);
+        if (!next) break;
+        
         Precedence precedence = get_precedence(next->type);
         
         if (precedence < min_precedence) break;
@@ -809,6 +935,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
         Token operator_token = *next;
         parser_advance(parser);
 
+        // Для правоассоциативных операторов (например, =) нужно precedence вместо precedence + 1
+        // Но у нас все операторы левоассоциативные, поэтому используем precedence + 1
         ASTNode* right = parser_parse_precedence(parser, precedence + 1);
         if (!right) {
             ast_free(left);
@@ -827,27 +955,6 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
     }
 
     return left;
-}
-
-static ASTNode* parser_parse_unary_expression(Parser* parser) {
-    Token* operator_ = parser_advance(parser);
-    SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
-    
-    if (operator_->type != OP_PLUS && operator_->type != OP_MINUS && operator_->type != OP_NOT) {
-        report_error(parser, "Expected unary operator");
-        return NULL;
-    }
-    
-    ASTNode* operand = parser_parse_expression(parser);
-    if (!operand) {
-        return NULL;
-    }
-    
-    ASTNode *node = ast_new_unary_expression(loc, *operator_, operand);
-    
-    ast_free(operand);
-    
-    return node;
 }
 
 static ASTNode* parser_parse_expression_statement(Parser* parser) {
@@ -927,6 +1034,7 @@ static ASTNode* parser_parse_statement(Parser* parser) {
         case INT_LITERAL:
         case KW_TRUE:
         case KW_FALSE:
+        case KW_NONE:
         case LONG_LITERAL:
         case OP_PLUS:
         case OP_MINUS:

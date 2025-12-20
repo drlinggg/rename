@@ -16,6 +16,9 @@ Object* heap_alloc_code(Heap* heap, CodeObj* code);
 Object* heap_alloc_function(Heap* heap, CodeObj* code);
 Object* heap_alloc_array(Heap* heap);
 
+typedef Object* (*NativeCFunc)(VM* vm, int arg_count, Object** args);
+Object* heap_alloc_native_function(Heap* heap, NativeCFunc func, const char* name);
+
 // Convert compile-time Value to runtime Object
 Object* heap_from_value(Heap* heap, Value val);
 

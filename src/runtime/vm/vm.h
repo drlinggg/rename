@@ -12,6 +12,7 @@ typedef struct Frame Frame;
 typedef struct VM VM;
 
 VM* vm_create(Heap* heap, size_t global_count);
+void vm_register_builtins(VM* vm);
 void vm_destroy(VM* vm);
 
 Object* vm_execute(VM* vm, CodeObj* code);
@@ -25,11 +26,11 @@ Frame* frame_create(VM* vm, CodeObj* code);
 void frame_destroy(Frame* frame);
 Object* frame_execute(Frame* frame);
 
-// Access VM internals for GC/JIT
+// Access VM internals for GC/JIT/HEAP
 GC* vm_get_gc(VM* vm);
 JIT* vm_get_jit(VM* vm);
+Heap* vm_get_heap(VM* vm);
 
 Object* vm_get_none(VM* vm);
 Object* vm_get_true(VM* vm);
 Object* vm_get_false(VM* vm);
-

@@ -17,8 +17,7 @@ Supported objects (initial):
 - OBJ_BOOL — bool
 - OBJ_NONE — None object
 - OBJ_ARRAY — dynamic array (object references)
-- OBJ_CODE / OBJ_FUNCTION — reference to a `CodeObj` (compiler representation of a function body)
-- OBJ_STRING — minimal string storage (not heavily used yet)
+- OBJ_FUNCTION — reference to a `CodeObj` (compiler representation of a function body)
 
 Supported bytecodes (subset):
 - LOAD_CONST, LOAD_FAST, STORE_FAST
