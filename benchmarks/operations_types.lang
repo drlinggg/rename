@@ -56,4 +56,13 @@ int main() {
     print((5 and true) == true);
     print((0 and 0) == false);
 
+    print(a and true);
+    print(a or false);
+
+    int no_initialization;
+    bool bool_var_no_initialization;
+    bool bool_var_true = true;
+    bool bool_var_false = false;
+    int a = true; // decide later if autocast or raise err
+    print(a);
 }

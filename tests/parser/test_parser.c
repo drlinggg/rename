@@ -181,13 +181,11 @@ void test_function_declaration_statement() {
         
         // Параметры функции
         create_token(LPAREN, "(", 1, 8),
-        create_token(IDENTIFIER, "a", 1, 9),
-        create_token(COLON, ":", 1, 10),
         create_token(KW_INT, "int", 1, 11),
+        create_token(IDENTIFIER, "a", 1, 9),
         create_token(COMMA, ",", 1, 14),
-        create_token(IDENTIFIER, "b", 1, 15),
-        create_token(COLON, ":", 1, 16),
         create_token(KW_INT, "int", 1, 17),
+        create_token(IDENTIFIER, "b", 1, 15),
         create_token(RPAREN, ")", 1, 20),
         
         // Тело функции
@@ -205,7 +203,7 @@ void test_function_declaration_statement() {
         // }
     };
     
-    Parser* parser = parser_create(tokens, 18);
+    Parser* parser = parser_create(tokens, 16);
     ASTNode* func_decl = parser_parse(parser);
     
     if (func_decl) {
@@ -565,7 +563,7 @@ int main() {
     test_unary_expression();
     test_complex_expression();
     test_fun_expression();
-    //test_function_declaration_statement(); fix
+    test_function_declaration_statement(); //fix
     test_if_statement(); // v
     test_if_else_statement(); // v
     test_if_elif_else_statement(); // v+- TODO check fun arg count

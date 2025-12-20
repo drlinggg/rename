@@ -1,8 +1,10 @@
-#include "bytecode.h"
+#include <string.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include "../debug.h"
+#include "bytecode.h"
 
 static inline void bytecode_set_arg(bytecode* bc, uint32_t arg) {
     bc->argument[0] = (arg >> 16) & 0xFF;
@@ -169,16 +171,16 @@ uint32_t bytecode_get_arg(const bytecode bc) {
 }
 
 bytecode bytecode_create(uint8_t op_code, uint8_t argument1, uint8_t argument2, uint8_t argument3) {
-    if (op_code == NULL){
+    if (op_code == 0){
         op_code = NOP;
     }
-    if (argument1 == NULL) {
+    if (argument1 == 0) {
         argument1 = 0x00;
     }
-    if (argument2 == NULL) {
+    if (argument2 == 0) {
         argument2 = 0x00;
     }    
-    if (argument3 == NULL) {
+    if (argument3 == 0) {
         argument3 = 0x00;
     }    
 
@@ -211,4 +213,33 @@ void free_bytecode_array(bytecode_array array) {
     if (array.bytecodes) {
         free(array.bytecodes);
     }
+}
+
+// Эта функция может быть полезной для отладки
+static uint8_t* bytecode_to_byte_array(const bytecode_array* bc_array, size_t* byte_count) {
+    if (!bc_array || !bc_array->bytecodes || bc_array->count == 0) {
+        *byte_count = 0;
+        return NULL;
+    }
+    
+    *byte_count = bc_array->count * sizeof(bytecode);
+    uint8_t* byte_array = malloc(*byte_count);
+    if (!byte_array) return NULL;
+    
+    memcpy(byte_array, bc_array->bytecodes, *byte_count);
+    return byte_array;
+}
+
+// И обратная функция
+static bytecode_array byte_array_to_bytecode(const uint8_t* byte_array, size_t byte_count) {
+    if (!byte_array || byte_count % sizeof(bytecode) != 0) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    size_t bc_count = byte_count / sizeof(bytecode);
+    bytecode* bc_array = malloc(bc_count * sizeof(bytecode));
+    if (!bc_array) return create_bytecode_array(NULL, 0);
+    
+    memcpy(bc_array, byte_array, byte_count);
+    return create_bytecode_array(bc_array, bc_count);
 }

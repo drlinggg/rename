@@ -678,6 +678,105 @@ Object* frame_execute(Frame* frame) {
             case NOP: {
                 break;
             }
+            case POP_JUMP_IF_FALSE: {
+                Object* condition = frame_stack_pop(frame);
+                bool should_jump = false;
+                
+                // Проверяем, является ли значение ложным
+                if (condition) {
+                    if (condition->type == OBJ_BOOL) {
+                        should_jump = (condition->as.bool_value == false);
+                    } else if (condition->type == OBJ_INT) {
+                        should_jump = (condition->as.int_value == 0);
+                    } else if (condition->type == OBJ_NONE) {
+                        should_jump = true;
+                    }
+                }
+                
+                // Освобождаем значение условия
+                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+                
+                if (should_jump) {
+                    // arg содержит смещение в инструкциях (не байтах!)
+                    frame->ip += (int32_t)arg;
+                    DPRINT("[VM] POP_JUMP_IF_FALSE: jumping %d instructions to ip=%zu\n", 
+                           (int32_t)arg, frame->ip);
+                }
+                break;
+            }
+            
+            case JUMP_FORWARD: {
+                // Безусловный переход вперед
+                frame->ip += (int32_t)arg;
+                DPRINT("[VM] JUMP_FORWARD: jumping %d instructions to ip=%zu\n", 
+                       (int32_t)arg, frame->ip);
+                break;
+            }            
+            case POP_JUMP_IF_TRUE: {
+                Object* condition = frame_stack_pop(frame);
+                bool should_jump = false;
+                
+                // Проверяем, является ли значение истинным
+                if (condition) {
+                    if (condition->type == OBJ_BOOL) {
+                        should_jump = (condition->as.bool_value == true);
+                    } else if (condition->type == OBJ_INT) {
+                        should_jump = (condition->as.int_value != 0);
+                    } else if (condition->type == OBJ_NONE) {
+                        should_jump = false; // None считается ложным
+                    } else {
+                        // Для других типов считаем истинным
+                        should_jump = true;
+                    }
+                }
+                
+                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+                if (should_jump) {
+                    frame->ip += (int32_t)arg;
+                }
+                break;
+            }
+            
+            case POP_JUMP_IF_NONE: {
+                Object* condition = frame_stack_pop(frame);
+                bool should_jump = false;
+                if (condition && condition->type == OBJ_NONE) {
+                    should_jump = true;
+                }
+                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+                if (should_jump) {
+                    frame->ip += (int32_t)arg;
+                }
+                break;
+            }
+            
+            case POP_JUMP_IF_NOT_NONE: {
+                Object* condition = frame_stack_pop(frame);
+                bool should_jump = false;
+                if (condition && condition->type != OBJ_NONE) {
+                    should_jump = true;
+                }
+                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+                
+                if (should_jump) {
+                    frame->ip += (int32_t)arg;
+                }
+                break;
+            }
+            
+            case JUMP_BACKWARD: {
+                // Безусловный переход назад
+                frame->ip -= (int32_t)arg;
+                // Проверка на прерывания (например, Ctrl+C)
+                // Пока просто пустая заглушка
+                break;
+            }
+            
+            case JUMP_BACKWARD_NO_INTERRUPT: {
+                // Безусловный переход назад без проверки прерываний
+                frame->ip -= (int32_t)arg;
+                break;
+            }            
             default:
                 // For unsupported operations, print and continue
                 DPRINT("VM: Unsupported op code: 0x%02X\n", bc.op_code);

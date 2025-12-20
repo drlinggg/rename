@@ -6,5 +6,5 @@ int change_x() {
 
 int main() {
     change_x();
-    return x + 2;
+    return (x + 2) == 9;
 }

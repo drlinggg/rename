@@ -21,6 +21,12 @@ bool function() {
 }
 
 bool main() {
+
+    int main_in_main() {
+        print(true);
+    }
+    main_in_main(); // inner funcs should work just fine
+
     fake_main(1, true, 2);
     print();
 

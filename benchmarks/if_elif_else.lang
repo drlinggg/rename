@@ -1,0 +1,36 @@
+bool check_if_elif_else() {
+    if (true) { 
+        print(true);
+    }
+    elif (false) {
+        print(false);
+    } 
+    else { 
+        print(false); 
+    }
+}
+
+bool check_if_elif_else_var(int a) {
+    if (a) {
+        print(true);
+    }
+    else {
+        print(false);
+    }
+}
+
+bool check_if_none() {
+    bool b = None;
+    if b {
+        print(false);
+    } else {
+        print(true);
+    }
+}
+
+int main() {
+    check_if_elif_else();
+    check_if_elif_else_var(5);
+    check_if_elif_else_var(true);
+    check_if_none();
+}

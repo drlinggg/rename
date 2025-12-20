@@ -5,8 +5,8 @@ int factorial(int n) {
     return n * factorial(n - 1);
 }
 
-int main(){
+int main() {
     int n = 10;
     int result = factorial(n);
-    return result;
+    return result == 3628800;
 }
