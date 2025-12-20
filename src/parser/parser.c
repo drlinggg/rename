@@ -27,7 +27,7 @@ static Precedence get_precedence(TokenType type) {
         case OP_EQ: case OP_NE: return PRECEDENCE_EQUALITY;
         case OP_LT: case OP_GT: case OP_LE: case OP_GE: return PRECEDENCE_COMPARISON;
         case OP_PLUS: case OP_MINUS: return PRECEDENCE_TERM;
-        case OP_MULT: case OP_DIV: case OP_MOD: return PRECEDENCE_FACTOR;
+        case OP_MULT: case OP_DIV: case OP_MOD: case KW_IS: return PRECEDENCE_FACTOR;
         default: return PRECEDENCE_NONE;
     }
 }
@@ -864,17 +864,49 @@ static ASTNode* parser_parse_expression(Parser* parser) {
     return parser_parse_precedence(parser, PRECEDENCE_ASSIGNMENT);
 }
 
+static ASTNode* parser_parse_unary_expression(Parser* parser) {
+    Token* operator_ = parser_advance(parser);
+    SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
+    
+    if (operator_->type != OP_PLUS && operator_->type != OP_MINUS && operator_->type != OP_NOT) {
+        report_error(parser, "Expected unary operator");
+        return NULL;
+    }
+    
+    // Парсим выражение с приоритетом PRECEDENCE_UNARY, чтобы унарный оператор
+    // применялся только к первичным выражениям, а не к бинарным операциям
+    ASTNode* operand = parser_parse_precedence(parser, PRECEDENCE_UNARY);
+    if (!operand) {
+        return NULL;
+    }
+    
+    ASTNode *node = ast_new_unary_expression(loc, *operator_, operand);
+    
+    ast_free(operand);
+    
+    return node;
+}
+
 static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence) {
     Token* current = parser_peek(parser);
+    if (!current) return NULL;
+    
     SourceLocation loc = (SourceLocation){current->line, current->column};
     
-    // Parse left
+    // Parse left - унарные операторы имеют высший приоритет (PRECEDENCE_UNARY = 8)
     ASTNode* left = NULL;
     switch (current->type) {
         case OP_PLUS:
         case OP_MINUS:
         case OP_NOT:
-            left = parser_parse_unary_expression(parser);
+            // Парсим унарные операторы только если текущий минимальный приоритет позволяет
+            if (min_precedence <= PRECEDENCE_UNARY) {
+                left = parser_parse_unary_expression(parser);
+            } else {
+                // Если мы внутри выражения с более высоким приоритетом (чего не может быть, 
+                // так как UNARY самый высокий), то это ошибка
+                return NULL;
+            }
             break;
         case IDENTIFIER:
         case INT_LITERAL:
@@ -894,6 +926,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
     // parse operations while their precedence >= min_precedence
     while (true) {
         Token* next = parser_peek(parser);
+        if (!next) break;
+        
         Precedence precedence = get_precedence(next->type);
         
         if (precedence < min_precedence) break;
@@ -901,6 +935,8 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
         Token operator_token = *next;
         parser_advance(parser);
 
+        // Для правоассоциативных операторов (например, =) нужно precedence вместо precedence + 1
+        // Но у нас все операторы левоассоциативные, поэтому используем precedence + 1
         ASTNode* right = parser_parse_precedence(parser, precedence + 1);
         if (!right) {
             ast_free(left);
@@ -919,27 +955,6 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
     }
 
     return left;
-}
-
-static ASTNode* parser_parse_unary_expression(Parser* parser) {
-    Token* operator_ = parser_advance(parser);
-    SourceLocation loc = (SourceLocation){operator_->line, operator_->column};
-    
-    if (operator_->type != OP_PLUS && operator_->type != OP_MINUS && operator_->type != OP_NOT) {
-        report_error(parser, "Expected unary operator");
-        return NULL;
-    }
-    
-    ASTNode* operand = parser_parse_expression(parser);
-    if (!operand) {
-        return NULL;
-    }
-    
-    ASTNode *node = ast_new_unary_expression(loc, *operator_, operand);
-    
-    ast_free(operand);
-    
-    return node;
 }
 
 static ASTNode* parser_parse_expression_statement(Parser* parser) {

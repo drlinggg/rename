@@ -202,7 +202,7 @@ Frame* frame_create(VM* vm, CodeObj* code) {
     f->local_count = code->local_count;
     f->locals = calloc(f->local_count, sizeof(Object*));
     for (size_t i = 0; i < f->local_count; i++) {
-        f->locals[i] = vm->heap ? heap_alloc_none(vm->heap) : NULL;
+        f->locals[i] = vm->heap ? vm_get_none(vm) : NULL;
         if (f->locals[i] && vm->gc) gc_incref(vm->gc, f->locals[i]);
     }
     f->stack = NULL;
@@ -262,7 +262,7 @@ Object* frame_execute(Frame* frame) {
             case LOAD_FAST: {
                 if (arg >= code->local_count) {
                     DPRINT("VM: LOAD_FAST index out of range %u\n", arg);
-                    frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                    frame_stack_push(frame, vm_get_none(frame->vm));
                     break;
                 }
                 Object* o = frame->locals[arg];
@@ -295,7 +295,7 @@ Object* frame_execute(Frame* frame) {
             case LOAD_GLOBAL: {
                 size_t gidx = arg >> 1;
                 Object* val = vm_get_global(frame->vm, gidx);
-                if (!val) val = heap_alloc_none(frame->vm->heap);
+                if (!val) val = vm_get_none(frame->vm);
                 frame_stack_push(frame, val);
                 break;
             }
@@ -310,10 +310,43 @@ Object* frame_execute(Frame* frame) {
                 uint8_t op = arg & 0xFF;
                 Object* right = frame_stack_pop(frame);
                 Object* left = frame_stack_pop(frame);
-                if (!right) right = heap_alloc_none(frame->vm->heap);
-                if (!left) left = heap_alloc_none(frame->vm->heap);
+                if (!right) right = vm_get_none(frame->vm);
+                if (!left) left = vm_get_none(frame->vm);
                 Object* ret = NULL;
-                if (left->type == OBJ_INT && right->type == OBJ_INT) {
+
+                // or and handeling
+                if (op == 0x60 || op == 0x61) {
+                    bool left_bool = false;
+                    bool right_bool = false;
+                    switch (left->type) {
+                        case OBJ_INT:
+                            left_bool = (bool) left->as.int_value;
+                            break;
+                        case OBJ_BOOL:
+                            left_bool = left->as.bool_value;
+                            break;
+                    }
+                    switch (right->type) {
+                        case OBJ_INT:
+                            right_bool = (bool) right->as.int_value;
+                            break;
+                        case OBJ_BOOL:
+                            right_bool = right->as.bool_value;
+                            break;
+                    }
+
+                    if (op == 0x60 && (left_bool && right_bool)) {
+                        ret = vm_get_true(frame->vm);
+                    }
+                    else if (op == 0x61 && (left_bool || right_bool)) {
+                        ret = vm_get_true(frame->vm);
+                    }
+                    else {
+                        ret = vm_get_false(frame->vm);
+                    }
+                }
+
+                else if (left->type == OBJ_INT && right->type == OBJ_INT) {
                     int64_t a = left->as.int_value;
                     int64_t b = right->as.int_value;
                     switch (op) {
@@ -330,15 +363,114 @@ Object* frame_execute(Frame* frame) {
                             if (b == 0) ret = heap_alloc_int(frame->vm->heap, 0);
                             else ret = heap_alloc_int(frame->vm->heap, a / b);
                             break;
+                        case (0x50): {
+                            ret = (left->as.int_value == right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x51): {
+                            ret = (left->as.int_value != right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x52): {
+                            ret = (left->as.int_value < right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x53): {
+                            ret = (left->as.int_value <= right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x54): {
+                            ret = (left->as.int_value > right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x55): {
+                            ret = (left->as.int_value >= right->as.int_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x56): {
+                            ret = (left == right) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
                         default:
                             DPRINT("VM: Unsupported binary_op on ints: %u\n", op);
-                            ret = heap_alloc_none(frame->vm->heap);
+                            ret = vm_get_none(frame->vm);
                             break;
                     }
-                } else {
-                    // fallback: string concat if strings? not implemented.
-                    DPRINT("VM: BINARY_OP for non-int operands not implemented\n");
-                    ret = heap_alloc_none(frame->vm->heap);
+                }
+                else if (left->type != right->type) {
+                    switch (arg) {
+                        case (0x50):
+                        case (0x56): {
+                            ret = vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x51): {
+                            ret = vm_get_true(frame->vm);
+                            break;
+                        }
+                        default:
+                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type", op, left->type, right->type);
+                            ret = vm_get_none(frame->vm);
+                            break;
+                    }
+                }
+                else if (left->type == OBJ_BOOL && right->type == OBJ_BOOL) {
+                    switch (arg) {
+                        case (0x50): {
+                            ret = (left->as.bool_value == right->as.bool_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x51): {
+                            ret = (left->as.bool_value != right->as.bool_value) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        case (0x52):
+                        case (0x53):
+                        case (0x54):
+                        case (0x55): {
+                            ret = vm_get_false(frame->vm);
+                            break;
+                        }
+
+                        case (0x56): {
+                            ret = (left == right) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        default:
+                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type", op, left->type, right->type);
+                            ret = vm_get_none(frame->vm);
+                            break;
+                    }
+                }
+                else if (left->type == right->type) {
+                    switch (arg) {
+                        case (0x56): {
+                            ret = (left == right) ? 
+                                  vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                            break;
+                        }
+                        default:
+                            DPRINT("VM: Unsupported binary_op on current type: %u\n", op);
+                            ret = vm_get_none(frame->vm);
+                            break;
+                    }
+
+                }
+
+
+                else {
+                    DPRINT("VM: BINARY_OP for non-int-bool operands not implemented\n");
+                    ret = vm_get_none(frame->vm);
                 }
                 // cleanup
                 if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, left);
@@ -346,8 +478,57 @@ Object* frame_execute(Frame* frame) {
                 frame_stack_push(frame, ret);
                 break;
             }
+            case UNARY_OP: {
+                uint8_t op = arg & 0xFF;
+                Object* obj = frame_stack_pop(frame);
+                if (!obj) obj = vm_get_none(frame->vm);
+                Object* ret = NULL;
+                if (obj->type == OBJ_INT) {
+                    switch (op) {
+                        case (0x00): {
+                            ret = heap_alloc_int(frame->vm->heap, +obj->as.int_value); 
+                            break;
+                         }
+                         case (0x01): {
+                            ret = heap_alloc_int(frame->vm->heap, -obj->as.int_value); 
+                            break;
+                         }   
+                         default: {
+                             DPRINT("VM: Unsupported unary_op on ints: %u\n", op);
+                             ret = vm_get_none(frame->vm);
+                             break;
+                         }
+                    }
+                }
+                else if (obj->type == OBJ_BOOL) {
+                    switch (op) {
+                        case (0x03): {
+                            if (obj->as.bool_value == true) {
+                                ret = vm_get_false(frame->vm);
+                            }
+                            else {
+                                ret = vm_get_true(frame->vm);
+                            }
+                            break;
+                        }
+                        default: {
+                             DPRINT("VM: Unsupported unary_op on bools: %u\n", op);
+                             ret = vm_get_none(frame->vm);
+                             break;
+                         }
+                    }
+                } else {
+                    DPRINT("VM: Unsupported unary_op: %u\n", op);
+                    ret = vm_get_none(frame->vm);
+                    break;
+                }
+
+                if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, obj);
+                frame_stack_push(frame, ret);
+                break;
+            }
             case PUSH_NULL: {
-                frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                frame_stack_push(frame, vm_get_none(frame->vm));
                 break;
             }
             case POP_TOP: {
@@ -367,7 +548,7 @@ Object* frame_execute(Frame* frame) {
                     if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, func_obj);
                 } else {
                     if (maybe && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, maybe);
-                    frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                    frame_stack_push(frame, vm_get_none(frame->vm));
                 }
                 break;
             }
@@ -408,7 +589,7 @@ Object* frame_execute(Frame* frame) {
                         free(args);
                     }
                     // Пушим None в качестве результата
-                    frame_stack_push(frame, heap_alloc_none(frame->vm->heap));
+                    frame_stack_push(frame, vm_get_none(frame->vm));
                     break;
                 }
                 
@@ -458,7 +639,7 @@ Object* frame_execute(Frame* frame) {
                         gc_decref(frame->vm->gc, callee_obj);
                     }
                     // Создаем None как результат
-                    ret = heap_alloc_none(frame->vm->heap);
+                    ret = vm_get_none(frame->vm);
                 }
                 
                 // 5. Очищаем аргументы
@@ -474,7 +655,7 @@ Object* frame_execute(Frame* frame) {
                 // 6. Если функция вернула NULL, создаем None
                 if (!ret) {
                     DPRINT("[VM] WARNING: Function returned NULL, using None\n");
-                    ret = heap_alloc_none(frame->vm->heap);
+                    ret = vm_get_none(frame->vm);
                 }
                 
                 DPRINT("[VM] Function result: %p (type: %d)\n", (void*)ret, ret->type);
@@ -505,7 +686,7 @@ Object* frame_execute(Frame* frame) {
     }
 
     // end of code without explicit return -> return None
-    Object* nonev = heap_alloc_none(frame->vm->heap);
+    Object* nonev = vm_get_none(frame->vm);
     if (frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, nonev);
     return nonev;
 }

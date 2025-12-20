@@ -415,6 +415,36 @@ static bytecode_array compiler_compile_binary_expression(compiler* comp, ASTNode
         case OP_MOD:
             op_code_value = 0x06;  // BINARY_OP_REMAINDER
             break;
+        case OP_EQ:
+            op_code_value = 0x50;  // COMPARE_OP_EQ
+            break;
+        case OP_NE:
+            op_code_value = 0x51;  // COMPARE_OP_NE
+            break;
+        case OP_LT:
+            op_code_value = 0x52;  // COMPARE_OP_LT
+            break;
+        case OP_LE:
+            op_code_value = 0x53;  // COMPARE_OP_LE
+            break;
+        case OP_GT:
+            op_code_value = 0x54;  // COMPARE_OP_GT
+            break;
+        case OP_GE:
+            op_code_value = 0x55;  // COMPARE_OP_GE
+            break;
+        case KW_IS:
+            op_code_value = 0x56;  // KW_IS
+            break;
+
+        case OP_AND:
+            op_code_value = 0x60;
+            break;
+
+        case OP_OR:
+            op_code_value = 0x61;
+            break;
+
         default:
             fprintf(stderr, "Invalid token for binary operation: %d\n", bin_expr->operator_);
             free_bytecode_array(concated);
@@ -455,10 +485,10 @@ static bytecode_array compiler_compile_unary_expression(compiler* comp, ASTNode*
             op_code_value = 0x00;  // +x
             break;
         case OP_MINUS:
-            op_code_value = 0x0A;  // -x
+            op_code_value = 0x01;  // -x
             break;
         case OP_NOT:
-            op_code_value = 0x05;  // not x
+            op_code_value = 0x03;  // not x
             break;
         default:
             fprintf(stderr, "Invalid token for unary operation: %d\n", unary_expr->operator_);

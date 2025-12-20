@@ -13,7 +13,7 @@ int fake_main(int a, bool b, array c) {
 }
 
 int print_true_none_false_func() {
-    print(true, None, false, fake_main);
+    print(true, None, false, print, fake_main);
 }
 
 bool function() {
@@ -35,7 +35,8 @@ bool main() {
     print();
 
     print(input());
+    x = 123;
     print(x);
 
-    return function();
+    return 5 + 5 + 5;
 }

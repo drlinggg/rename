@@ -1,0 +1,59 @@
+int main() {
+    print(true == true);
+    print(false == false);
+    print(true != false);
+
+    print((1 < 5) == true);
+    print((5 < 1) == false);
+    print((1 > 5) == false);
+    print((5 > 1) == true);
+    print((1 <= 5) == true);
+    print((5 <= 5) == true);
+    print((6 <= 5) == false);
+    print((1 >= 5) == false);
+    print((5 >= 5) == true);
+    print((6 >= 5) == true);
+    
+    print((1 == 1) == true);
+    print((1 == 5) == false);
+    print((1 != 1) == false);
+    print((1 != 5) == true);
+    
+    print((0 < 1) == true);
+    print((-1 < 0) == true);
+    print((-5 < -1) == true);
+    print((100 < 101) == true);
+    print((999 < 1000) == true);
+    print((-5 < 0) == true);
+    print((0 > -1) == true);
+    print((-10 < -5) == true);
+
+    print(((1 < 5) == true) == true);
+    print(((5 < 1) == false) == true);
+    
+    print(not(false is true));
+    print((false is not false) == false);
+    print(not(-5 is 123));
+    print(not(a is 5));
+
+    int a = 5;
+    int b = 5;
+    print((a is a) == true);
+    print((a is b) == false);
+    print((true is true) == true);
+    print((false is false) == true);
+    print((None is None) == true);
+
+    print(true or true);
+    print(false or true);
+    print(true or None);
+    print(5 or true);
+    print((0 or 0) == false);
+
+    print(true and true);
+    print((false and true) == false);
+    print((true and None) == false);
+    print((5 and true) == true);
+    print((0 and 0) == false);
+
+}
