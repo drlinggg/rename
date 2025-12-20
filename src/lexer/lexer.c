@@ -21,8 +21,21 @@ static void lexer_advance(lexer *l) {
 }
 
 static void lexer_skip_whitespace(lexer *l) {
-    while (l->current_char != EOF && isspace(l->current_char)) {
-        lexer_advance(l);
+    while (l->current_char != EOF && (isspace(l->current_char) || l->current_char == '/')) {
+        if (l->current_char == '/') {
+            int next_char = fgetc(l->file);
+            
+            if (next_char == '/') {
+                while (l->current_char != EOF && l->current_char != '\n') {
+                    lexer_advance(l);
+                }
+            } else {
+                ungetc(next_char, l->file);
+                break;
+            }
+        } else {
+            lexer_advance(l);
+        }
     }
 }
 

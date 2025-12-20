@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #define LOAD_FAST 0x01
 #define LOAD_CONST 0x02
@@ -57,3 +58,7 @@ typedef struct __attribute__((packed, aligned(1))) {
 bytecode_array create_bytecode_array(bytecode* bytecode, uint32_t count);
 void free_bytecode_array(bytecode_array array);
 void bytecode_array_print(bytecode_array* bc);
+
+static uint8_t* bytecode_to_byte_array(const bytecode_array* bc_array, size_t* byte_count);
+static bytecode_array byte_array_to_bytecode(const uint8_t* byte_array, size_t byte_count);
+

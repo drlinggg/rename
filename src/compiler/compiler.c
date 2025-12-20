@@ -1,12 +1,12 @@
-
-#include "compiler.h"
-#include "scope.h"
-#include "string_table.h"
-#include "../lexer/token.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
 #include "../debug.h"
+#include "../lexer/token.h"
+#include "compiler.h"
+#include "scope.h"
+#include "string_table.h"
 
 // Forward declarations
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node);
@@ -301,9 +301,145 @@ static bytecode_array compiler_compile_return_statement(compiler* comp, ASTNode*
 }
 
 static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* node) {
+    DPRINT("[COMPILER] Compiling if statement\n");
+    
     if (node->node_type != NODE_IF_STATEMENT) {
+        DPRINT("[COMPILER] ERROR: Not an if statement\n");
         return create_bytecode_array(NULL, 0);
     }
+    
+    IfStatement* if_stmt = (IfStatement*)node;
+    
+    // Массивы для хранения скомпилированных частей
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // 1. Компилируем if условие
+    DPRINT("[COMPILER] Compiling if condition\n");
+    bytecode_array cond_bc = compiler_compile_expression(comp, if_stmt->condition);
+    if (cond_bc.count == 0) {
+        DPRINT("[COMPILER] ERROR: Failed to compile condition\n");
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    // 2. Компилируем then ветку
+    DPRINT("[COMPILER] Compiling then branch\n");
+    bytecode_array then_bc = compiler_compile_block_statement(comp, if_stmt->then_branch);
+    
+    // 3. Компилируем elif ветки
+    bytecode_array* elif_cond_bc = NULL;
+    bytecode_array* elif_branch_bc = NULL;
+    if (if_stmt->elif_count > 0) {
+        elif_cond_bc = malloc(if_stmt->elif_count * sizeof(bytecode_array));
+        elif_branch_bc = malloc(if_stmt->elif_count * sizeof(bytecode_array));
+        
+        for (size_t i = 0; i < if_stmt->elif_count; i++) {
+            elif_cond_bc[i] = compiler_compile_expression(comp, if_stmt->elif_conditions[i]);
+            elif_branch_bc[i] = compiler_compile_block_statement(comp, if_stmt->elif_branches[i]);
+        }
+    }
+    
+    // 4. Компилируем else ветку (если есть)
+    bytecode_array else_bc;
+    bool has_else = (if_stmt->else_branch != NULL);
+    if (has_else) {
+        DPRINT("[COMPILER] Compiling else branch\n");
+        else_bc = compiler_compile_block_statement(comp, if_stmt->else_branch);
+    }
+    
+    // 5. Сначала собираем весь код, чтобы вычислить размеры
+    bytecode_array temp_code = create_bytecode_array(NULL, 0);
+    
+    // if условие
+    temp_code = concat_bytecode_arrays(temp_code, cond_bc);
+    free_bytecode_array(cond_bc);
+    
+    // POP_JUMP_IF_FALSE с временным смещением
+    bytecode pop_jump = bytecode_create_with_number(POP_JUMP_IF_FALSE, 0);
+    bytecode_array pop_jump_arr = create_single_bytecode_array(pop_jump);
+    temp_code = concat_bytecode_arrays(temp_code, pop_jump_arr);
+    size_t pop_jump_pos = temp_code.count - 1;
+    free_bytecode_array(pop_jump_arr);
+    
+    // then ветка
+    temp_code = concat_bytecode_arrays(temp_code, then_bc);
+    free_bytecode_array(then_bc);
+    
+    // JUMP_FORWARD чтобы перепрыгнуть остальное
+    bytecode jump_forward = bytecode_create_with_number(JUMP_FORWARD, 0);
+    bytecode_array jump_arr = create_single_bytecode_array(jump_forward);
+    temp_code = concat_bytecode_arrays(temp_code, jump_arr);
+    size_t jump_forward_pos = temp_code.count - 1;
+    free_bytecode_array(jump_arr);
+    
+    // elif ветки
+    for (size_t i = 0; i < if_stmt->elif_count; i++) {
+        // elif условие
+        temp_code = concat_bytecode_arrays(temp_code, elif_cond_bc[i]);
+        free_bytecode_array(elif_cond_bc[i]);
+        
+        // POP_JUMP_IF_FALSE для elif
+        bytecode elif_pop_jump = bytecode_create_with_number(POP_JUMP_IF_FALSE, 0);
+        bytecode_array elif_pop_arr = create_single_bytecode_array(elif_pop_jump);
+        temp_code = concat_bytecode_arrays(temp_code, elif_pop_arr);
+        free_bytecode_array(elif_pop_arr);
+        
+        // elif ветка
+        temp_code = concat_bytecode_arrays(temp_code, elif_branch_bc[i]);
+        free_bytecode_array(elif_branch_bc[i]);
+        
+        // JUMP_FORWARD если не последний elif или есть else
+        if (i < if_stmt->elif_count - 1 || has_else) {
+            bytecode elif_jump = bytecode_create_with_number(JUMP_FORWARD, 0);
+            bytecode_array elif_jump_arr = create_single_bytecode_array(elif_jump);
+            temp_code = concat_bytecode_arrays(temp_code, elif_jump_arr);
+            free_bytecode_array(elif_jump_arr);
+        }
+    }
+    
+    // else ветка
+    if (has_else) {
+        temp_code = concat_bytecode_arrays(temp_code, else_bc);
+        free_bytecode_array(else_bc);
+    }
+    
+    // 6. Теперь вычисляем правильные смещения
+    // Вычисляем размеры частей
+    size_t then_size = then_bc.count;
+    size_t else_size = has_else ? else_bc.count : 0;
+    
+    // Смещение для POP_JUMP_IF_FALSE
+    // Если условие ложно, перепрыгиваем then ветку
+    uint32_t pop_jump_offset = (uint32_t)(then_size + 1); // +1 для JUMP_FORWARD после then
+    
+    // Смещение для JUMP_FORWARD после then
+    uint32_t jump_forward_offset = 0;
+    size_t bytes_after_then = 0;
+    
+    // Считаем байты после then (elif + else)
+    for (size_t i = 0; i < if_stmt->elif_count; i++) {
+        bytes_after_then += elif_cond_bc[i].count + 1 + elif_branch_bc[i].count;
+        if (i < if_stmt->elif_count - 1 || has_else) {
+            bytes_after_then += 1; // JUMP_FORWARD
+        }
+    }
+    
+    if (has_else) {
+        bytes_after_then += else_bc.count;
+    }
+    
+    jump_forward_offset = (uint32_t)bytes_after_then;
+    
+    // Обновляем инструкции с правильными смещениями
+    temp_code.bytecodes[pop_jump_pos] = bytecode_create_with_number(POP_JUMP_IF_FALSE, pop_jump_offset);
+    temp_code.bytecodes[jump_forward_pos] = bytecode_create_with_number(JUMP_FORWARD, jump_forward_offset);
+    
+    // Освобождаем временные массивы
+    if (if_stmt->elif_count > 0) {
+        free(elif_cond_bc);
+        free(elif_branch_bc);
+    }
+    
+    return temp_code;
 }
 
 static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* node) {
@@ -437,11 +573,11 @@ static bytecode_array compiler_compile_binary_expression(compiler* comp, ASTNode
             op_code_value = 0x56;  // KW_IS
             break;
 
-        case OP_AND:
+        case OP_AND: // and
             op_code_value = 0x60;
             break;
 
-        case OP_OR:
+        case OP_OR: // or
             op_code_value = 0x61;
             break;
 
@@ -679,27 +815,10 @@ static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* 
     bytecode_array result = create_bytecode_array(NULL, 0);
 
     for (uint32_t i = 0; i < block->statement_count; i++) {
-        DPRINT("[COMPILER] Compiling statement %u in block\n", i);
         bytecode_array stmt_bc = compiler_compile_statement(comp, block->statements[i]);
-        
-        // Отладочный вывод байт-кода
-        DPRINT("[COMPILER] Statement %u generated %u bytecodes\n", i, stmt_bc.count);
-        if (stmt_bc.count > 0) {
-            // Используй bytecode_get_arg для получения аргумента
-            uint32_t arg = bytecode_get_arg(stmt_bc.bytecodes[0]);
-            DPRINT("[COMPILER] First bytecode: op=%02X, arg=%u (bytes: %02X %02X %02X)\n", 
-                   stmt_bc.bytecodes[0].op_code, 
-                   arg,
-                   stmt_bc.bytecodes[0].argument[0],
-                   stmt_bc.bytecodes[0].argument[1],
-                   stmt_bc.bytecodes[0].argument[2]);
-        }
-        
         bytecode_array new_result = concat_bytecode_arrays(result, stmt_bc);
-        
         free_bytecode_array(result);
         free_bytecode_array(stmt_bc);
-        
         result = new_result;
     }
 
@@ -793,8 +912,29 @@ void compiler_destroy(compiler* comp) {
     free(comp);
 }
 
+static void compiler_collect_declarations(compiler* comp, ASTNode* node) {
+    if (!node) return;
+    
+    if (node->node_type == NODE_FUNCTION_DECLARATION_STATEMENT) {
+        FunctionDeclarationStatement* func_decl = (FunctionDeclarationStatement*)node;
+        // Добавляем имя функции в таблицу символов
+        compiler_add_global_name(comp, func_decl->name);
+    }
+    else if (node->node_type == NODE_BLOCK_STATEMENT) {
+        BlockStatement* block = (BlockStatement*)node;
+        for (size_t i = 0; i < block->statement_count; i++) {
+            compiler_collect_declarations(comp, block->statements[i]);
+        }
+    }
+}
+
 compilation_result* compiler_compile(compiler* compiler) {
     if (!compiler) return NULL;
+    
+    // Первый проход: сбор деклараций
+    compiler_collect_declarations(compiler, compiler->ast_tree);
+    
+    // Второй проход: компиляция тел
     if (compiler->ast_tree->node_type != NODE_BLOCK_STATEMENT) {
         return NULL;
     }
@@ -806,6 +946,7 @@ compilation_result* compiler_compile(compiler* compiler) {
         emit_bytecode(compiler->result, result);
         free_bytecode_array(result);
     }
+    DPRINT("[COMPILER] compiling completed, dumping bytecode:\n");
+    bytecode_array_print(&(compiler->result->code_array));
     return compiler->result;
 }
-

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "../src/lexer/lexer.h"
 #include "../src/parser/parser.h"
@@ -12,6 +13,8 @@
 #include "../src/debug.h"
 
 int main(int argc, char** argv) {
+    clock_t start_time = clock(); // Начало замера времени
+    
     if (argc < 2) {
         printf("Usage: %s [--debug|-d] <source_file.lang>\n", argv[0]);
         return 1;
@@ -64,9 +67,6 @@ int main(int argc, char** argv) {
     ASTNode* ast = parser_parse(parser);
     parser_destroy(parser);
     lexer_destroy(l);
-    DPRINT("[RUNNER] Parsing completed\n");
-    DPRINT("[RUNNER]\n");
-    ast_print(ast, 0);
 
     if (!ast) {
         fprintf(stderr, "Parsing failed\n");
@@ -205,5 +205,10 @@ int main(int argc, char** argv) {
     vm_destroy(vm);
     heap_destroy(heap);
 
+    clock_t end_time = clock();
+    double elapsed_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+    
+    DPRINT("[RUNNER] Program executed in %.6f seconds\n", elapsed_time);
+    
     return 0;
 }

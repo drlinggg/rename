@@ -213,7 +213,6 @@ static ASTNode* parser_parse_function_call_expression(Parser* parser) {
             }
 
             DPRINT("[PARSER] Successfully created function call expression with %zu arguments\n", argument_count);
-            ast_print(function_call_expr, 0);
             return function_call_expr;
         }
         
@@ -522,13 +521,9 @@ static ASTNode* parser_parse_for_statement(Parser* parser) {
     
     DPRINT("[PARSER] [FOR LOOP] Creating for statement node:\n");
     DPRINT("[PARSER] [FOR LOOP]   - Initializer: %s\n", initializer ? ast_node_type_to_string(initializer->node_type) : "NULL");
-    ast_print(initializer, 0);
     DPRINT("[PARSER] [FOR LOOP]   - Condition: %s\n", condition ? ast_node_type_to_string(condition->node_type) : "NULL");
-    ast_print(condition, 0);
     DPRINT("[PARSER] [FOR LOOP]   - Increment: %s\n", increment ? ast_node_type_to_string(increment->node_type) : "NULL");
-    ast_print(increment, 0);
     DPRINT("[PARSER] [FOR LOOP]   - Body: %s\n", body ? ast_node_type_to_string(body->node_type) : "NULL");
-    ast_print(body, 0);
     
     ASTNode* for_node = ast_new_for_statement(loc, initializer, condition, increment, body);
     
@@ -596,7 +591,6 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     //    ast_free(initializer);
     //}
     DPRINT("[PARSER] parse_variable_declaration finished for name=%s\n", identifier->value);
-    ast_print(initializer, 0);
     return node;
 }
 
@@ -725,14 +719,21 @@ static ASTNode* parser_parse_declaration_statement(Parser* parser) {
         DPRINT("[PARSER] ERROR: No identifier in declaration\n");
         return NULL;
     }
-
+    
+    DPRINT("[PARSER] found after identifier: %s\n", token_type_to_string(parser_peek(parser)->type));
     if (parser_peek(parser)->type == OP_ASSIGN) {
         DPRINT("[PARSER] Parsing variable declaration\n");
         parser_retreat(parser);
         parser_retreat(parser);
         return parser_parse_variable_declaration_statement(parser);
     }
-    
+    else if (parser_peek(parser)->type == SEMICOLON) {
+        DPRINT("[PARSER] Parsing variable declaration (no initialization)\n");
+        parser_retreat(parser);
+        parser_retreat(parser);
+        return parser_parse_variable_declaration_statement(parser);
+    }
+
     DPRINT("[PARSER] Parsing function declaration\n");
     parser_retreat(parser);
     parser_retreat(parser);
@@ -1096,8 +1097,11 @@ static ASTNode* parser_parse_block(Parser* parser) {
             return NULL;
         }
         
-        add_statement_to_block(block, stmt);
-        DPRINT("[PARSER] Successfully added statement to block\n");
+        if (add_statement_to_block(block, stmt))
+            DPRINT("[PARSER] Successfully added statement to block\n");
+        else
+            DPRINT("[PARSER] Failed to add statement to block\n");
+
     }
 
     if (!parser_consume(parser, RBRACE, "Expected '}' after block")) {
@@ -1142,12 +1146,12 @@ ASTNode* parser_parse(Parser* parser) {
         }
         
         DPRINT("[PARSER] Successfully parsed statement, adding to block\n");
-        ast_print(stmt,0);
         add_statement_to_block(block_statements, stmt);
         
         ast_free(stmt);
     }
     
     DPRINT("[PARSER] Finished parsing, returning block with statements\n");
+    ast_print(block_statements, 0);
     return block_statements;
 }
