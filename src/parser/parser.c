@@ -67,6 +67,9 @@ static ASTNode* parser_parse_literal_expression(Parser* parser);
 static ASTNode* parser_parse_function_call_expression(Parser* parser);
 static ASTNode* parser_parse_variable_expression(Parser* parser);
 
+static ASTNode* parse_array_expression(Parser* parser);
+static ASTNode* parse_subscript_expression(Parser* parser, ASTNode* array);
+
 
 Parser* parser_create(Token* tokens, size_t token_count) {
     // Parser create fuction
@@ -161,6 +164,86 @@ bool parser_check(Parser* parser, TokenType type) {
     if (parser_is_at_end(parser)) return false;
     Token* token = parser_peek(parser);
     return token->type == type;
+}
+
+static ASTNode* parse_array_expression(Parser* parser) {
+    Token* current = parser_peek(parser);
+    if (!current) return NULL;
+    
+    SourceLocation loc = {current->line, current->column};
+    parser_consume(parser, LBRACKET, "Expected '[' at start of array expression");
+    
+    ASTNode** elements = NULL;
+    size_t element_count = 0;
+    size_t capacity = 4;
+    
+    elements = malloc(capacity * sizeof(ASTNode*));
+    if (!elements) return NULL;
+    
+    // Parse array elements
+    if (parser_peek(parser) && parser_peek(parser)->type != RBRACKET) {
+        do {
+            if (element_count >= capacity) {
+                capacity *= 2;
+                ASTNode** new_elements = realloc(elements, capacity * sizeof(ASTNode*));
+                if (!new_elements) {
+                    for (size_t i = 0; i < element_count; i++) {
+                        ast_free(elements[i]);
+                    }
+                    free(elements);
+                    return NULL;
+                }
+                elements = new_elements;
+            }
+            
+            ASTNode* expr = parser_parse_expression(parser);
+            if (!expr) {
+                for (size_t i = 0; i < element_count; i++) {
+                    ast_free(elements[i]);
+                }
+                free(elements);
+                return NULL;
+            }
+            
+            elements[element_count++] = expr;
+            
+            if (!parser_peek(parser) || parser_peek(parser)->type != COMMA) {
+                break;
+            }
+            
+            parser_consume(parser, COMMA, "Expected ',' between array elements");
+        } while (true);
+    }
+    
+    parser_consume(parser, RBRACKET, "Expected ']' at end of array expression");
+    
+    // Create array node
+    ASTNode* array_node = ast_new_array_expression(loc, elements, element_count);
+    
+    // Free temporary elements array (the array expression owns the copies)
+    for (size_t i = 0; i < element_count; i++) {
+        ast_free(elements[i]);
+    }
+    free(elements);
+    
+    return array_node;
+}
+
+static ASTNode* parse_subscript_expression(Parser* parser, ASTNode* array) {
+    Token* current = parser_peek(parser);
+    if (!current) return NULL;
+    
+    SourceLocation loc = {current->line, current->column};
+    parser_consume(parser, LBRACKET, "Expected '[' after array in subscript expression");
+    
+    ASTNode* index = parser_parse_expression(parser);
+    if (!index) {
+        return NULL;
+    }
+    
+    parser_consume(parser, RBRACKET, "Expected ']' after index in subscript expression");
+    
+    return ast_new_subscript_expression(loc, array, index);
 }
 
 static ASTNode* parser_parse_function_call_expression(Parser* parser) {
@@ -594,6 +677,35 @@ static ASTNode* parser_parse_break_statement(Parser* parser) {
     return break_node;
 }
 
+static ASTNode* parser_parse_array_declaration_statement(Parser* parser) {
+    Token* array_token = parser_advance(parser);
+    SourceLocation loc = (SourceLocation){array_token->line, array_token->column};
+    
+    // Parse element type
+    Token* elem_type_token = parser_consume(parser, KW_INT, "Expected element type for array");
+    if (!elem_type_token) return NULL;
+    
+    // Parse array name
+    Token* identifier = parser_consume(parser, IDENTIFIER, "Expected array name");
+    if (!identifier) return NULL;
+    
+    // Parse array size
+    parser_consume(parser, LBRACKET, "Expected '[' after array name");
+    ASTNode* size = parser_parse_expression(parser);
+    if (!size) return NULL;
+    parser_consume(parser, RBRACKET, "Expected ']' after array size");
+    
+    // Parse optional initializer
+    ASTNode* initializer = NULL;
+    if (parser_peek(parser) && parser_peek(parser)->type == OP_ASSIGN) {
+        parser_advance(parser);
+        initializer = parser_parse_expression(parser);
+    }
+    
+    return ast_new_array_declaration_statement(loc, token_type_to_type_var(elem_type_token->type), 
+                                               identifier->value, size, initializer);
+}
+
 static ASTNode* parser_parse_continue_statement(Parser* parser) {
     DPRINT("[PARSER] parse_continue_statement\n");
     
@@ -750,6 +862,10 @@ static ASTNode* parser_parse_declaration_statement(Parser* parser) {
         DPRINT("[PARSER] ERROR: No current token\n");
         return NULL;
     }
+        
+    if (current->type == KW_ARRAY) {
+        return parser_parse_array_declaration_statement(parser);
+    }
     
     SourceLocation loc = (SourceLocation){current->line, current->column};
     DPRINT("[PARSER] Declaration type: %d, value: %s\n", current->type, current->value);
@@ -826,6 +942,10 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
                     parser_retreat(parser);
                     return parser_parse_function_call_expression(parser);
                 }
+                case LBRACKET: {
+                    ASTNode* array = ast_new_variable_expression(loc, current->value);
+                    return parse_subscript_expression(parser, array);
+                }
                 default: {
                     DPRINT("[PARSER] Creating VariableExpression for '%s'\n", current->value);
                     ASTNode* node = ast_new_variable_expression(loc, current->value);
@@ -892,6 +1012,9 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
                 return NULL;
             }
             return inner;
+        }
+        case LBRACKET: {
+            return parse_array_expression(parser);
         }
         default: {
             DPRINT("[PARSER] ERROR: Unexpected token type %d, value='%s'\n", current->type, current->value);
