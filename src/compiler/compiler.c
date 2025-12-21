@@ -442,118 +442,9 @@ static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* nod
     return temp_code;
 }
 
-static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* node) {
-    if (node->node_type != NODE_FOR_STATEMENT) {
-        return create_bytecode_array(NULL, 0);
-    }
-    
-    ForStatement* for_stmt = (ForStatement*)node;
-    
-    bytecode_array result = create_bytecode_array(NULL, 0);
-    
-    // 1. Инициализатор (выполняется один раз)
-    if (for_stmt->initializer != NULL) {
-        DPRINT("[COMPILER] Compiling for initializer\n");
-        bytecode_array init_bc = compiler_compile_statement(comp, for_stmt->initializer);
-        result = concat_bytecode_arrays(result, init_bc);
-        free_bytecode_array(init_bc);
-    }
-    
-    // 2. Метка начала условия
-    size_t cond_start = result.count;
-    
-    // 3. Условие цикла
-    if (for_stmt->condition != NULL) {
-        DPRINT("[COMPILER] Compiling for condition\n");
-        
-        // Условие - это ExpressionStatement, нужно извлечь BinaryExpression
-        ASTNode* condition_expr;
-        if (for_stmt->condition->node_type == NODE_EXPRESSION_STATEMENT) {
-            ExpressionStatement* expr_stmt = (ExpressionStatement*)for_stmt->condition;
-            condition_expr = expr_stmt->expression;
-            DPRINT("[COMPILER] For condition is ExpressionStatement, extracting expression type=%s\n", 
-                   ast_node_type_to_string(condition_expr->node_type));
-        } else {
-            condition_expr = for_stmt->condition;
-        }
-        
-        // Компилируем условие (BinaryExpression i < b)
-        bytecode_array cond_bc = compiler_compile_expression(comp, condition_expr);
-        if (cond_bc.count == 0) {
-            DPRINT("[COMPILER] ERROR: Failed to compile for condition\n");
-        }
-        result = concat_bytecode_arrays(result, cond_bc);
-        free_bytecode_array(cond_bc);
-        
-        // POP_JUMP_IF_FALSE для выхода (временно offset=0)
-        bytecode pop_jump = bytecode_create_with_number(POP_JUMP_IF_FALSE, 0);
-        bytecode_array pop_jump_arr = create_single_bytecode_array(pop_jump);
-        result = concat_bytecode_arrays(result, pop_jump_arr);
-        size_t pop_jump_pos = result.count - 1;
-        free_bytecode_array(pop_jump_arr);
-        
-        // 4. Тело цикла
-        DPRINT("[COMPILER] Compiling for body\n");
-        bytecode_array body_bc = compiler_compile_block_statement(comp, for_stmt->body);
-        
-        // 5. Инкремент
-        DPRINT("[COMPILER] Compiling for increment\n");
-        bytecode_array inc_bc;
-        if (for_stmt->increment != NULL) {
-            inc_bc = compiler_compile_statement(comp, for_stmt->increment);
-        } else {
-            inc_bc = create_bytecode_array(NULL, 0);
-        }
-        
-        // 6. JUMP_BACKWARD к проверке условия
-        // ИСПРАВЛЕНИЕ: добавляем +1 для самого JUMP_BACKWARD, как в while цикле!
-        size_t jump_size = (result.count - cond_start) + body_bc.count + inc_bc.count + 1;
-        bytecode jump_back = bytecode_create_with_number(JUMP_BACKWARD, jump_size);
-        bytecode_array jump_back_arr = create_single_bytecode_array(jump_back);
-        
-        // 7. Обновляем POP_JUMP_IF_FALSE
-        uint32_t pop_offset = (uint32_t)(body_bc.count + inc_bc.count + 1);
-        result.bytecodes[pop_jump_pos] = bytecode_create_with_number(POP_JUMP_IF_FALSE, pop_offset);
-        
-        DPRINT("[COMPILER] For loop: cond_start=%zu, body_bc.count=%u, inc_bc.count=%u, pop_offset=%u, jump_size=%zu\n",
-               cond_start, body_bc.count, inc_bc.count, pop_offset, jump_size);
-        
-        // 8. Собираем всё
-        result = concat_bytecode_arrays(result, body_bc);
-        free_bytecode_array(body_bc);
-        result = concat_bytecode_arrays(result, inc_bc);
-        free_bytecode_array(inc_bc);
-        result = concat_bytecode_arrays(result, jump_back_arr);
-        free_bytecode_array(jump_back_arr);
-    } else {
-        DPRINT("[COMPILER] Compiling infinite for loop (no condition)\n");
-        bytecode_array body_bc = compiler_compile_block_statement(comp, for_stmt->body);
-        
-        bytecode_array inc_bc;
-        if (for_stmt->increment != NULL) {
-            inc_bc = compiler_compile_statement(comp, for_stmt->increment);
-        } else {
-            inc_bc = create_bytecode_array(NULL, 0);
-        }
-        
-        // JUMP_BACKWARD к началу
-        size_t jump_size = body_bc.count + inc_bc.count + 1;  // +1 для самого JUMP_BACKWARD
-        bytecode jump_back = bytecode_create_with_number(JUMP_BACKWARD, jump_size);
-        bytecode_array jump_back_arr = create_single_bytecode_array(jump_back);
-        
-        result = concat_bytecode_arrays(result, body_bc);
-        free_bytecode_array(body_bc);
-        result = concat_bytecode_arrays(result, inc_bc);
-        free_bytecode_array(inc_bc);
-        result = concat_bytecode_arrays(result, jump_back_arr);
-        free_bytecode_array(jump_back_arr);
-    }
-    
-    DPRINT("[COMPILER] For statement compiled, generated %u bytecodes\n", result.count);
-    return result;
-}
-
 static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* node) {
+    DPRINT("[COMPILER] Compiling while statement\n");
+    
     if (node->node_type != NODE_WHILE_STATEMENT) {
         return create_bytecode_array(NULL, 0);
     }
@@ -562,10 +453,17 @@ static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* 
     
     bytecode_array result = create_bytecode_array(NULL, 0);
     
-    // 1. Метка начала цикла
-    size_t loop_start = result.count;
+    // 1. LOOP_START - метка начала цикла
+    bytecode loop_start_bc = bytecode_create(LOOP_START, 0, 0, 0);
+    bytecode_array loop_start_arr = create_single_bytecode_array(loop_start_bc);
+    result = concat_bytecode_arrays(result, loop_start_arr);
+    free_bytecode_array(loop_start_arr);
+    
+    // Запоминаем позицию начала условия
+    size_t cond_start_index = result.count;
     
     // 2. Компилируем условие
+    DPRINT("[COMPILER] Compiling while condition\n");
     bytecode_array cond_bc = compiler_compile_expression(comp, while_stmt->condition);
     result = concat_bytecode_arrays(result, cond_bc);
     free_bytecode_array(cond_bc);
@@ -578,28 +476,180 @@ static bytecode_array compiler_compile_while_statement(compiler* comp, ASTNode* 
     free_bytecode_array(pop_jump_arr);
     
     // 4. Компилируем тело цикла
+    DPRINT("[COMPILER] Compiling while body\n");
     bytecode_array body_bc = compiler_compile_block_statement(comp, while_stmt->body);
     
     // 5. JUMP_BACKWARD к началу условия
-    // Вычисляем, сколько инструкций нужно перепрыгнуть назад
-    size_t jump_back_size = result.count - loop_start + body_bc.count + 1;
+    // Нужно перепрыгнуть от текущей позиции назад к LOOP_START
+    // Вычисляем: от конца тела до LOOP_START
+    // body_bc.count - это размер тела, но нам нужно учесть условие и POP_JUMP_IF_FALSE
+    // Правильная формула: (размер условия) + 1 (POP_JUMP_IF_FALSE) + (размер тела) + 1 (сам JUMP_BACKWARD)
+    size_t jump_back_size = cond_bc.count + 1 + body_bc.count + 1;
     bytecode jump_back = bytecode_create_with_number(JUMP_BACKWARD, jump_back_size);
     bytecode_array jump_back_arr = create_single_bytecode_array(jump_back);
     
-    // 6. Собираем всё: тело + JUMP_BACKWARD
+    // 6. LOOP_END - метка конца цикла
+    bytecode loop_end_bc = bytecode_create(LOOP_END, 0, 0, 0);
+    bytecode_array loop_end_arr = create_single_bytecode_array(loop_end_bc);
+    
+    // 7. Собираем всё: тело + JUMP_BACKWARD + LOOP_END
     result = concat_bytecode_arrays(result, body_bc);
     free_bytecode_array(body_bc);
     result = concat_bytecode_arrays(result, jump_back_arr);
     free_bytecode_array(jump_back_arr);
+    result = concat_bytecode_arrays(result, loop_end_arr);
+    free_bytecode_array(loop_end_arr);
     
-    // 7. Теперь обновляем POP_JUMP_IF_FALSE с правильным смещением
-    // Если условие ложно, перепрыгиваем тело + JUMP_BACKWARD
-    // ТЕЛО цикла уже добавлено в result, нужно вычислить его размер
-    uint32_t pop_offset = (uint32_t)(body_bc.count + 1); // тело + JUMP_BACKWARD
+    // 8. Теперь обновляем POP_JUMP_IF_FALSE с правильным смещением
+    // Если условие ложно, перепрыгиваем: тело + JUMP_BACKWARD + LOOP_END
+    uint32_t pop_offset = (uint32_t)(body_bc.count + 2); // +2 для JUMP_BACKWARD и LOOP_END
     result.bytecodes[pop_jump_pos] = bytecode_create_with_number(POP_JUMP_IF_FALSE, pop_offset);
+    
+    DPRINT("[COMPILER] While loop compiled:\n");
+    DPRINT("  - cond_start_index: %zu\n", cond_start_index);
+    DPRINT("  - cond_bc.count: %u\n", cond_bc.count);
+    DPRINT("  - body_bc.count: %u\n", body_bc.count);
+    DPRINT("  - pop_offset: %u (should jump to LOOP_END)\n", pop_offset);
+    DPRINT("  - jump_back_size: %zu (should jump to LOOP_START)\n", jump_back_size);
     
     return result;
 }
+
+static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* node) {
+    DPRINT("[COMPILER] Compiling for statement\n");
+    
+    if (node->node_type != NODE_FOR_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    ForStatement* for_stmt = (ForStatement*)node;
+    
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // 1. Инициализатор
+    if (for_stmt->initializer != NULL) {
+        bytecode_array init_bc = compiler_compile_statement(comp, for_stmt->initializer);
+        result = concat_bytecode_arrays(result, init_bc);
+        free_bytecode_array(init_bc);
+    }
+    
+    // 2. JUMP_FORWARD к УСЛОВИЮ (пропускаем инкремент в первой итерации)
+    bytecode jump_to_condition = bytecode_create_with_number(JUMP_FORWARD, 0);
+    bytecode_array jump_to_condition_arr = create_single_bytecode_array(jump_to_condition);
+    result = concat_bytecode_arrays(result, jump_to_condition_arr);
+    size_t jump_to_condition_pos = result.count - 1;
+    free_bytecode_array(jump_to_condition_arr);
+    
+    // 3. LOOP_START должен быть перед условием
+    bytecode loop_start = bytecode_create(LOOP_START, 0, 0, 0);
+    bytecode_array loop_start_arr = create_single_bytecode_array(loop_start);
+    result = concat_bytecode_arrays(result, loop_start_arr);
+    free_bytecode_array(loop_start_arr);
+    
+    // 4. Инкремент
+    if (for_stmt->increment != NULL) {
+        bytecode_array inc_bc = compiler_compile_statement(comp, for_stmt->increment);
+        result = concat_bytecode_arrays(result, inc_bc);
+        free_bytecode_array(inc_bc);
+    }
+    
+    // 5. Условие
+    if (for_stmt->condition != NULL) {
+        // 5.1 Обновляем JUMP_FORWARD чтобы он прыгал к условию
+        uint32_t jump_to_condition_offset = (uint32_t)(result.count - jump_to_condition_pos - 1);
+        result.bytecodes[jump_to_condition_pos] = bytecode_create_with_number(JUMP_FORWARD, jump_to_condition_offset);
+        
+        // 5.2 Компилируем условие
+        ASTNode* condition_expr;
+        if (for_stmt->condition->node_type == NODE_EXPRESSION_STATEMENT) {
+            ExpressionStatement* expr_stmt = (ExpressionStatement*)for_stmt->condition;
+            condition_expr = expr_stmt->expression;
+        } else {
+            condition_expr = for_stmt->condition;
+        }
+        
+        bytecode_array cond_bc = compiler_compile_expression(comp, condition_expr);
+        result = concat_bytecode_arrays(result, cond_bc);
+        
+        // 5.3 POP_JUMP_IF_FALSE для выхода из цикла
+        bytecode pop_jump = bytecode_create_with_number(POP_JUMP_IF_FALSE, 0);
+        bytecode_array pop_jump_arr = create_single_bytecode_array(pop_jump);
+        result = concat_bytecode_arrays(result, pop_jump_arr);
+        size_t pop_jump_pos = result.count - 1;
+        free_bytecode_array(pop_jump_arr);
+        
+        // 5.4 Тело цикла
+        bytecode_array body_bc = compiler_compile_block_statement(comp, for_stmt->body);
+        
+        // 5.5 JUMP_BACKWARD к LOOP_START
+        // Находим позицию LOOP_START (она была добавлена перед инкрементом)
+        size_t loop_start_pos = jump_to_condition_pos + 1; // +1 потому что LOOP_START идет сразу после JUMP_FORWARD
+        size_t current_pos = result.count + body_bc.count; // Позиция JUMP_BACKWARD
+        size_t jump_back_size = current_pos - loop_start_pos + 1; // +1 для самого JUMP_BACKWARD
+        bytecode jump_back = bytecode_create_with_number(JUMP_BACKWARD, jump_back_size);
+        bytecode_array jump_back_arr = create_single_bytecode_array(jump_back);
+        
+        // 5.6 LOOP_END
+        bytecode loop_end = bytecode_create(LOOP_END, 0, 0, 0);
+        bytecode_array loop_end_arr = create_single_bytecode_array(loop_end);
+        
+        // 5.7 Обновляем POP_JUMP_IF_FALSE
+        uint32_t pop_offset = (uint32_t)(body_bc.count + 2); // +2 для JUMP_BACKWARD и LOOP_END
+        result.bytecodes[pop_jump_pos] = bytecode_create_with_number(POP_JUMP_IF_FALSE, pop_offset);
+        
+        DPRINT("[COMPILER] For loop structure:\n");
+        DPRINT("  - jump_to_condition_pos: %zu\n", jump_to_condition_pos);
+        DPRINT("  - loop_start_pos: %zu\n", loop_start_pos);
+        DPRINT("  - jump_to_condition_offset: %u\n", jump_to_condition_offset);
+        DPRINT("  - pop_offset: %u\n", pop_offset);
+        DPRINT("  - jump_back_size: %zu\n", jump_back_size);
+        
+        // 5.8 Собираем все: тело + JUMP_BACKWARD + LOOP_END
+        result = concat_bytecode_arrays(result, body_bc);
+        free_bytecode_array(body_bc);
+        
+        result = concat_bytecode_arrays(result, jump_back_arr);
+        free_bytecode_array(jump_back_arr);
+        
+        result = concat_bytecode_arrays(result, loop_end_arr);
+        free_bytecode_array(loop_end_arr);
+        
+        // Освобождаем cond_bc
+        free_bytecode_array(cond_bc);
+    } else {
+        // Бесконечный цикл без условия
+        DPRINT("[COMPILER] Compiling infinite for loop (no condition)\n");
+        
+        // 5.1 Обновляем JUMP_FORWARD чтобы он прыгал к LOOP_START
+        uint32_t jump_to_condition_offset = 1; // Всего одна инструкция - LOOP_START
+        result.bytecodes[jump_to_condition_pos] = bytecode_create_with_number(JUMP_FORWARD, jump_to_condition_offset);
+        
+        bytecode_array body_bc = compiler_compile_block_statement(comp, for_stmt->body);
+        
+        // JUMP_BACKWARD к LOOP_START
+        size_t loop_start_pos = jump_to_condition_pos + 1;
+        size_t current_pos = result.count + body_bc.count;
+        size_t jump_back_size = current_pos - loop_start_pos + 1;
+        bytecode jump_back = bytecode_create_with_number(JUMP_BACKWARD, jump_back_size);
+        bytecode_array jump_back_arr = create_single_bytecode_array(jump_back);
+        
+        bytecode loop_end = bytecode_create(LOOP_END, 0, 0, 0);
+        bytecode_array loop_end_arr = create_single_bytecode_array(loop_end);
+        
+        result = concat_bytecode_arrays(result, body_bc);
+        free_bytecode_array(body_bc);
+        
+        result = concat_bytecode_arrays(result, jump_back_arr);
+        free_bytecode_array(jump_back_arr);
+        
+        result = concat_bytecode_arrays(result, loop_end_arr);
+        free_bytecode_array(loop_end_arr);
+    }
+    
+    DPRINT("[COMPILER] For statement compiled, generated %u bytecodes\n", result.count);
+    return result;
+}
+
 
 static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTNode* node) {
     DPRINT("DEBUG: compile_assignment_statement started\n");
@@ -972,6 +1022,28 @@ static bytecode_array compiler_compile_block_statement(compiler* comp, ASTNode* 
     return result;
 }
 
+static bytecode_array compiler_compile_break_statement(compiler* comp, ASTNode* node) {
+    DPRINT("[COMPILER] Compiling break statement\n");
+    
+    if (node->node_type != NODE_BREAK_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    bytecode break_bc = bytecode_create(BREAK_LOOP, 0, 0, 0);
+    return create_single_bytecode_array(break_bc);
+}
+
+static bytecode_array compiler_compile_continue_statement(compiler* comp, ASTNode* node) {
+    DPRINT("[COMPILER] Compiling continue statement\n");
+    
+    if (node->node_type != NODE_CONTINUE_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    bytecode continue_bc = bytecode_create(CONTINUE_LOOP, 0, 0, 0);
+    return create_single_bytecode_array(continue_bc);
+}
+
 static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statement) {
     switch (statement->node_type) {
         case NODE_FUNCTION_DECLARATION_STATEMENT:
@@ -992,6 +1064,10 @@ static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statem
             return compiler_compile_for_statement(comp, statement);
         case NODE_ASSIGNMENT_STATEMENT:
             return compiler_compile_assignment_statement(comp, statement);
+        case NODE_BREAK_STATEMENT:
+            return compiler_compile_break_statement(comp, statement);
+        case NODE_CONTINUE_STATEMENT:
+            return compiler_compile_continue_statement(comp, statement);
         default:
             fprintf(stderr, "Unknown statement node type: %s\n", ast_node_type_to_string(statement->node_type));
             return create_bytecode_array(NULL, 0);

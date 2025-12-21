@@ -27,6 +27,10 @@ typedef enum NodeType { // ASTNode could have one of the statement/expression ty
     NODE_WHILE_STATEMENT,
     NODE_FOR_STATEMENT,
     NODE_ASSIGNMENT_STATEMENT,
+
+    // Loops control flow
+    NODE_BREAK_STATEMENT,
+    NODE_CONTINUE_STATEMENT,
     
     // Expressions
     NODE_BINARY_EXPRESSION,
@@ -81,8 +85,6 @@ typedef struct {
 } Parameter;
 
 // Statements
-
-//typedef struct ProgramStatement TODO
 
 typedef struct  {
     ASTNode base;
@@ -142,7 +144,6 @@ typedef struct {
     ASTNode* body;         // BlockStatement
 } WhileStatement;
 
-// Структура для ForStatement
 typedef struct {
     ASTNode base;
     ASTNode* initializer;  // VariableDeclarationStatement or NULL
@@ -150,6 +151,14 @@ typedef struct {
     ASTNode* increment;    // assignment_statement or NULL
     ASTNode* body;         // BlockStatement
 } ForStatement;
+
+typedef struct {
+    ASTNode base;
+} BreakStatement;
+
+typedef struct {
+    ASTNode base;
+} ContinueStatement;
 
 
 void ast_free(ASTNode* node);
@@ -161,7 +170,12 @@ ASTNode* ast_new_variable_expression(SourceLocation loc, const char* name);
 
 ASTNode* ast_new_assignment_statement(SourceLocation loc, ASTNode* left, ASTNode* right);
 ASTNode* ast_new_variable_declaration_statement(SourceLocation loc, TypeVar var_type, const char* name, ASTNode* initializer);
+
 ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression);
+ASTNode* ast_new_continue_statement(SourceLocation loc);
+ASTNode* ast_new_break_statement(SourceLocation loc);
+
+
 ASTNode* ast_new_if_statement(SourceLocation loc, ASTNode* condition, ASTNode* then_branch);
 ASTNode* ast_new_while_statement(SourceLocation loc, ASTNode* condition, ASTNode* body);
 ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type, Parameter* parameters, size_t parameter_count, ASTNode* body);

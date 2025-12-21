@@ -55,6 +55,10 @@ static ASTNode* parser_parse_for_statement(Parser* parser);
 static ASTNode* parser_parse_return_statement(Parser* parser);
 static ASTNode* parser_parse_block_statement(Parser* parser);
 static ASTNode* parser_parse_expression_statement(Parser* parser);
+
+static ASTNode* parser_parse_break_statement(Parser* parser);
+static ASTNode* parser_parse_continue_statement(Parser* parser);
+
 static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedence);
 static ASTNode* parser_parse_binary_expression(Parser* parser);
 static ASTNode* parser_parse_unary_expression(Parser* parser);
@@ -572,6 +576,42 @@ static ASTNode* parser_parse_return_statement(Parser* parser) {
     return return_node;
 }
 
+static ASTNode* parser_parse_break_statement(Parser* parser) {
+    DPRINT("[PARSER] parse_break_statement\n");
+    
+    Token* break_token = parser_consume(parser, KW_BREAK, "break statement should start with break keyword");
+    if (!break_token) {
+        DPRINT("[PARSER] ERROR: Missing 'break' keyword\n");
+        return NULL;
+    }
+    
+    SourceLocation loc = (SourceLocation){break_token->line, break_token->column};
+    DPRINT("[PARSER] break at line %d, column %d\n", loc.line, loc.column);
+    
+    ASTNode* break_node = ast_new_break_statement(loc);
+    DPRINT("[PARSER] Created break statement: %p\n", (void*)break_node);
+    
+    return break_node;
+}
+
+static ASTNode* parser_parse_continue_statement(Parser* parser) {
+    DPRINT("[PARSER] parse_continue_statement\n");
+    
+    Token* continue_token = parser_consume(parser, KW_CONTINUE, "continue statement should start with continue keyword");
+    if (!continue_token) {
+        DPRINT("[PARSER] ERROR: Missing 'continue' keyword\n");
+        return NULL;
+    }
+    
+    SourceLocation loc = (SourceLocation){continue_token->line, continue_token->column};
+    DPRINT("[PARSER] continue at line %d, column %d\n", loc.line, loc.column);
+    
+    ASTNode* continue_node = ast_new_continue_statement(loc);
+    DPRINT("[PARSER] Created continue statement: %p\n", (void*)continue_node);
+    
+    return continue_node;
+}
+
 static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     Token* token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){token->line, token->column};
@@ -1041,6 +1081,12 @@ static ASTNode* parser_parse_statement(Parser* parser) {
         case OP_MINUS:
         case OP_NOT:
             res = parser_parse_expression_statement(parser);
+            break;
+        case KW_BREAK:
+            res = parser_parse_break_statement(parser);
+            break;
+        case KW_CONTINUE:
+            res = parser_parse_continue_statement(parser);
             break;
             
         default:

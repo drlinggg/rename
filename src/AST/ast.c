@@ -96,7 +96,7 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
                 node->location = loc;
                 LiteralExpression* literal_expr = (LiteralExpression*) node;
                 literal_expr->value = 0;
-                literal_expr->type = TYPE_INT; // <-- ДОБАВЬ ИНИЦИАЛИЗАЦИЮ ПО УМОЛЧАНИЮ
+                literal_expr->type = TYPE_INT;
             }
             break;            
         case NODE_VARIABLE_EXPRESSION:
@@ -347,6 +347,24 @@ static ReturnStatement* copy_return_statement(ASTNode* original) {
     return copy;
 }
 
+static BreakStatement* copy_break_statement(ASTNode* original) {
+    if (!original) return NULL;
+    BreakStatement* orig = (BreakStatement*)original;
+    
+    BreakStatement* copy = malloc(sizeof(BreakStatement));
+    copy->base = orig->base;
+    return copy;
+}
+
+static ContinueStatement* copy_continue_statement(ASTNode* original) {
+    if (!original) return NULL;
+    ContinueStatement* orig = (ContinueStatement*)original;
+    
+    ContinueStatement* copy = malloc(sizeof(ContinueStatement));
+    copy->base = orig->base;
+    return copy;
+}
+
 static ExpressionStatement* copy_expression_statement(ASTNode* original) {
     if (!original) return NULL;
     ExpressionStatement* orig = (ExpressionStatement*)original;
@@ -554,7 +572,13 @@ static ASTNode* ast_node_copy(ASTNode* original) {
             
         case NODE_RETURN_STATEMENT:
             return (ASTNode*)copy_return_statement(original);
+
+        case NODE_BREAK_STATEMENT:
+            return (ASTNode*)copy_break_statement(original);
             
+        case NODE_CONTINUE_STATEMENT:
+            return (ASTNode*)copy_continue_statement(original);
+
         case NODE_EXPRESSION_STATEMENT:
             return (ASTNode*)copy_expression_statement(original);
             
@@ -639,6 +663,20 @@ ASTNode* ast_new_return_statement(SourceLocation loc, ASTNode* expression) {
     if (!node) return NULL;
     ReturnStatement* casted_node = (ReturnStatement*) node;
     casted_node->expression = ast_node_copy(expression);
+    return node;
+}
+
+ASTNode* ast_new_break_statement(SourceLocation loc) {
+    ASTNode* node = ast_node_allocate(NODE_BREAK_STATEMENT, loc);
+    if (!node) return NULL;
+    BreakStatement* casted_node = (BreakStatement*) node;
+    return node;
+}
+
+ASTNode* ast_new_continue_statement(SourceLocation loc) {
+    ASTNode* node = ast_node_allocate(NODE_CONTINUE_STATEMENT, loc);
+    if (!node) return NULL;
+    ContinueStatement* casted_node = (ContinueStatement*) node;
     return node;
 }
 
@@ -989,6 +1027,9 @@ const char* ast_node_type_to_string(int node_type) {
         case NODE_VARIABLE_DECLARATION_STATEMENT: return "VariableDeclarationStatement";
         case NODE_EXPRESSION_STATEMENT: return "ExpressionStatement";
         case NODE_RETURN_STATEMENT: return "ReturnStatement";
+        case NODE_CONTINUE_STATEMENT: return "ContinueStatement";
+        case NODE_BREAK_STATEMENT: return "BreakStatement";
+
         case NODE_BLOCK_STATEMENT: return "BlockStatement";
         case NODE_IF_STATEMENT: return "IfStatement";
         case NODE_WHILE_STATEMENT: return "WhileStatement";
@@ -1166,7 +1207,19 @@ void ast_print(ASTNode* node, int indent) {
             ast_print(casted_node->expression, indent + 1);
             break;
         }
-            
+
+        case NODE_BREAK_STATEMENT: {
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Return\n");
+            break;
+        }
+
+        case NODE_CONTINUE_STATEMENT: {
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Return\n");
+            break;
+        }
+           
         case NODE_BLOCK_STATEMENT: {
             BlockStatement* casted_node = (BlockStatement*) node;
             for (size_t i = 0; i < casted_node->statement_count; i++) {

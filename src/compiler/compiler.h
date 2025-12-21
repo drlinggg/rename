@@ -13,7 +13,6 @@ typedef struct compilation_result{
     Value* constants;
     size_t constants_count;
     size_t constants_capacity;
-    // todo rewrite it as array
 } compilation_result;
 
 typedef struct compiler {

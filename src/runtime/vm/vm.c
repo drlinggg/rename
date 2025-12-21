@@ -361,6 +361,9 @@ Object* frame_execute(Frame* frame) {
                         case 0x05: // MUL
                             ret = heap_alloc_int(frame->vm->heap, a * b);
                             break;
+                        case 0x06: // REMAINDER
+                            ret = heap_alloc_int(frame->vm->heap, a % b);
+                            break;
                         case 0x0B: // DIV
                             if (b == 0) ret = heap_alloc_int(frame->vm->heap, 0);
                             else ret = heap_alloc_int(frame->vm->heap, a / b);
@@ -678,7 +681,88 @@ Object* frame_execute(Frame* frame) {
                 return val;
             }
             case NOP:
-            case END_FOR: {
+                break;
+            case LOOP_START:
+            case LOOP_END: {
+                DPRINT("[VM] %s at ip=%zu\n", 
+                       bc.op_code == LOOP_START ? "LOOP_START" : "LOOP_END",
+                       frame->ip - 1);
+                break;
+            }
+            case BREAK_LOOP: {
+                DPRINT("[VM] BREAK_LOOP instruction executed at ip=%zu\n", frame->ip - 1);
+                
+                size_t search_ip = frame->ip;
+                int loop_depth = 1;
+                
+                while (search_ip < code_arr->count) {
+                    bytecode current_bc = code_arr->bytecodes[search_ip];
+                    
+                    if (current_bc.op_code == LOOP_START) {
+                        loop_depth++;
+                        DPRINT("[VM] BREAK: Found nested LOOP_START, depth=%d at ip=%zu\n", 
+                               loop_depth, search_ip);
+                    } 
+                    else if (current_bc.op_code == LOOP_END) {
+                        loop_depth--;
+                        DPRINT("[VM] BREAK: Found LOOP_END, depth=%d at ip=%zu\n", 
+                               loop_depth, search_ip);
+                        
+                        if (loop_depth == 0) {
+                            frame->ip = search_ip;
+                            DPRINT("[VM] BREAK: Jumping to ip=%zu (after LOOP_END)\n", frame->ip);
+                            break;
+                        }
+                    }
+                    search_ip++;
+                }
+                
+                if (loop_depth > 0) {
+                    DPRINT("[VM] WARNING: BREAK_LOOP without matching LOOP_END\n");
+                }
+                break;
+            }
+            case CONTINUE_LOOP: {
+                DPRINT("[VM] CONTINUE_LOOP instruction executed at ip=%zu\n", frame->ip - 1);
+                
+                size_t search_ip = frame->ip;
+                int loop_depth = 1;
+                
+                while (search_ip < code_arr->count) {
+                    bytecode current_bc = code_arr->bytecodes[search_ip];
+                    
+                    if (current_bc.op_code == LOOP_END) {
+                        loop_depth++;
+                        DPRINT("[VM] CONTINUE: Found LOOP_END, depth=%d at ip=%zu\n", 
+                               loop_depth, search_ip);
+                    } 
+                    else if (current_bc.op_code == LOOP_START) {
+                        loop_depth--;
+                        DPRINT("[VM] CONTINUE: Found LOOP_START, depth=%d at ip=%zu\n", 
+                               loop_depth, search_ip);
+                        
+                        if (loop_depth == 0) {
+                            frame->ip = search_ip + 1;
+                            DPRINT("[VM] CONTINUE: Jumping to ip=%zu (after LOOP_START)\n", frame->ip);
+                            break;
+                        }
+                    }
+                    
+                    if (search_ip == 0) break;
+                    search_ip--;
+                }
+                
+                if (loop_depth > 0) {
+                    DPRINT("[VM] WARNING: CONTINUE_LOOP without matching LOOP_START\n");
+                }
+                break;
+            }
+
+            case JUMP_BACKWARD: {
+                // Безусловный переход назад
+                frame->ip -= (int32_t)arg;
+                DPRINT("[VM] JUMP_BACKWARD: jumping %d instructions to ip=%zu\n", 
+                       (int32_t)arg, frame->ip);
                 break;
             }
             case POP_JUMP_IF_FALSE: {
@@ -766,15 +850,6 @@ Object* frame_execute(Frame* frame) {
                 }
                 break;
             }
-            
-            case JUMP_BACKWARD: {
-                // Безусловный переход назад
-                frame->ip -= (int32_t)arg;
-                // Проверка на прерывания (например, Ctrl+C)
-                // Пока просто пустая заглушка
-                break;
-            }
-            
             case JUMP_BACKWARD_NO_INTERRUPT: {
                 // Безусловный переход назад без проверки прерываний
                 frame->ip -= (int32_t)arg;

@@ -19,7 +19,6 @@
 #define DEL_SUBSCR 0x0E
 #define CALL_FUNCTION 0x09
 #define RETURN_VALUE 0x0F
-#define END_FOR 0x12
 #define JUMP_FORWARD 0x19
 #define JUMP_BACKWARD 0x1A
 #define JUMP_BACKWARD_NO_INTERRUPT 0x1B
@@ -35,6 +34,11 @@
 #define UNARY_OP 0x15
 #define FREE_TO_SET 0x16
 #define MAKE_FUNCTION 0x21
+#define LOOP_START 0x24
+#define LOOP_END 0x25
+#define BREAK_LOOP 0x33
+#define CONTINUE_LOOP 0x44
+
 
 typedef struct __attribute__((packed, aligned(1))) {
     uint8_t op_code;
