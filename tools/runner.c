@@ -93,11 +93,6 @@ int main(int argc, char** argv) {
     }
     DPRINT("[RUNNER] Global names count: %zu\n", comp->global_names ? comp->global_names->count : 0);
 
-    // Optional: dump bytecode
-    DPRINT("[RUNNER] Dumping module bytecode:\n");
-    bytecode_array_print(&result->code_array);
-
-
     // Free token memory (values) - lexer_parse_file allocated strings
     for (size_t i = 0; i < token_count; i++) {
         if (tokens[i].value) free((void*)tokens[i].value);

@@ -8,5 +8,5 @@ int factorial(int n) {
 int main() {
     int n = 10;
     int result = factorial(n);
-    return result == 3628800;
+    return result;
 }

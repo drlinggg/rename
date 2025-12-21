@@ -35,7 +35,6 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case END_FOR: return "END_FOR";
         case COPY: return "COPY";
         case SWAP: return "SWAP";
-        case COMPARE_OP: return "COMPARE_OP";
         case JUMP_FORWARD: return "JUMP_FORWARD";
         case JUMP_BACKWARD: return "JUMP_BACKWARD";
         case JUMP_BACKWARD_NO_INTERRUPT: return "JUMP_BACKWARD_NO_INTERRUPT";

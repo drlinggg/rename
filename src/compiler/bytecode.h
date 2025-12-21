@@ -11,7 +11,6 @@
 #define STORE_GLOBAL 0x06
 #define STORE_NAME 0x07
 #define BINARY_OP 0x08
-#define COMPARE_OP 0x18
 #define TO_BOOL 0x0A
 #define TO_INT 0x0B
 #define TO_LONG 0x0C
