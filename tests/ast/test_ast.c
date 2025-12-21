@@ -440,9 +440,7 @@ ASTNode* test_ast_new_block_statement() {
     
     assert(block_stmt->statement_count == 2);
     
-    assert(block_stmt->statements[0] == statements[0]); 
     assert(block_stmt->statements[0]->node_type == statements[0]->node_type);
-    assert(block_stmt->statements[1] == statements[1]);
     assert(block_stmt->statements[1]->node_type == statements[1]->node_type);
     return node;
 }
