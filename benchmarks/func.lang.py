@@ -1,25 +1,5 @@
 int x = 5;
 
-int change_x() {
-    x = 7;
-    return None;
-}
-
-int fake_main(int a, bool b, array c) {
-    print();
-    print(1);
-    print(1, 2);
-    print(1, 2, 3);
-}
-
-int print_true_none_false_func() {
-    print(true, None, false, print, fake_main);
-}
-
-bool function() {
-    return true;
-}
-
 bool main() {
 
     int main_in_main() {
@@ -44,5 +24,27 @@ bool main() {
     x = 123;
     print(x);
 
-    return 5 + 5 + 5;
+    return;
 }
+
+int change_x() {
+    x = 7;
+    return None;
+}
+
+int fake_main(int a, bool b, array c) {
+    print();
+    print(1);
+    print(1, 2);
+    print(1, 2, 3);
+}
+
+int print_true_none_false_func() {
+    print(true, None, false, print, fake_main);
+}
+
+bool function() {
+    return true;
+}
+
+

@@ -252,6 +252,8 @@ Object* frame_execute(Frame* frame) {
                     o = vm_get_none(frame->vm);
                 } else if (c.type == VAL_BOOL) {
                     o = c.bool_val ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                } else if (c.type == VAL_INT) {
+                    o = heap_alloc_int(frame->vm->heap, c.int_val);
                 } else {
                     o = heap_from_value(frame->vm->heap, c);
                 }
@@ -416,7 +418,7 @@ Object* frame_execute(Frame* frame) {
                             break;
                         }
                         default:
-                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type", op, left->type, right->type);
+                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
                             ret = vm_get_none(frame->vm);
                             break;
                     }
@@ -447,7 +449,7 @@ Object* frame_execute(Frame* frame) {
                             break;
                         }
                         default:
-                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type", op, left->type, right->type);
+                            DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
                             ret = vm_get_none(frame->vm);
                             break;
                     }
@@ -675,7 +677,8 @@ Object* frame_execute(Frame* frame) {
                 }
                 return val;
             }
-            case NOP: {
+            case NOP:
+            case END_FOR: {
                 break;
             }
             case POP_JUMP_IF_FALSE: {
