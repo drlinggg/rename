@@ -17,21 +17,45 @@ int sort_array(int[] array, int size) {
 }
 
 // Функция для печати массива
-int print_array(int[] array) {
-    print(array);
+int print_array(int[] array, int size) {
+    for (int i = 0; i < size; i = i + 1) {
+        print(array[i]);
+    }
+}
+
+void sort(int n) {
+    int[n] numbers;
+    
+    for (int i = 0; i < n; i = i + 1) {
+        numbers[i] = randint(1, 500);
+    }
+    print_array(numbers);
+    input();
+    sort_array(numbers, n);
+    print_array(numbers);
+}
+
+void clean_sort(int n) {
+    int[n] numbers;
+    
+    for (int i = 0; i < n; i = i + 1) {
+        numbers[i] = randint(1, 500);
+    }
+
+    int temp;
+    for (int i = 0; i < n - 1; i = i + 1) {
+        for (int j = 0; j < n - 1 - i; j = j + 1) {
+            if ( (numbers[j]) > (numbers[j + 1]) ) {
+                temp = numbers[i];
+                numbers[i] = numbers[j];
+                numbers[j] = temp;
+            }
+        }
+    }
 }
 
 int main() {
-    // Создаем массив на 15 элементов
-    int[15] numbers;
-    
-    // Заполняем массив случайными числами
-    for (int i = 0; i < 15; i = i + 1) {
-        numbers[i] = randint(1, 1000);
-    }
-    print_array(numbers);
-    sort_array(numbers, 15);
-    print_array(numbers);
-    
+    int n = 8000;
+    clean_sort(n);   
     return 0;
 }

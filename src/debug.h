@@ -6,6 +6,8 @@
 
 extern int debug_enabled;
 
-#define DPRINT(fmt, ...) do { if (debug_enabled) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
+//#define DPRINT(fmt, ...) do { if (debug_enabled) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
+
+#define DPRINT(fmt, ...) ((void)0)
 
 #endif // RENAME_DEBUG_H
