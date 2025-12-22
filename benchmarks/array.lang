@@ -1,3 +1,5 @@
 int main() {
-    array a = [1,2,3];
+    int temp = c[50];
+    c[50] = d[50];
+    d[50] = temp;
 }

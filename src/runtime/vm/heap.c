@@ -6,14 +6,14 @@
 struct HeapHeap {
     Object** objects;
     size_t count;
-    size_t capacity;
+    size_t size;
 };
 
 Heap* heap_create(void) {
     Heap* h = malloc(sizeof(Heap));
     h->objects = NULL;
     h->count = 0;
-    h->capacity = 0;
+    h->size = 0;
     return h;
 }
 
@@ -29,10 +29,10 @@ void heap_destroy(Heap* heap) {
 
 static void heap_track_object(Heap* heap, Object* o) {
     if (!heap || !o) return;
-    if (heap->count + 1 > heap->capacity) {
-        size_t new_capacity = heap->capacity == 0 ? 8 : heap->capacity * 2;
-        heap->objects = realloc(heap->objects, new_capacity * sizeof(Object*));
-        heap->capacity = new_capacity;
+    if (heap->count + 1 > heap->size) {
+        size_t new_size = heap->size == 0 ? 8 : heap->size * 2;
+        heap->objects = realloc(heap->objects, new_size * sizeof(Object*));
+        heap->size = new_size;
     }
     heap->objects[heap->count++] = o;
 }
@@ -69,6 +69,19 @@ Object* heap_alloc_function(Heap* heap, CodeObj* code) {
 
 Object* heap_alloc_array(Heap* heap) {
     Object* o = object_new_array();
+    heap_track_object(heap, o);
+    return o;
+}
+
+Object* heap_alloc_array_with_size(Heap* heap, size_t size) {
+    Object* o = object_new_array_with_size(size);
+    
+    Object* none_obj = heap_alloc_none(heap);
+    for (size_t i = 0; i < size; i++) {
+        object_array_set(o, i, none_obj);
+    }
+    object_decref(none_obj);
+    
     heap_track_object(heap, o);
     return o;
 }

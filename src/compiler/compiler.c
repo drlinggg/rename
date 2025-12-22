@@ -650,68 +650,83 @@ static bytecode_array compiler_compile_for_statement(compiler* comp, ASTNode* no
     return result;
 }
 
-
 static bytecode_array compiler_compile_assignment_statement(compiler* comp, ASTNode* node) {
-    DPRINT("DEBUG: compile_assignment_statement started\n");
     if (node->node_type != NODE_ASSIGNMENT_STATEMENT) {
         return create_bytecode_array(NULL, 0);
     }
-
-    AssignmentStatement* stmt = (AssignmentStatement*) node;
-    if (!stmt->left || stmt->left->node_type != NODE_VARIABLE_EXPRESSION) {
-        return create_bytecode_array(NULL, 0);
-    }
     
-    // 1. right side   
-    bytecode_array bc_right = compiler_compile_expression(comp, stmt->right);
+    AssignmentStatement* assign = (AssignmentStatement*)node;
+    DPRINT("[COMPILER] Compiling assignment statement\n");
     
-    // 2. left side var name
-    VariableExpression* var_expr = (VariableExpression*)stmt->left;
-    const char* var_name = var_expr->name;
+    bytecode_array result = create_bytecode_array(NULL, 0);
     
-    bytecode_array result = bc_right;
+    // 1. Сначала компилируем правую часть (значение)
+    DPRINT("[COMPILER] Compiling RHS of assignment\n");
+    bytecode_array rhs_bc = compiler_compile_expression(comp, assign->right);
+    result = concat_bytecode_arrays(result, rhs_bc);
+    free_bytecode_array(rhs_bc);
     
-    // 3. Проверяем, является ли переменная локальной
-    int32_t local_index = -1;
-    if (comp->current_scope) {
-        local_index = scope_find_local(comp->current_scope, var_name);
-    }
-    
-    // Если найдена локальная переменная => store_fast
-    if (local_index >= 0) {
-        bytecode store_bc = bytecode_create_with_number(STORE_FAST, local_index);
-        bytecode* store_arr = malloc(sizeof(bytecode));
-        store_arr[0] = store_bc;
-        bytecode_array store_array = create_bytecode_array(store_arr, 1);
-        result = concat_bytecode_arrays(result, store_array);
-        free_bytecode_array(store_array);
-        DPRINT("[COMPILER] Assignment to local variable %s at index %d\n", var_name, local_index);
+    // 2. Проверяем, является ли левая часть индексацией массива
+    if (assign->left->node_type == NODE_SUBSCRIPT_EXPRESSION) {
+        DPRINT("[COMPILER] Assignment to array element\n");
+        SubscriptExpression* subscript = (SubscriptExpression*)assign->left;
+        
+        // Компилируем массив
+        DPRINT("[COMPILER] Compiling array expression\n");
+        bytecode_array array_bc = compiler_compile_expression(comp, subscript->array);
+        result = concat_bytecode_arrays(result, array_bc);
+        free_bytecode_array(array_bc);
+        
+        // Компилируем индекс
+        DPRINT("[COMPILER] Compiling index expression\n");
+        bytecode_array index_bc = compiler_compile_expression(comp, subscript->index);
+        result = concat_bytecode_arrays(result, index_bc);
+        free_bytecode_array(index_bc);
+        
+        // Теперь в стеке: [значение, массив, индекс]
+        // Нужно переставить для STORE_SUBSCR: [массив, индекс, значение]
+        
+        // Делаем ROT_THREE или серию SWAP
+        // Или лучше: просто вызываем STORE_SUBSCR который ожидает правильный порядок
+        
+        // Добавляем STORE_SUBSCR
+        DPRINT("[COMPILER] Adding STORE_SUBSCR instruction\n");
+        bytecode store_subscr_bc = bytecode_create(STORE_SUBSCR, 0, 0, 0);
+        bytecode_array store_subscr_array = create_single_bytecode_array(store_subscr_bc);
+        result = concat_bytecode_arrays(result, store_subscr_array);
+        free_bytecode_array(store_subscr_array);
+        
+    } else if (assign->left->node_type == NODE_VARIABLE_EXPRESSION) {
+        DPRINT("[COMPILER] Assignment to variable\n");
+        // Это обычное присваивание переменной
+        VariableExpression* var_expr = (VariableExpression*)assign->left;
+        
+        // Проверяем, существует ли переменная
+        int32_t var_index = scope_find_local(comp->current_scope, var_expr->name);
+        if (var_index >= 0) {
+            // Локальная переменная
+            DPRINT("[COMPILER] Storing in local variable %s at index %d\n", var_expr->name, var_index);
+            bytecode store_bc = bytecode_create_with_number(STORE_FAST, (uint32_t)var_index);
+            bytecode_array store_array = create_single_bytecode_array(store_bc);
+            result = concat_bytecode_arrays(result, store_array);
+            free_bytecode_array(store_array);
+        } else {
+            // Глобальная переменная
+            DPRINT("[COMPILER] Storing in global variable %s\n", var_expr->name);
+            int32_t global_idx = string_table_find(comp->global_names, var_expr->name);
+            if (global_idx < 0) {
+                global_idx = string_table_add(comp->global_names, var_expr->name);
+            }
+            bytecode store_bc = bytecode_create_with_number(STORE_GLOBAL, (uint32_t)global_idx);
+            bytecode_array store_array = create_single_bytecode_array(store_bc);
+            result = concat_bytecode_arrays(result, store_array);
+            free_bytecode_array(store_array);
+        }
     } else {
-        // Иначе => store_global
-        // Ищем в таблице глобальных имен
-        int32_t global_index = -1;
-        if (comp->global_names) {
-            global_index = string_table_find(comp->global_names, var_name);
-        }
-        
-        // Если не найдена, добавляем
-        if (global_index < 0) {
-            global_index = compiler_add_global_name(comp, var_name);
-        }
-        
-        DPRINT("[COMPILER] Assignment to global variable %s at index %d\n", var_name, global_index);
-        
-        // ВАЖНО: НЕ делаем сдвиг влево! Используем индекс как есть
-        // В VM в case STORE_GLOBAL: используется size_t gidx = arg;
-        bytecode store_bc = bytecode_create_with_number(STORE_GLOBAL, global_index);
-        bytecode* store_arr = malloc(sizeof(bytecode));
-        store_arr[0] = store_bc;
-        bytecode_array store_array = create_bytecode_array(store_arr, 1);
-        
-        result = concat_bytecode_arrays(result, store_array);
-        free_bytecode_array(store_array);
+        DPRINT("[COMPILER] ERROR: Invalid LHS for assignment (node_type=%d)\n", assign->left->node_type);
     }
     
+    DPRINT("[COMPILER] Assignment compiled to %u bytecodes\n", result.count);
     return result;
 }
 
@@ -961,6 +976,119 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     }
 }
 
+
+static bytecode_array compiler_compile_array_declaration(compiler* comp, ASTNode* node) {
+    ArrayDeclarationStatement* array_decl = (ArrayDeclarationStatement*)node;
+    if (node->node_type != NODE_ARRAY_DECLARATION_STATEMENT) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // 1. Компилируем размер массива (если есть)
+    if (array_decl->size) {
+        bytecode_array size_bc = compiler_compile_expression(comp, array_decl->size);
+        result = concat_bytecode_arrays(result, size_bc);
+        free_bytecode_array(size_bc);
+    } else {
+        // Если размер не указан, помещаем 0
+        bytecode zero_bc = bytecode_create_with_number(LOAD_CONST, 0);
+        bytecode_array zero_array = create_single_bytecode_array(zero_bc);
+        result = concat_bytecode_arrays(result, zero_array);
+        free_bytecode_array(zero_array);
+    }
+    
+    // 2. Компилируем инициализатор (если есть)
+    if (array_decl->initializer) {
+        // Если есть инициализатор ([1, 2, 3]), компилируем его
+        bytecode_array init_bc = compiler_compile_expression(comp, array_decl->initializer);
+        result = concat_bytecode_arrays(result, init_bc);
+        free_bytecode_array(init_bc);
+    } else {
+        // Нет инициализатора, создаем пустой массив
+        // Размер массива уже в стеке
+        // Для создания пустого массива используем BUILD_ARRAY с флагом "пустой"
+        bytecode create_bc = bytecode_create_with_number(BUILD_ARRAY, 0); // arg=0 означает пустой массив
+        bytecode_array create_array = create_single_bytecode_array(create_bc);
+        result = concat_bytecode_arrays(result, create_array);
+        free_bytecode_array(create_array);
+    }
+    
+    // 3. Сохраняем в переменную
+    size_t var_index = scope_add_local(comp->current_scope, array_decl->name);
+    if (var_index == SIZE_MAX) {
+        DPRINT("[COMPILER] ERROR: Failed to add variable '%s' to scope\n", array_decl->name);
+        free_bytecode_array(result);
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    bytecode store_bc = bytecode_create_with_number(STORE_FAST, (uint32_t)var_index);
+    bytecode_array store_array = create_single_bytecode_array(store_bc);
+    result = concat_bytecode_arrays(result, store_array);
+    free_bytecode_array(store_array);
+    
+    return result;
+}
+
+
+static bytecode_array compiler_compile_array_expression(compiler* comp, ASTNode* node) {
+    ArrayExpression* array_expr = (ArrayExpression*)node;
+    if (node->node_type != NODE_ARRAY_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+
+    DPRINT("[COMPILER] Compiling array expression with %u elements\n", array_expr->element_count);
+    
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // Компилируем каждый элемент массива
+    for (uint32_t i = 0; i < array_expr->element_count; i++) {
+        DPRINT("[COMPILER] Compiling array element %u\n", i);
+        bytecode_array elem_bc = compiler_compile_expression(comp, array_expr->elements[i]);
+        result = concat_bytecode_arrays(result, elem_bc);
+        free_bytecode_array(elem_bc);
+    }
+    
+    // Добавляем инструкцию BUILD_ARRAY с количеством элементов
+    // Здесь arg = количество элементов на стеке (не размер массива)
+    DPRINT("[COMPILER] Creating array with BUILD_ARRAY %u\n", array_expr->element_count);
+    bytecode build_array_bc = bytecode_create_with_number(BUILD_ARRAY, array_expr->element_count);
+    bytecode_array build_array_array = create_single_bytecode_array(build_array_bc);
+    result = concat_bytecode_arrays(result, build_array_array);
+    free_bytecode_array(build_array_array);
+    
+    DPRINT("[COMPILER] Array expression compiled to %u bytecodes\n", result.count);
+    return result;
+}
+
+static bytecode_array compiler_compile_subscript_expression(compiler* comp, ASTNode* node) {
+    SubscriptExpression* subscript_expr = (SubscriptExpression*)node;
+    if (node->node_type != NODE_SUBSCRIPT_EXPRESSION) {
+        return create_bytecode_array(NULL, 0);
+    }
+    
+    bytecode_array result = create_bytecode_array(NULL, 0);
+    
+    // 1. Компилируем массив
+    bytecode_array array_bc = compiler_compile_expression(comp, subscript_expr->array);
+    result = concat_bytecode_arrays(result, array_bc);
+    free_bytecode_array(array_bc);
+    
+    // 2. Компилируем индекс
+    bytecode_array index_bc = compiler_compile_expression(comp, subscript_expr->index);
+    result = concat_bytecode_arrays(result, index_bc);
+    free_bytecode_array(index_bc);
+    
+    // 3. Добавляем операцию загрузки элемента по индексу
+    bytecode load_subscr_bc = bytecode_create(LOAD_SUBSCR, 0, 0, 0);
+    bytecode_array load_array = create_single_bytecode_array(load_subscr_bc);
+    result = concat_bytecode_arrays(result, load_array);
+    free_bytecode_array(load_array);
+    
+    return result;
+}
+
+
 static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node) {
     if (!node) return create_bytecode_array(NULL, 0);
     switch (node->node_type) {
@@ -974,8 +1102,12 @@ static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node)
             return compiler_compile_variable_expression(comp, node);
         case NODE_FUNCTION_CALL_EXPRESSION:
             return compiler_compile_function_call_expression(comp, node);
+        case NODE_ARRAY_EXPRESSION:
+            return compiler_compile_array_expression(comp, node);
+        case NODE_SUBSCRIPT_EXPRESSION:
+            return compiler_compile_subscript_expression(comp, node);
         default:
-            fprintf(stderr, "Unknown expression node type: %s\n", ast_node_type_to_string(node->node_type));
+            fprintf(stderr, "[COMPILER] Unknown expression node type: %s\n", ast_node_type_to_string(node->node_type));
             return create_bytecode_array(NULL, 0);
     }
 }
@@ -1048,6 +1180,8 @@ static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statem
     switch (statement->node_type) {
         case NODE_FUNCTION_DECLARATION_STATEMENT:
             return compiler_compile_function_declaration(comp, statement);
+        case NODE_ARRAY_DECLARATION_STATEMENT:
+            return compiler_compile_array_declaration(comp, statement);
         case NODE_VARIABLE_DECLARATION_STATEMENT:
             return compiler_compile_variable_declaration(comp, statement);
         case NODE_EXPRESSION_STATEMENT:
@@ -1069,7 +1203,7 @@ static bytecode_array compiler_compile_statement(compiler* comp, ASTNode* statem
         case NODE_CONTINUE_STATEMENT:
             return compiler_compile_continue_statement(comp, statement);
         default:
-            fprintf(stderr, "Unknown statement node type: %s\n", ast_node_type_to_string(statement->node_type));
+            fprintf(stderr, "[COMPILER] Unknown statement node type: %s\n", ast_node_type_to_string(statement->node_type));
             return create_bytecode_array(NULL, 0);
     }
 }
@@ -1103,11 +1237,16 @@ compiler* compiler_create(ASTNode* ast_tree) {
     comp->global_names = string_table_create();
     size_t print_idx = string_table_add(comp->global_names, "print");
     size_t input_idx = string_table_add(comp->global_names, "input");
+    size_t randint_idx = string_table_add(comp->global_names, "randint");
+
     if (print_idx != 0) {
         fprintf(stderr, "Warning: print index is %zu, expected 0\n", print_idx);
     }
     if (input_idx != 1) {
         fprintf(stderr, "Warning: input index is %zu, expected 1\n", input_idx);
+    }
+    if (randint_idx != 2) {
+        fprintf(stderr, "Warning: randint index is %zu, expected 2\n", randint_idx);
     }
     
     return comp;

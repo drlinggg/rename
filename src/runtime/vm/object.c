@@ -1,6 +1,7 @@
 #include "object.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 Object* object_new_int(int64_t v) {
     Object* o = malloc(sizeof(Object));
@@ -44,13 +45,52 @@ Object* object_new_function(CodeObj* code) {
 }
 
 Object* object_new_array(void) {
-    Object* o = malloc(sizeof(Object));
-    o->type = OBJ_ARRAY;
-    o->ref_count = 1;
-    o->as.array.items = NULL;
-    o->as.array.count = 0;
-    o->as.array.capacity = 0;
-    return o;
+    Object* obj = malloc(sizeof(Object));
+    obj->type = OBJ_ARRAY;
+    obj->ref_count = 1;
+    obj->as.array.items = NULL;
+    obj->as.array.size = 0;
+    return obj;
+}
+
+// Функция для создания массива с заданной начальной емкостью
+Object* object_new_array_with_size(size_t initial_size) {
+    Object* obj = malloc(sizeof(Object));
+    obj->type = OBJ_ARRAY;
+    obj->ref_count = 1;
+    obj->as.array.size = initial_size;
+    
+    if (initial_size > 0) {
+        obj->as.array.items = calloc(initial_size, sizeof(Object*));
+        for (size_t i = 0; i < initial_size; i++) {
+            obj->as.array.items[i] = NULL;
+        }
+    } else {
+        obj->as.array.items = NULL;
+    }
+    
+    return obj;
+}
+
+// Функция для получения элемента массива по индексу
+Object* object_array_get(Object* array, size_t index) {
+    if (!array || array->type != OBJ_ARRAY) return NULL;
+    if (index >= array->as.array.size) return NULL;
+    return array->as.array.items[index];
+}
+
+// Функция для установки элемента массива по индексу
+void object_array_set(Object* array, size_t index, Object* element) {
+    if (!array || array->type != OBJ_ARRAY || index >= array->as.array.size) return;
+    
+    // Уменьшаем счетчик для старого элемента
+    if (array->as.array.items[index]) {
+        object_decref(array->as.array.items[index]);
+    }
+    
+    object_incref(element);
+    
+    array->as.array.items[index] = element;
 }
 
 void object_incref(Object* o) {
@@ -69,7 +109,7 @@ void object_decref(Object* o) {
         switch (o->type) {
             case OBJ_ARRAY:
                 if (o->as.array.items) {
-                    for (size_t i = 0; i < o->as.array.count; i++) {
+                    for (size_t i = 0; i < o->as.array.size; i++) {
                         object_decref(o->as.array.items[i]);
                     }
                     free(o->as.array.items);
@@ -97,7 +137,7 @@ bool object_is_truthy(Object* o) {
         case OBJ_NONE:
             return false;
         case OBJ_ARRAY:
-            return o->as.array.count != 0;
+            return true;
         case OBJ_FUNCTION:
         case OBJ_CODE:
             return true;
@@ -117,22 +157,20 @@ char* object_to_string(Object* o) {
             return strdup(o->as.bool_value ? "true" : "false");
         case OBJ_NONE:
             return strdup("None");
-        /*
         case OBJ_ARRAY: {
             char* s = strdup("[");
-            for (size_t i = 0; i < o->as.array.count; i++) {
+            for (size_t i = 0; i < o->as.array.size; i++) {
                 char* item_s = object_to_string(o->as.array.items[i]);
                 size_t new_len = strlen(s) + strlen(item_s) + 3;
                 s = realloc(s, new_len);
                 strcat(s, item_s);
-                if (i + 1 < o->as.array.count) strcat(s, ", ");
+                if (i + 1 < o->as.array.size) strcat(s, ", ");
                 free(item_s);
             }
             s = realloc(s, strlen(s) + 3);
             strcat(s, "]");
             return s;
         }
-        */
         case OBJ_FUNCTION:
             if (o->as.function.codeptr && o->as.function.codeptr->name) {
                 snprintf(buf, sizeof(buf), "<function '%s'>", o->as.function.codeptr->name);

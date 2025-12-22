@@ -16,6 +16,7 @@
 #define TO_LONG 0x0C
 #define BUILD_ARRAY 0x17
 #define STORE_SUBSCR 0x0D
+#define LOAD_SUBSCR 0x18
 #define DEL_SUBSCR 0x0E
 #define CALL_FUNCTION 0x09
 #define RETURN_VALUE 0x0F

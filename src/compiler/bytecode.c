@@ -28,6 +28,7 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case TO_INT: return "TO_INT";
         case TO_LONG: return "TO_LONG";
         case STORE_SUBSCR: return "STORE_SUBSCR";
+        case LOAD_SUBSCR: return "LOAD_SUBSCR";
         case DEL_SUBSCR: return "DEL_SUBSCR";
         case RETURN_VALUE: return "RETURN_VALUE";
         case NOP: return "NOP";
@@ -47,6 +48,7 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case CONTINUE_LOOP: return "CONTINUE_LOOP";
         case LOOP_START: return "LOOP_START";
         case LOOP_END: return "LOOP_END";
+        case BUILD_ARRAY: return "BUILD_ARRAY";
         default: return "UNKNOWN";
     }
 }
@@ -156,6 +158,13 @@ void bytecode_print(bytecode* bc) {
             break;
         case LOOP_END:
             DPRINT("| end of loop block ");
+        case BUILD_ARRAY:
+            DPRINT("| element_count: %u ", arg);
+            break;
+        case LOAD_SUBSCR:
+        case STORE_SUBSCR:
+        case DEL_SUBSCR:
+            DPRINT("| no additional info", arg);
             break;
     }
     
