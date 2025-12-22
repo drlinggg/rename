@@ -15,6 +15,7 @@ Object* heap_alloc_none(Heap* heap);
 Object* heap_alloc_code(Heap* heap, CodeObj* code);
 Object* heap_alloc_function(Heap* heap, CodeObj* code);
 Object* heap_alloc_array(Heap* heap);
+Object* heap_alloc_array_with_size(Heap* heap, size_t size);
 
 typedef Object* (*NativeCFunc)(VM* vm, int arg_count, Object** args);
 Object* heap_alloc_native_function(Heap* heap, NativeCFunc func, const char* name);

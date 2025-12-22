@@ -39,8 +39,7 @@ struct Object {
 
         struct {
             Object** items;
-            size_t count;
-            size_t capacity;
+            size_t size;
         } array;
 
         struct {
@@ -55,7 +54,13 @@ Object* object_new_bool(bool v);
 Object* object_new_none(void);
 Object* object_new_code(CodeObj* code);
 Object* object_new_function(CodeObj* code);
+
 Object* object_new_array(void);
+Object* object_new_array_with_size(size_t initial_size);
+void object_array_append(Object* array, Object* element);
+Object* object_array_get(Object* array, size_t index);
+void object_array_set(Object* array, size_t index, Object* element);
+void object_array_free(Object* array);
 
 void object_incref(Object* o);
 void object_decref(Object* o);

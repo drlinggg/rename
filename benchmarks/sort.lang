@@ -1,0 +1,37 @@
+// Функция для обмена двух элементов массива
+int swap(int[] array, int i, int j) {
+    int temp = array[i];
+    array[i] = array[j];
+    array[j] = temp;
+}
+
+// Функция для сортировки массива
+int sort_array(int[] array, int size) {
+    for (int i = 0; i < size - 1; i = i + 1) {
+        for (int j = 0; j < size - 1 - i; j = j + 1) {
+            if ( (array[j]) > (array[j + 1]) ) {
+                swap(array, j, j + 1);
+            }
+        }
+    }
+}
+
+// Функция для печати массива
+int print_array(int[] array) {
+    print(array);
+}
+
+int main() {
+    // Создаем массив на 15 элементов
+    int[15] numbers;
+    
+    // Заполняем массив случайными числами
+    for (int i = 0; i < 15; i = i + 1) {
+        numbers[i] = randint(1, 1000);
+    }
+    print_array(numbers);
+    sort_array(numbers, 15);
+    print_array(numbers);
+    
+    return 0;
+}

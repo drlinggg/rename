@@ -14,7 +14,7 @@ typedef struct { // debug info
 } SourceLocation;
 
 typedef enum {
-     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_ARRAY, TYPE_STRUCT, TYPE_NONE,
+     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_NONE,
 } TypeVar;
 
 typedef enum NodeType {
@@ -85,8 +85,9 @@ typedef struct {
 } VariableExpression;
 
 typedef struct {
-    TypeVar type;
     char* name;
+    TypeVar type;
+    bool is_array;
 } Parameter;
 
 // Statements
@@ -162,10 +163,10 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    TypeVar element_type;
+    TypeVar element_type; // bool int long
     char* name;
-    ASTNode* size;
-    ASTNode* initializer;
+    ASTNode* size; // Any Expression
+    ASTNode* initializer; // ArrayExpression
 } ArrayDeclarationStatement;
 
 typedef struct {

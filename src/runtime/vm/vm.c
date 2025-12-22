@@ -39,17 +39,23 @@ void vm_register_builtins(VM* vm) {
         (NativeCFunc)builtin_print, "print");
     Object* input_func = heap_alloc_native_function(vm->heap, 
         (NativeCFunc)builtin_input, "input");
+    Object* randint_func = heap_alloc_native_function(vm->heap,
+        (NativeCFunc)builtin_randint, "randint");
     
     print_func->ref_count = 0x7FFFFFFF;
     input_func->ref_count = 0x7FFFFFFF;
+    randint_func->ref_count = 0x7FFFFFFF;
     
     size_t print_idx = 0;
     size_t input_idx = 1;
+    size_t randint_idx = 2;
     
     vm_set_global(vm, print_idx, print_func);
     vm_set_global(vm, input_idx, input_func);
-    DPRINT("[VM] Builtins registered: print at %p, input at %p\n", 
-           (void*)print_func, (void*)input_func);
+    vm_set_global(vm, randint_idx, randint_func);
+
+    DPRINT("[VM] Builtins registered: print at %p, input at %p, randint at %p\n", 
+        (void*)print_func, (void*)input_func, (void*)randint_func);
 }
 
 Heap* vm_get_heap(VM* vm) {
@@ -854,7 +860,311 @@ Object* frame_execute(Frame* frame) {
                 // Безусловный переход назад без проверки прерываний
                 frame->ip -= (int32_t)arg;
                 break;
-            }            
+            }
+            case BUILD_ARRAY: {
+               DPRINT("[VM] BUILD_ARRAY with arg=%u\n", arg);
+               
+               uint32_t element_count = arg;
+               
+               if (element_count == 0) {
+                   // Создание пустого массива заданного размера
+                   // Размер массива должен быть в стеке
+                   Object* size_obj = frame_stack_pop(frame);
+                   if (!size_obj || size_obj->type != OBJ_INT) {
+                       DPRINT("[VM] ERROR: BUILD_ARRAY(0) expected integer size on stack\n");
+                       if (size_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, size_obj);
+                       frame_stack_push(frame, vm_get_none(frame->vm));
+                       break;
+                   }
+                   
+                   int64_t size = size_obj->as.int_value;
+                   DPRINT("[VM] Creating empty array with size=%lld\n", (long long)size);
+                   
+                   // Создаем массив
+                   Object* array = heap_alloc_array_with_size(frame->vm->heap, size);
+                   
+                   if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, size_obj);
+                   
+                   if (!array) {
+                       DPRINT("[VM] ERROR: Failed to allocate array\n");
+                       frame_stack_push(frame, vm_get_none(frame->vm));
+                       break;
+                   }
+                   
+                   frame_stack_push(frame, array);
+               } else {
+                   // Создание массива из элементов на стеке (например, [1, 2, 3])
+                   // Проверяем, что в стеке достаточно элементов
+                   if (frame->stack_size < element_count) {
+                       DPRINT("[VM] ERROR: Not enough elements on stack for BUILD_ARRAY\n");
+                       frame_stack_push(frame, vm_get_none(frame->vm));
+                       break;
+                   }
+                   
+                   // Создаем массив с заданным количеством элементов
+                   Object* array = heap_alloc_array_with_size(frame->vm->heap, element_count);
+                   
+                   if (!array) {
+                       DPRINT("[VM] ERROR: Failed to allocate array\n");
+                       frame_stack_push(frame, vm_get_none(frame->vm));
+                       break;
+                   }
+                   
+                   DPRINT("[VM] Allocated array with size=%u at %p\n", element_count, (void*)array);
+                   
+                   // Заполняем массив элементами из стека (в обратном порядке)
+                   for (int32_t i = (int32_t)element_count - 1; i >= 0; i--) {
+                       Object* element = frame_stack_pop(frame);
+                       
+                       DPRINT("[VM] Popping element %d: %p\n", i, (void*)element);
+                       
+                       if (element) {
+                           // Сохраняем элемент в массив
+                           if (i < (int64_t)array->as.array.size) {
+                               // Увеличиваем счетчик для элемента
+                               if (frame->vm && frame->vm->gc) {
+                                   gc_incref(frame->vm->gc, element);
+                               }
+                               
+                               // Заменяем элемент (массив инициализирован None элементами)
+                               Object* old_element = array->as.array.items[i];
+                               if (old_element && frame->vm && frame->vm->gc) {
+                                   gc_decref(frame->vm->gc, old_element);
+                               }
+                               
+                               array->as.array.items[i] = element;
+                           }
+                           
+                           // Уменьшаем счетчик после добавления в массив
+                           if (frame->vm && frame->vm->gc) {
+                               gc_decref(frame->vm->gc, element);
+                           }
+                       }
+                       // Если element == NULL, оставляем None (уже установлено)
+                   }
+                   
+                   // Кладем массив на стек
+                   frame_stack_push(frame, array);
+               }
+               break;
+           }
+            case STORE_SUBSCR: {
+                DPRINT("[VM] STORE_SUBSCR\n");
+                
+                // В стеке должны быть: значение, массив, индекс (в таком порядке)
+                // STORE_SUBSCR arg=0 означает сохранение элемента в массив
+                Object* index_obj = frame_stack_pop(frame);    // ПОП: индекс
+                Object* array_obj = frame_stack_pop(frame);    // ПОП: массив
+                Object* value_obj = frame_stack_pop(frame);    // ПОП: значение                
+                if (!array_obj || !index_obj || !value_obj) {
+                    DPRINT("[VM] ERROR: STORE_SUBSCR missing array, index or value\n");
+                    if (value_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, value_obj);
+                    if (array_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, array_obj);
+                    if (index_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, index_obj);
+                    break;
+                }
+                
+                // Проверяем типы
+                if (array_obj->type != OBJ_ARRAY) {
+                    DPRINT("[VM] ERROR: STORE_SUBSCR expected array, got type=%d\n", array_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, value_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                        gc_decref(frame->vm->gc, index_obj);
+                    }
+                    break;
+                }
+                
+                int64_t index = 0;
+                if (index_obj->type == OBJ_INT) {
+                    index = index_obj->as.int_value;
+                } else {
+                    DPRINT("[VM] ERROR: STORE_SUBSCR index must be integer, got type=%d\n", index_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, value_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                        gc_decref(frame->vm->gc, index_obj);
+                    }
+                    break;
+                }
+                
+                // Проверяем границы массива
+                if (index < 0 || index >= (int64_t)array_obj->as.array.size) {
+                    DPRINT("[VM] ERROR: STORE_SUBSCR index %lld out of bounds (size=%zu)\n", 
+                           (long long)index, array_obj->as.array.size);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, value_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                        gc_decref(frame->vm->gc, index_obj);
+                    }
+                    break;
+                }
+                
+                // Заменяем элемент в массиве
+                Object* old_element = array_obj->as.array.items[index];
+                
+                // Увеличиваем счетчик для нового значения
+                if (frame->vm && frame->vm->gc) {
+                    gc_incref(frame->vm->gc, value_obj);
+                }
+                
+                // Устанавливаем новое значение
+                array_obj->as.array.items[index] = value_obj;
+                
+                // Уменьшаем счетчик для старого значения
+                if (old_element && frame->vm && frame->vm->gc) {
+                    gc_decref(frame->vm->gc, old_element);
+                }
+                
+                // Очищаем временные объекты
+                if (frame->vm && frame->vm->gc) {
+                    // array_obj остается владеть value_obj
+                    gc_decref(frame->vm->gc, array_obj);
+                    gc_decref(frame->vm->gc, index_obj);
+                    // value_obj не удаляем здесь - он теперь принадлежит массиву
+                }
+                
+                // STORE_SUBSCR не оставляет значения на стеке
+                break;
+            }
+            case DEL_SUBSCR: {
+                DPRINT("[VM] DEL_SUBSCR\n");
+                
+                // В стеке должны быть: массив, индекс
+                Object* index_obj = frame_stack_pop(frame);
+                Object* array_obj = frame_stack_pop(frame);
+                
+                if (!array_obj || !index_obj) {
+                    DPRINT("[VM] ERROR: DEL_SUBSCR missing array or index\n");
+                    if (index_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, index_obj);
+                    if (array_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, array_obj);
+                    break;
+                }
+                
+                // Проверяем типы
+                if (array_obj->type != OBJ_ARRAY) {
+                    DPRINT("[VM] ERROR: DEL_SUBSCR expected array, got type=%d\n", array_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    break;
+                }
+                
+                // Преобразуем индекс в int
+                int64_t index = 0;
+                if (index_obj->type == OBJ_INT) {
+                    index = index_obj->as.int_value;
+                } else {
+                    DPRINT("[VM] ERROR: DEL_SUBSCR index must be integer, got type=%d\n", index_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    break;
+                }
+                
+                // Проверяем границы массива
+                if (index < 0 || index >= (int64_t)array_obj->as.array.size) {
+                    DPRINT("[VM] ERROR: DEL_SUBSCR index %lld out of bounds (size=%zu)\n", 
+                           (long long)index, array_obj->as.array.size);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    break;
+                }
+                
+                // Удаляем элемент (устанавливаем в None)
+                Object* old_element = array_obj->as.array.items[index];
+                
+                // Устанавливаем элемент в None
+                array_obj->as.array.items[index] = vm_get_none(frame->vm);
+                
+                // Уменьшаем счетчик для старого значения
+                if (old_element && frame->vm && frame->vm->gc) {
+                    gc_decref(frame->vm->gc, old_element);
+                }
+                
+                // Очищаем временные объекты
+                if (frame->vm && frame->vm->gc) {
+                    gc_decref(frame->vm->gc, index_obj);
+                    gc_decref(frame->vm->gc, array_obj);
+                }
+                
+                // DEL_SUBSCR не оставляет значения на стеке
+                break;
+            }
+            case LOAD_SUBSCR: {
+                DPRINT("[VM] LOAD_SUBSCR\n");
+                
+                // В стеке должны быть: индекс, массив
+                Object* index_obj = frame_stack_pop(frame);
+                Object* array_obj = frame_stack_pop(frame);
+                
+                if (!array_obj || !index_obj) {
+                    DPRINT("[VM] ERROR: LOAD_SUBSCR missing array or index\n");
+                    if (index_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, index_obj);
+                    if (array_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, array_obj);
+                    frame_stack_push(frame, vm_get_none(frame->vm));
+                    break;
+                }
+                
+                // Проверяем типы
+                if (array_obj->type != OBJ_ARRAY) {
+                    DPRINT("[VM] ERROR: LOAD_SUBSCR expected array, got type=%d\n", array_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    frame_stack_push(frame, vm_get_none(frame->vm));
+                    break;
+                }
+                
+                // Преобразуем индекс в int
+                int64_t index = 0;
+                if (index_obj->type == OBJ_INT) {
+                    index = index_obj->as.int_value;
+                } else {
+                    DPRINT("[VM] ERROR: LOAD_SUBSCR index must be integer, got type=%d\n", index_obj->type);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    frame_stack_push(frame, vm_get_none(frame->vm));
+                    break;
+                }
+                
+                // Проверяем границы массива
+                if (index < 0 || index >= (int64_t)array_obj->as.array.size) {
+                    DPRINT("[VM] ERROR: LOAD_SUBSCR index %lld out of bounds (size=%zu)\n", 
+                           (long long)index, array_obj->as.array.size);
+                    if (frame->vm && frame->vm->gc) {
+                        gc_decref(frame->vm->gc, index_obj);
+                        gc_decref(frame->vm->gc, array_obj);
+                    }
+                    frame_stack_push(frame, vm_get_none(frame->vm));
+                    break;
+                }
+                
+                // Получаем элемент из массива
+                Object* element = array_obj->as.array.items[index];
+                
+                // Увеличиваем счетчик для возвращаемого элемента
+                if (element && frame->vm && frame->vm->gc) {
+                    gc_incref(frame->vm->gc, element);
+                }
+                
+                // Очищаем временные объекты
+                if (frame->vm && frame->vm->gc) {
+                    gc_decref(frame->vm->gc, index_obj);
+                    gc_decref(frame->vm->gc, array_obj);
+                }
+                
+                // Кладем результат на стек
+                frame_stack_push(frame, element ? element : vm_get_none(frame->vm));
+                break;
+            }
             default:
                 // For unsupported operations, print and continue
                 DPRINT("VM: Unsupported op code: 0x%02X\n", bc.op_code);

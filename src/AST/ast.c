@@ -527,6 +527,133 @@ static FunctionDeclarationStatement* copy_function_declaration_statement(ASTNode
     return copy;
 }
 
+static ArrayExpression* copy_array_expression(ASTNode* original) {
+    if (!original || original->node_type != NODE_ARRAY_EXPRESSION) {
+        return NULL;
+    }
+
+    ArrayExpression* orig_expr = (ArrayExpression*)original;
+    ArrayExpression* copy = malloc(sizeof(ArrayExpression));
+    if (!copy) return NULL;
+
+    // Копируем базовую структуру
+    copy->base.node_type = NODE_ARRAY_EXPRESSION;
+    copy->base.location = orig_expr->base.location;
+    copy->element_count = orig_expr->element_count;
+
+    // Копируем массив элементов
+    if (orig_expr->element_count > 0 && orig_expr->elements) {
+        copy->elements = malloc(orig_expr->element_count * sizeof(ASTNode*));
+        if (!copy->elements) {
+            free(copy);
+            return NULL;
+        }
+
+        for (size_t i = 0; i < orig_expr->element_count; i++) {
+            copy->elements[i] = ast_node_copy(orig_expr->elements[i]);
+            if (!copy->elements[i]) {
+                // Очищаем уже скопированные элементы
+                for (size_t j = 0; j < i; j++) {
+                    ast_free(copy->elements[j]);
+                }
+                free(copy->elements);
+                free(copy);
+                return NULL;
+            }
+        }
+    } else {
+        copy->elements = NULL;
+    }
+
+    return copy;
+}
+
+static SubscriptExpression* copy_subscript_expression(ASTNode* original) {
+    if (!original || original->node_type != NODE_SUBSCRIPT_EXPRESSION) {
+        return NULL;
+    }
+
+    SubscriptExpression* orig_expr = (SubscriptExpression*)original;
+    SubscriptExpression* copy = malloc(sizeof(SubscriptExpression));
+    if (!copy) return NULL;
+
+    // Копируем базовую структуру
+    copy->base.node_type = NODE_SUBSCRIPT_EXPRESSION;
+    copy->base.location = orig_expr->base.location;
+
+    // Копируем массив
+    copy->array = ast_node_copy(orig_expr->array);
+    if (!copy->array) {
+        free(copy);
+        return NULL;
+    }
+
+    // Копируем индекс
+    copy->index = ast_node_copy(orig_expr->index);
+    if (!copy->index) {
+        ast_free(copy->array);
+        free(copy);
+        return NULL;
+    }
+
+    return copy;
+}
+
+static ArrayDeclarationStatement* copy_array_declaration_statement(ASTNode* original) {
+    if (!original || original->node_type != NODE_ARRAY_DECLARATION_STATEMENT) {
+        return NULL;
+    }
+
+    ArrayDeclarationStatement* orig_stmt = (ArrayDeclarationStatement*)original;
+    ArrayDeclarationStatement* copy = malloc(sizeof(ArrayDeclarationStatement));
+    if (!copy) return NULL;
+
+    // Копируем базовую структуру
+    copy->base.node_type = NODE_ARRAY_DECLARATION_STATEMENT;
+    copy->base.location = orig_stmt->base.location;
+
+    // Копируем тип элементов массива
+    copy->element_type = orig_stmt->element_type;
+
+    // Копируем имя массива
+    if (orig_stmt->name) {
+        copy->name = strdup(orig_stmt->name);
+        if (!copy->name) {
+            free(copy);
+            return NULL;
+        }
+    } else {
+        copy->name = NULL;
+    }
+
+    // Копируем размер массива (если есть)
+    if (orig_stmt->size) {
+        copy->size = ast_node_copy(orig_stmt->size);
+        if (!copy->size) {
+            free(copy->name);
+            free(copy);
+            return NULL;
+        }
+    } else {
+        copy->size = NULL;
+    }
+
+    // Копируем инициализатор (если есть)
+    if (orig_stmt->initializer) {
+        copy->initializer = ast_node_copy(orig_stmt->initializer);
+        if (!copy->initializer) {
+            ast_free(copy->size);
+            free(copy->name);
+            free(copy);
+            return NULL;
+        }
+    } else {
+        copy->initializer = NULL;
+    }
+
+    return copy;
+}
+
 static ASTNode* ast_node_copy(ASTNode* original) {
     if (!original) return NULL;
     
@@ -567,6 +694,13 @@ static ASTNode* ast_node_copy(ASTNode* original) {
             return (ASTNode*)copy_for_statement(original);
         case NODE_FUNCTION_DECLARATION_STATEMENT:
             return (ASTNode*)copy_function_declaration_statement(original);
+
+        case NODE_ARRAY_EXPRESSION:
+            return (ASTNode*)copy_array_expression(original);
+        case NODE_ARRAY_DECLARATION_STATEMENT:
+            return (ASTNode*)copy_array_declaration_statement(original);
+        case NODE_SUBSCRIPT_EXPRESSION:
+            return (ASTNode*)copy_subscript_expression(original);
         default:
             fprintf(stderr, "Unknown node type in copy function: %d\n", original->node_type);
             return NULL;
@@ -582,19 +716,58 @@ Parameter* ast_new_parameter(const char* name, TypeVar type) {
     return parameter;
 }
 
-ASTNode* ast_new_function_declaration_statement(SourceLocation loc, const char* name, TypeVar return_type, Parameter* parameters, size_t parameter_count, ASTNode* body) {
+ASTNode* ast_new_function_declaration_statement(
+    SourceLocation loc,
+    const char* name,
+    TypeVar return_type,
+    Parameter* parameters,
+    size_t parameter_count,
+    ASTNode* body
+) {
     ASTNode* node = ast_node_allocate(NODE_FUNCTION_DECLARATION_STATEMENT, loc);
     if (!node) return NULL;
-    
-    FunctionDeclarationStatement* casted_node = (FunctionDeclarationStatement*) node;
-    casted_node->name = strdup(name);
+
+    FunctionDeclarationStatement* casted_node =
+        (FunctionDeclarationStatement*) node;
+
+    casted_node->name = name ? strdup(name) : NULL;
     casted_node->return_type = return_type;
-    casted_node->parameters = parameters;
     casted_node->parameter_count = parameter_count;
-    casted_node->body = ast_node_copy(body);
-    
+    casted_node->body = body ? ast_node_copy(body) : NULL;
+
+    if (parameter_count > 0) {
+        if (!parameters) {
+            fprintf(stderr, "parser bug: parameters NULL\n");
+            abort();
+        }
+
+        casted_node->parameters =
+            malloc(sizeof(Parameter) * parameter_count);
+
+        if (parameter_count > 0) {
+            casted_node->parameters =
+                malloc(sizeof(Parameter) * parameter_count);
+        } else {
+            casted_node->parameters = NULL;
+        }
+
+        for (size_t i = 0; i < parameter_count; i++) {
+            casted_node->parameters[i].name =
+                parameters[i].name
+                    ? strdup(parameters[i].name)
+                    : NULL;
+            casted_node->parameters[i].type = parameters[i].type;
+            casted_node->parameters[i].is_array =
+                parameters[i].is_array;
+        }
+    } else {
+        casted_node->parameters = NULL;
+    }
+
     return node;
 }
+
+
 
 ASTNode* ast_new_variable_declaration_statement(SourceLocation loc, TypeVar var_type, const char* name, ASTNode* initializer) {
     ASTNode* node = ast_node_allocate(NODE_VARIABLE_DECLARATION_STATEMENT, loc);
@@ -815,8 +988,8 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
             return TYPE_INT;
         case KW_BOOL:
             return TYPE_BOOL;
-        case KW_ARRAY:
-            return TYPE_ARRAY;
+        case KW_NONE:
+            return TYPE_NONE;
         default:
             return TYPE_INT;
     }
@@ -1017,8 +1190,6 @@ const char* type_var_to_string(int type_var) {
         case TYPE_INT: return "int";
         case TYPE_LONG: return "long";
         case TYPE_BOOL: return "bool";
-        case TYPE_ARRAY: return "array";
-        case TYPE_STRUCT: return "struct";
         case TYPE_NONE: return "none";
         default: return "unknown_type";
     }
@@ -1029,7 +1200,6 @@ const char* token_type_to_string(int token_type) {
         case KW_INT: return "KW_INT";
         case KW_BOOL: return "KW_BOOL";
         case KW_LONG: return "KW_LONG";
-        case KW_ARRAY: return "KW_ARRAY";
         case KW_NONE: return "KW_NONE";
         case KW_TRUE: return "KW_TRUE";
         case KW_FALSE: return "KW_FALSE";
@@ -1072,6 +1242,7 @@ const char* token_type_to_string(int token_type) {
         case COMMA: return "COMMA";
         case END_OF_FILE: return "END_OF_FILE";
         case ERROR: return "ERROR";
+        case KW_VOID: return "void";
         default: return "UNKNOWN_TOKEN";
     }
 }
@@ -1112,7 +1283,7 @@ void ast_print(ASTNode* node, int indent) {
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
             DPRINT("Variable: %s (type %s)\n", casted_node->name, type_var_to_string(casted_node->var_type));
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
-            DPRINT("Initializer: ");
+            DPRINT("Initializer: \n");
             ast_print(casted_node->initializer, indent + 1);
             break;
         }

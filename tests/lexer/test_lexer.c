@@ -26,13 +26,13 @@ void test_keywords() {
     assert(l != NULL);
     
     TokenType expected[] = {
-        KW_INT, KW_BOOL, KW_LONG, KW_ARRAY, KW_NONE, KW_TRUE, KW_FALSE,
+        KW_INT, KW_BOOL, KW_LONG, KW_NONE, KW_TRUE, KW_FALSE,
         KW_IF, KW_ELSE, KW_ELIF, KW_WHILE, KW_FOR, KW_BREAK, KW_CONTINUE,
         KW_RETURN, KW_STRUCT, END_OF_FILE
     };
     
     const char* expected_values[] = {
-        "int", "bool", "long", "array", "None", "true", "false",
+        "int", "bool", "long", "None", "true", "false",
         "if", "else", "elif", "while", "for", "break", "continue",
         "return", "struct", "EOF"
     };
@@ -41,7 +41,7 @@ void test_keywords() {
     Token* tokens = lexer_parse_file(l, "test_keywords");
     assert(tokens != NULL);
     
-    for (int i = 0; i < 17; i++) {
+    for (int i = 0; i < 16; i++) {
         assert(tokens[i].type == expected[i]);
         assert(strcmp(tokens[i].value, expected_values[i]) == 0);
         printf("  ✓ %s\n", tokens[i].value);

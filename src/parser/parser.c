@@ -522,7 +522,7 @@ static ASTNode* parser_parse_for_statement(Parser* parser) {
     if (peek_token && peek_token->type != SEMICOLON) {
         // Check if it's a variable declaration or expression
         if (peek_token->type == KW_INT || peek_token->type == KW_LONG || 
-            peek_token->type == KW_BOOL || peek_token->type == KW_ARRAY) {
+            peek_token->type == KW_BOOL) {
             DPRINT("[PARSER] [FOR LOOP] Parsing variable declaration as initializer\n");
             initializer = parser_parse_variable_declaration_statement(parser);
             if (initializer) {
@@ -678,31 +678,30 @@ static ASTNode* parser_parse_break_statement(Parser* parser) {
 }
 
 static ASTNode* parser_parse_array_declaration_statement(Parser* parser) {
+    DPRINT("[PARSER] Parsing array declaration statement\n");
+    DPRINT("[PARSER] Array element type is %s\n", 
+           parser_peek(parser) ? token_type_to_string(parser_peek(parser)->type) : "NULL");
     Token* array_token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){array_token->line, array_token->column};
-    
-    // Parse element type
-    Token* elem_type_token = parser_consume(parser, KW_INT, "Expected element type for array");
-    if (!elem_type_token) return NULL;
-    
-    // Parse array name
-    Token* identifier = parser_consume(parser, IDENTIFIER, "Expected array name");
-    if (!identifier) return NULL;
-    
+   
     // Parse array size
     parser_consume(parser, LBRACKET, "Expected '[' after array name");
     ASTNode* size = parser_parse_expression(parser);
     if (!size) return NULL;
     parser_consume(parser, RBRACKET, "Expected ']' after array size");
-    
+
+    // Parse array name
+    Token* identifier = parser_consume(parser, IDENTIFIER, "Expected array name");
+    if (!identifier) return NULL;
+
     // Parse optional initializer
     ASTNode* initializer = NULL;
     if (parser_peek(parser) && parser_peek(parser)->type == OP_ASSIGN) {
         parser_advance(parser);
         initializer = parser_parse_expression(parser);
     }
-    
-    return ast_new_array_declaration_statement(loc, token_type_to_type_var(elem_type_token->type), 
+    DPRINT("[PARSER] Finished parsing array declaration for '%s'\n", identifier->value);
+    return ast_new_array_declaration_statement(loc, token_type_to_type_var(array_token->type), 
                                                identifier->value, size, initializer);
 }
 
@@ -732,7 +731,6 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "declaration should have a naming");
     if (!identifier) return NULL;
-
     if (parser_consume(parser, OP_ASSIGN, NULL)){
         initializer = parser_parse_expression(parser);
     }
@@ -746,10 +744,14 @@ static ASTNode* parser_parse_variable_declaration_statement(Parser* parser){
     return node;
 }
 
+
 static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     DPRINT("[PARSER] Starting to parse function declaration\n");
     Token* return_type_token = parser_advance(parser);
     SourceLocation loc = (SourceLocation){return_type_token->line, return_type_token->column};
+    if (return_type_token->type == KW_VOID) {
+        return_type_token->type = KW_NONE;
+    }
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "Function declaration should have a name");
     if (!identifier) return NULL;
@@ -800,6 +802,17 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
             return NULL;
         }
         
+        // Проверяем, не массив ли это (следующий токен '[')
+        bool is_array = false;
+        
+        if (parser_peek(parser) && parser_peek(parser)->type == LBRACKET) {
+            is_array = true;
+            parser_advance(parser); // Пропускаем '['
+            
+            // Пропускаем ']' (размер не важен)
+            parser_consume(parser, RBRACKET, "Expected ']' after array type");
+        }
+        
         // Парсим имя параметра
         Token* param_name = parser_consume(parser, IDENTIFIER, "Expected parameter name after type");
         if (!param_name) {
@@ -820,6 +833,7 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
             return NULL;
         }
         parameters[param_count].type = param_type;
+        parameters[param_count].is_array = is_array;  // Отмечаем, что это массив
         param_count++;
 
         // Проверяем, есть ли следующий параметр (через запятую)
@@ -854,28 +868,31 @@ static ASTNode* parser_parse_function_declaration_statement(Parser* parser) {
     return func_node;
 }
 
-
 static ASTNode* parser_parse_declaration_statement(Parser* parser) {
     DPRINT("[PARSER] Starting to parse declaration statement\n");
+
     Token* current = parser_advance(parser);
     if (!current) {
         DPRINT("[PARSER] ERROR: No current token\n");
         return NULL;
     }
-        
-    if (current->type == KW_ARRAY) {
-        return parser_parse_array_declaration_statement(parser);
-    }
-    
+
     SourceLocation loc = (SourceLocation){current->line, current->column};
     DPRINT("[PARSER] Declaration type: %d, value: %s\n", current->type, current->value);
+    if ((current->type == KW_INT || current->type == KW_BOOL) && parser_peek(parser)->type == LBRACKET) {
+        parser_retreat(parser);
+        parser_retreat(parser);
+        DPRINT("[PARSER] Parsing array declaration\n");
+        DPRINT("[PARSER] Current token after retreat: type=%d, value=%s\n", parser_peek(parser)->type, parser_peek(parser)->value);
+        return parser_parse_array_declaration_statement(parser);
+    }
 
     Token* identifier = parser_consume(parser, IDENTIFIER, "declaration should have a naming");
     if (!identifier) {
         DPRINT("[PARSER] ERROR: No identifier in declaration\n");
         return NULL;
     }
-    
+
     DPRINT("[PARSER] found after identifier: %s\n", token_type_to_string(parser_peek(parser)->type));
     if (parser_peek(parser)->type == OP_ASSIGN) {
         DPRINT("[PARSER] Parsing variable declaration\n");
@@ -898,21 +915,44 @@ static ASTNode* parser_parse_declaration_statement(Parser* parser) {
 
 static ASTNode* parser_parse_assignment_statement(Parser* parser) {
     DPRINT("[PARSER] Starting to parse assignment statement\n");
-    Token* identifier = parser_consume(parser, IDENTIFIER, "Expected identifier in assignment");
-    if (!identifier) return NULL;
-
-    Token* assign = parser_consume(parser, OP_ASSIGN, "Expected '=' in assignment");
-    if (!assign) {
+    
+    // Парсим левую часть - это может быть переменная или индексация массива
+    ASTNode* lhs = NULL;
+    
+    // Парсим идентификатор
+    Token* identifier_token = parser_consume(parser, IDENTIFIER, "Expected identifier in assignment");
+    if (!identifier_token) return NULL;
+    
+    SourceLocation loc = (SourceLocation){identifier_token->line, identifier_token->column};
+    
+    // Проверяем, является ли это индексацией массива
+    if (parser_peek(parser) && parser_peek(parser)->type == LBRACKET) {
+        // Это индексация массива
+        DPRINT("[PARSER] Parsing array subscript in LHS of assignment\n");
+        ASTNode* array_expr = ast_new_variable_expression(loc, identifier_token->value);
+        lhs = parse_subscript_expression(parser, array_expr);
+        ast_free(array_expr);
+    } else {
+        // Это обычная переменная
+        DPRINT("[PARSER] Parsing simple variable in LHS of assignment\n");
+        lhs = ast_new_variable_expression(loc, identifier_token->value);
+    }
+    
+    if (!lhs) {
         return NULL;
     }
 
-    ASTNode* rhs = parser_parse_expression(parser);
-    if (!rhs) return NULL;
+    // Парсим оператор присваивания
+    Token* assign = parser_consume(parser, OP_ASSIGN, "Expected '=' in assignment");
+    if (!assign) {
+        ast_free(lhs);
+        return NULL;
+    }
 
-    SourceLocation loc = (SourceLocation){identifier->line, identifier->column};
-    ASTNode* lhs = ast_new_variable_expression(loc, identifier->value);
-    if (!lhs) {
-        ast_free(rhs);
+    // Парсим правую часть
+    ASTNode* rhs = parser_parse_expression(parser);
+    if (!rhs) {
+        ast_free(lhs);
         return NULL;
     }
 
@@ -1081,6 +1121,9 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
         case KW_NONE:
             left = parser_parse_primary_expression(parser);
             break;
+        case LBRACKET:
+            left = parse_array_expression(parser);
+            break;
         default:
             return NULL;
     }
@@ -1152,15 +1195,22 @@ static ASTNode* parser_parse_statement(Parser* parser) {
         case KW_RETURN:
             res = parser_parse_return_statement(parser);
             break;
-            
+        case KW_VOID:
+            res = parser_parse_function_declaration_statement(parser);
+            flag_fun_declaration = true;
+            break;
         case KW_INT:
         case KW_LONG:
         case KW_BOOL:
-        case KW_ARRAY:
             parser_advance(parser);
             Token* next_token = parser_peek(parser);
             
-            if (!parser_consume(parser, IDENTIFIER, "expected identifier after type")) {
+            if (parser_peek(parser)->type == LBRACKET) {
+                parser_retreat(parser);
+                res = parser_parse_array_declaration_statement(parser);
+                break;
+            }
+            else if (!parser_consume(parser, IDENTIFIER, "expected identifier after type")) {
                 res = NULL;
                 parser_retreat(parser);
                 break;
@@ -1177,7 +1227,7 @@ static ASTNode* parser_parse_statement(Parser* parser) {
         case IDENTIFIER:
             {
                 Token* current_identifier = parser_advance(parser);
-                if (parser_check(parser, OP_ASSIGN)) {
+                if (parser_check(parser, OP_ASSIGN) || parser_check(parser, LBRACKET)) {
                     parser_retreat(parser);
                     res = parser_parse_assignment_statement(parser);
                 } else {
@@ -1308,7 +1358,7 @@ ASTNode* parser_parse(Parser* parser) {
         ASTNode* stmt = parser_parse_statement(parser);
         if (!stmt) {
             Token* error_token = parser_peek(parser);
-            DPRINT("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n", 
+            DPRINT("[PARSER] ERROR: Couldn't parse statement at token type=%s, value='%s'\n, ", 
                    token_type_to_string(error_token->type), error_token->value);
             ast_free(block_statements);
             return NULL;
