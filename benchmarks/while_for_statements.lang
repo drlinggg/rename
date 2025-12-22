@@ -1,12 +1,27 @@
 int main() {
-    int b = 10;
-    for (int i = 0; i < b; i = i + 1) {
-        print(i);
-    }
+    //for (int i = 0; i <= 10; i = i + 1) {
+    //    int rem = i % 2;
+    //    if (rem == 0) {
+    //        continue;
+    //    }
+    //   if (i == 9) {
+    //        print(i);
+    //        break;
+    //    }
+    //}
 
     int a = 0;
-    while (a < 5) {
-        a = a + 1;
+    while (a < 15) {
+
         print(a);
+        a = a + 1;
+
+        if a == 5 {
+            continue;
+        }
+
+        if (a == 10) {
+            break;
+        }
     }
 }

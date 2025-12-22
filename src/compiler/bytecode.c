@@ -32,7 +32,6 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case RETURN_VALUE: return "RETURN_VALUE";
         case NOP: return "NOP";
         case POP_TOP: return "POP_TOP";
-        case END_FOR: return "END_FOR";
         case COPY: return "COPY";
         case SWAP: return "SWAP";
         case JUMP_FORWARD: return "JUMP_FORWARD";
@@ -44,6 +43,10 @@ static const char* bytecode_opcode_to_string(uint8_t op_code) {
         case POP_JUMP_IF_NONE: return "POP_JUMP_IF_NONE";
         case PUSH_NULL: return "PUSH_NULL";
         case MAKE_FUNCTION: return "MAKE_FUNCTION";
+        case BREAK_LOOP: return "BREAK_LOOP";
+        case CONTINUE_LOOP: return "CONTINUE_LOOP";
+        case LOOP_START: return "LOOP_START";
+        case LOOP_END: return "LOOP_END";
         default: return "UNKNOWN";
     }
 }
@@ -141,6 +144,18 @@ void bytecode_print(bytecode* bc) {
         case COPY:
         case SWAP:
             DPRINT("| position: %u ", arg);
+            break;
+        case BREAK_LOOP:
+            DPRINT("| break out of loop ");
+            break;
+        case CONTINUE_LOOP:
+            DPRINT("| continue to next iteration ");
+            break;
+        case LOOP_START:
+            DPRINT("| start of loop block ");
+            break;
+        case LOOP_END:
+            DPRINT("| end of loop block ");
             break;
     }
     
