@@ -93,37 +93,29 @@ void object_array_set(Object* array, size_t index, Object* element) {
     array->as.array.items[index] = element;
 }
 
-void object_incref(Object* o) {
-    if (!o) return;
-    // avoid overflow
-    if (o->ref_count < UINT32_MAX) {
-        o->ref_count++;
+void object_decref(Object* obj) {
+    if (!obj) return;
+    
+    if (obj->ref_count > 0 && obj->ref_count != 0x7FFFFFFF) {
+        obj->ref_count--;
+        
+        if (obj->ref_count == 0) {
+            // Освобождаем вложенные ресурсы
+            if (obj->type == OBJ_ARRAY && obj->as.array.items) {
+                free(obj->as.array.items);
+            }
+            else if (obj->type == OBJ_NATIVE_FUNCTION && obj->as.native_function.name) {
+                free((void*)obj->as.native_function.name);
+            }
+        }
     }
 }
 
-void object_decref(Object* o) {
-    if (!o) return;
-    if (o->ref_count == 0) return; // already freed
-    o->ref_count--;
-    if (o->ref_count == 0) {
-        switch (o->type) {
-            case OBJ_ARRAY:
-                if (o->as.array.items) {
-                    for (size_t i = 0; i < o->as.array.size; i++) {
-                        object_decref(o->as.array.items[i]);
-                    }
-                    free(o->as.array.items);
-                }
-                break;
-            case OBJ_CODE:
-            case OBJ_FUNCTION:
-            case OBJ_INT:
-            case OBJ_BOOL:
-            case OBJ_NONE:
-            default:
-                break;
-        }
-        free(o);
+void object_incref(Object* obj) {
+    if (!obj) return;
+    
+    if (obj->ref_count != 0x7FFFFFFF) {
+        obj->ref_count++;
     }
 }
 
