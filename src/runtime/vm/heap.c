@@ -177,7 +177,7 @@ Heap* heap_create(void) {
     init_int_cache(heap);
     
     // Инициализируем пулы с разными размерами блоков
-    pool_init(&heap->int_pool, 100000);        // Блоки по 100K int объектов
+    pool_init(&heap->int_pool, 2000000);        // Блоки по 100K int объектов
     pool_init(&heap->bool_pool, 2);        // Блоки по 10K bool
     pool_init(&heap->none_pool, 1);            // 1 слот для синглтона
     pool_init(&heap->array_pool, 100);       // Блоки по 10K массивов

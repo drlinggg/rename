@@ -6,8 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define INT_CACHE_MIN -1000
-#define INT_CACHE_MAX 1000
+#define INT_CACHE_MIN -1000000
+#define INT_CACHE_MAX 1000000
 #define INT_CACHE_SIZE (INT_CACHE_MAX - INT_CACHE_MIN + 1)
 
 typedef struct MemoryBlock {

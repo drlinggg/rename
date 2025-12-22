@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 
+void gc_incref(GC* gc, Object* obj);
+void gc_decref(GC* gc, Object* obj);
+
 struct VM {
     Heap* heap;
     GC* gc;
@@ -33,7 +36,6 @@ struct Frame {
     size_t ip;
 };
 
-// ==================== THREADED CODE DECLARATIONS ====================
 
 typedef void (*OpHandler)(Frame*, uint32_t);
 
@@ -104,22 +106,9 @@ static void init_op_table(void) {
     op_table[LOAD_SUBSCR] = op_LOAD_SUBSCR;
 }
 
-// ==================== ОПЕРАЦИИ СО СТЕКОМ ====================
-
-static void frame_stack_ensure_capacity(Frame* frame, size_t additional) {
-    if (frame->stack_capacity == 0) {
-        frame->stack_capacity = 16;
-        frame->stack = malloc(frame->stack_capacity * sizeof(Object*));
-        frame->stack_size = 0;
-    }
-    while (frame->stack_size + additional > frame->stack_capacity) {
-        frame->stack_capacity *= 2;
-        frame->stack = realloc(frame->stack, frame->stack_capacity * sizeof(Object*));
-    }
-}
-
+static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additional);
 static void frame_stack_push(Frame* frame, Object* o) {
-    frame_stack_ensure_capacity(frame, 1);
+    frame_stack_ensure_capacity_fast(frame, 1);
     if (o && frame->vm && frame->vm->gc) {
         gc_incref(frame->vm->gc, o);
     }
@@ -132,7 +121,6 @@ static Object* frame_stack_pop(Frame* frame) {
     return o;
 }
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_t argc);
 
@@ -283,8 +271,6 @@ void vm_destroy(VM* vm) {
     free(vm);
 }
 
-// ==================== ФРЕЙМЫ ====================
-
 Frame* frame_create(VM* vm, CodeObj* code) {
     if (!vm || !code) return NULL;
     Frame* f = malloc(sizeof(Frame));
@@ -362,11 +348,301 @@ Object* frame_execute(Frame* frame) {
     return nonev;
 }
 
+static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additional) {
+    if (frame->stack_capacity == 0) {
+        frame->stack_capacity = 32;
+        frame->stack = malloc(frame->stack_capacity * sizeof(Object*));
+        frame->stack_size = 0;
+        return;
+    }
+    
+    if (frame->stack_size + additional > frame->stack_capacity) {
+        size_t new_capacity = frame->stack_capacity * 2;
+        while (new_capacity < frame->stack_size + additional) {
+            new_capacity *= 2;
+        }
+        frame->stack_capacity = new_capacity;
+        frame->stack = realloc(frame->stack, new_capacity * sizeof(Object*));
+    }
+}
+
+// Быстрый PUSH с GC
+#define FAST_PUSH_GC(frame, obj) \
+    do { \
+        if ((frame)->stack_size >= (frame)->stack_capacity) { \
+            frame_stack_ensure_capacity_fast((frame), 1); \
+        } \
+        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
+            gc_incref((frame)->vm->gc, (obj)); \
+        } \
+        (frame)->stack[(frame)->stack_size++] = (obj); \
+    } while(0)
+
+// Быстрый PUSH без GC (для кэшированных объектов)
+#define FAST_PUSH_NO_GC(frame, obj) \
+    do { \
+        if ((frame)->stack_size >= (frame)->stack_capacity) { \
+            frame_stack_ensure_capacity_fast((frame), 1); \
+        } \
+        (frame)->stack[(frame)->stack_size++] = (obj); \
+    } while(0)
+
+// Быстрый POP без GC (мы сами управляем decref)
+#define FAST_POP_NO_GC(frame) \
+    ((frame)->stack[--(frame)->stack_size])
+
+// Быстрый POP с GC
+#define FAST_POP_GC(frame) \
+    ({ \
+        Object* _obj = (frame)->stack[--(frame)->stack_size]; \
+        if (_obj && (frame)->vm && (frame)->vm->gc) { \
+            gc_decref((frame)->vm->gc, _obj); \
+        } \
+        _obj; \
+    })
+
+// Получить элемент без удаления
+#define FAST_PEEK(frame, offset) \
+    ((frame)->stack[(frame)->stack_size - 1 - (offset)])
+
+// Уменьшить ссылку на объект если GC активен
+#define GC_DECREF_IF_NEEDED(frame, obj) \
+    do { \
+        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
+            gc_decref((frame)->vm->gc, (obj)); \
+        } \
+    } while(0)
+
+// Увеличить ссылку на объект если GC активен
+#define GC_INCREF_IF_NEEDED(frame, obj) \
+    do { \
+        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
+            gc_incref((frame)->vm->gc, (obj)); \
+        } \
+    } while(0)
+
+// ==================== ОПТИМИЗИРОВАННЫЙ BINARY_OP С GC ====================
+
+static void op_BINARY_OP(Frame* frame, uint32_t arg) {
+    uint8_t op = arg & 0xFF;
+    
+    // Извлекаем операнды без автоматического decref (сами будем управлять)
+    Object* right = FAST_POP_NO_GC(frame);
+    Object* left = FAST_POP_NO_GC(frame);
+    
+    if (!right) right = vm_get_none(frame->vm);
+    if (!left) left = vm_get_none(frame->vm);
+    
+    Object* ret = NULL;
+
+    // Логические операции OR/AND (0x60, 0x61)
+    if (op == 0x60 || op == 0x61) {
+        bool left_bool = false;
+        bool right_bool = false;
+        
+        switch (left->type) {
+            case OBJ_INT:
+                left_bool = (bool) left->as.int_value;
+                break;
+            case OBJ_BOOL:
+                left_bool = left->as.bool_value;
+                break;
+        }
+        switch (right->type) {
+            case OBJ_INT:
+                right_bool = (bool) right->as.int_value;
+                break;
+            case OBJ_BOOL:
+                right_bool = right->as.bool_value;
+                break;
+        }
+
+        if (op == 0x60 && (left_bool && right_bool)) {
+            ret = vm_get_true(frame->vm);
+        }
+        else if (op == 0x61 && (left_bool || right_bool)) {
+            ret = vm_get_true(frame->vm);
+        }
+        else {
+            ret = vm_get_false(frame->vm);
+        }
+    }
+    
+    // БЫСТРАЯ ВЕТКА: оба операнда int (самый частый случай)
+    else if (left->type == OBJ_INT && right->type == OBJ_INT) {
+        int64_t a = left->as.int_value;
+        int64_t b = right->as.int_value;
+        
+        switch (op) {
+            case 0x00: { // ADD
+                int64_t result = a + b;
+                // Используем кэш если возможно
+                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                } else {
+                    ret = heap_alloc_int(frame->vm->heap, result);
+                }
+                break;
+            }
+            case 0x0A: { // SUB
+                int64_t result = a - b;
+                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                } else {
+                    ret = heap_alloc_int(frame->vm->heap, result);
+                }
+                break;
+            }
+            case 0x05: { // MUL
+                int64_t result = a * b;
+                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                } else {
+                    ret = heap_alloc_int(frame->vm->heap, result);
+                }
+                break;
+            }
+            case 0x06: { // REMAINDER
+                int64_t result = a % b;
+                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                } else {
+                    ret = heap_alloc_int(frame->vm->heap, result);
+                }
+                break;
+            }
+            case 0x0B: { // DIV
+                int64_t result = (b == 0) ? 0 : a / b;
+                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                } else {
+                    ret = heap_alloc_int(frame->vm->heap, result);
+                }
+                break;
+            }
+            case 0x50: { // EQ
+                ret = (a == b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x51: { // NE
+                ret = (a != b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x52: { // LT
+                ret = (a < b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x53: { // LE
+                ret = (a <= b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x54: { // GT
+                ret = (a > b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x55: { // GE
+                ret = (a >= b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x56: { // IS
+                ret = (left == right) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            default:
+                DPRINT("VM: Unsupported binary_op on ints: %u\n", op);
+                ret = vm_get_none(frame->vm);
+                break;
+        }
+    }
+    
+    // МЕДЛЕННЫЕ ВЕТКИ
+    else if (left->type != right->type) {
+        switch (arg) {
+            case 0x50:
+            case 0x56: {
+                ret = vm_get_false(frame->vm);
+                break;
+            }
+            case 0x51: {
+                ret = vm_get_true(frame->vm);
+                break;
+            }
+            default:
+                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
+                ret = vm_get_none(frame->vm);
+                break;
+        }
+    }
+    else if (left->type == OBJ_BOOL && right->type == OBJ_BOOL) {
+        switch (arg) {
+            case 0x50: {
+                ret = (left->as.bool_value == right->as.bool_value) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x51: {
+                ret = (left->as.bool_value != right->as.bool_value) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            case 0x52:
+            case 0x53:
+            case 0x54:
+            case 0x55: {
+                ret = vm_get_false(frame->vm);
+                break;
+            }
+            case 0x56: {
+                ret = (left == right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            default:
+                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
+                ret = vm_get_none(frame->vm);
+                break;
+        }
+    }
+    else if (left->type == right->type) {
+        switch (arg) {
+            case 0x56: {
+                ret = (left == right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            }
+            default:
+                DPRINT("VM: Unsupported binary_op on current type: %u\n", op);
+                ret = vm_get_none(frame->vm);
+                break;
+        }
+    }
+    else {
+        DPRINT("VM: BINARY_OP for non-int-bool operands not implemented\n");
+        ret = vm_get_none(frame->vm);
+    }
+    
+    // ОСВОБОЖДАЕМ ВРЕМЕННЫЕ ОБЪЕКТЫ
+    GC_DECREF_IF_NEEDED(frame, left);
+    GC_DECREF_IF_NEEDED(frame, right);
+    
+    // КЛАДЕМ РЕЗУЛЬТАТ НА СТЕК
+    // Для кэшированных объектов и синглтонов не нужно incref
+    if (ret->ref_count == 0x7FFFFFFF) {
+        // Бессмертные объекты (кэш, синглтоны)
+        FAST_PUSH_NO_GC(frame, ret);
+    } else {
+        // Обычные объекты - нужен incref
+        FAST_PUSH_GC(frame, ret);
+    }
+}
+
+// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_CONST С GC ====================
+
 static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
     CodeObj* code = frame->code;
     if (arg >= code->constants_count) {
         DPRINT("VM: LOAD_CONST index out of range %u\n", arg);
-        frame_stack_push(frame, vm_get_none(frame->vm));
+        FAST_PUSH_NO_GC(frame, vm_get_none(frame->vm));
         return;
     }
 
@@ -375,15 +651,81 @@ static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
 
     if (c.type == VAL_NONE) {
         o = vm_get_none(frame->vm);
+        FAST_PUSH_NO_GC(frame, o);
     } else if (c.type == VAL_BOOL) {
         o = c.bool_val ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+        FAST_PUSH_NO_GC(frame, o);
     } else if (c.type == VAL_INT) {
-        o = heap_alloc_int(frame->vm->heap, c.int_val);
+        int64_t val = c.int_val;
+        // Используем кэш если возможно
+        if (val >= INT_CACHE_MIN && val <= INT_CACHE_MAX) {
+            o = frame->vm->heap->int_cache[val - INT_CACHE_MIN];
+            FAST_PUSH_NO_GC(frame, o);
+        } else {
+            o = heap_alloc_int(frame->vm->heap, val);
+            FAST_PUSH_GC(frame, o);
+        }
     } else {
         o = heap_from_value(frame->vm->heap, c);
+        FAST_PUSH_GC(frame, o);
     }
+}
 
-    frame_stack_push(frame, o);
+// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_SUBSCR С GC ====================
+
+static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
+    Object* index_obj = FAST_POP_NO_GC(frame);
+    Object* array_obj = FAST_POP_NO_GC(frame);
+    
+    if (!array_obj || !index_obj) {
+        GC_DECREF_IF_NEEDED(frame, index_obj);
+        GC_DECREF_IF_NEEDED(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, vm_get_none(frame->vm));
+        return;
+    }
+    
+    // Получаем элемент
+    int64_t index = index_obj->as.int_value;
+    Object* element = array_obj->as.array.items[index];
+    
+    // Кладем элемент на стек
+    if (element && element->ref_count == 0x7FFFFFFF) {
+        FAST_PUSH_NO_GC(frame, element);
+    } else {
+        FAST_PUSH_GC(frame, element ? element : vm_get_none(frame->vm));
+    }
+    
+    // Освобождаем временные объекты
+    GC_DECREF_IF_NEEDED(frame, index_obj);
+    GC_DECREF_IF_NEEDED(frame, array_obj);
+}
+
+// ==================== ОПТИМИЗИРОВАННЫЙ STORE_SUBSCR С GC ====================
+
+static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
+    Object* index_obj = FAST_POP_NO_GC(frame);
+    Object* array_obj = FAST_POP_NO_GC(frame);
+    Object* value_obj = FAST_POP_NO_GC(frame);
+    
+    if (!array_obj || !index_obj || !value_obj) {
+        GC_DECREF_IF_NEEDED(frame, value_obj);
+        GC_DECREF_IF_NEEDED(frame, array_obj);
+        GC_DECREF_IF_NEEDED(frame, index_obj);
+        return;
+    }
+    
+    // Быстрая замена элемента
+    int64_t index = index_obj->as.int_value;
+    Object* old_element = array_obj->as.array.items[index];
+    array_obj->as.array.items[index] = value_obj;
+    
+    // Обновляем счетчики ссылок
+    GC_INCREF_IF_NEEDED(frame, value_obj);
+    GC_DECREF_IF_NEEDED(frame, old_element);
+    
+    // Освобождаем временные объекты
+    GC_DECREF_IF_NEEDED(frame, index_obj);
+    GC_DECREF_IF_NEEDED(frame, array_obj);
 }
 
 static void op_LOAD_FAST(Frame* frame, uint32_t arg) {
@@ -424,179 +766,6 @@ static void op_STORE_GLOBAL(Frame* frame, uint32_t arg) {
     if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, v);
 }
 
-static void op_BINARY_OP(Frame* frame, uint32_t arg) {
-    uint8_t op = arg & 0xFF;
-    Object* right = frame_stack_pop(frame);
-    Object* left = frame_stack_pop(frame);
-    if (!right) right = vm_get_none(frame->vm);
-    if (!left) left = vm_get_none(frame->vm);
-    Object* ret = NULL;
-
-    // or and handeling
-    if (op == 0x60 || op == 0x61) {
-        bool left_bool = false;
-        bool right_bool = false;
-        switch (left->type) {
-            case OBJ_INT:
-                left_bool = (bool) left->as.int_value;
-                break;
-            case OBJ_BOOL:
-                left_bool = left->as.bool_value;
-                break;
-        }
-        switch (right->type) {
-            case OBJ_INT:
-                right_bool = (bool) right->as.int_value;
-                break;
-            case OBJ_BOOL:
-                right_bool = right->as.bool_value;
-                break;
-        }
-
-        if (op == 0x60 && (left_bool && right_bool)) {
-            ret = vm_get_true(frame->vm);
-        }
-        else if (op == 0x61 && (left_bool || right_bool)) {
-            ret = vm_get_true(frame->vm);
-        }
-        else {
-            ret = vm_get_false(frame->vm);
-        }
-    }
-
-    else if (left->type == OBJ_INT && right->type == OBJ_INT) {
-        int64_t a = left->as.int_value;
-        int64_t b = right->as.int_value;
-        switch (op) {
-            case 0x00: // ADD
-                ret = heap_alloc_int(frame->vm->heap, a + b);
-                break;
-            case 0x0A: // SUB
-                ret = heap_alloc_int(frame->vm->heap, a - b);
-                break;
-            case 0x05: // MUL
-                ret = heap_alloc_int(frame->vm->heap, a * b);
-                break;
-            case 0x06: // REMAINDER
-                ret = heap_alloc_int(frame->vm->heap, a % b);
-                break;
-            case 0x0B: // DIV
-                if (b == 0) ret = heap_alloc_int(frame->vm->heap, 0);
-                else ret = heap_alloc_int(frame->vm->heap, a / b);
-                break;
-            case (0x50): {
-                ret = (left->as.int_value == right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x51): {
-                ret = (left->as.int_value != right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x52): {
-                ret = (left->as.int_value < right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x53): {
-                ret = (left->as.int_value <= right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x54): {
-                ret = (left->as.int_value > right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x55): {
-                ret = (left->as.int_value >= right->as.int_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x56): {
-                ret = (left == right) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op on ints: %u\n", op);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-    }
-    else if (left->type != right->type) {
-        switch (arg) {
-            case (0x50):
-            case (0x56): {
-                ret = vm_get_false(frame->vm);
-                break;
-            }
-            case (0x51): {
-                ret = vm_get_true(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-    }
-    else if (left->type == OBJ_BOOL && right->type == OBJ_BOOL) {
-        switch (arg) {
-            case (0x50): {
-                ret = (left->as.bool_value == right->as.bool_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x51): {
-                ret = (left->as.bool_value != right->as.bool_value) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            case (0x52):
-            case (0x53):
-            case (0x54):
-            case (0x55): {
-                ret = vm_get_false(frame->vm);
-                break;
-            }
-
-            case (0x56): {
-                ret = (left == right) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-    }
-    else if (left->type == right->type) {
-        switch (arg) {
-            case (0x56): {
-                ret = (left == right) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op on current type: %u\n", op);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-
-    }
-
-    else {
-        DPRINT("VM: BINARY_OP for non-int-bool operands not implemented\n");
-        ret = vm_get_none(frame->vm);
-    }
-    // cleanup
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, left);
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, right);
-    frame_stack_push(frame, ret);
-}
 
 static void op_UNARY_OP(Frame* frame, uint32_t arg) {
     uint8_t op = arg & 0xFF;
@@ -971,67 +1140,6 @@ static void op_BUILD_ARRAY(Frame* frame, uint32_t arg) {
         }
         
         frame_stack_push(frame, array);
-    }
-}
-
-// ==================== ОПТИМИЗИРОВАННЫЕ ОПЕРАЦИИ С МАССИВАМИ ====================
-
-// Быстрая версия LOAD_SUBSCR без проверок
-static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
-    Object* index_obj = frame_stack_pop(frame);
-    Object* array_obj = frame_stack_pop(frame);
-    
-    // БЫСТРАЯ ВЕРСИЯ: минимальные проверки
-    if (!array_obj || !index_obj) {
-        if (frame->vm && frame->vm->gc) {
-            if (index_obj) gc_decref(frame->vm->gc, index_obj);
-            if (array_obj) gc_decref(frame->vm->gc, array_obj);
-        }
-        frame_stack_push(frame, vm_get_none(frame->vm));
-        return;
-    }
-    
-    // Получаем элемент - без проверки границ для скорости
-    int64_t index = index_obj->as.int_value;
-    Object* element = array_obj->as.array.items[index];
-    
-    frame_stack_push(frame, element ? element : vm_get_none(frame->vm));
-    
-    // Обновляем счетчики ссылок
-    if (frame->vm && frame->vm->gc) {
-        gc_decref(frame->vm->gc, index_obj);
-        gc_decref(frame->vm->gc, array_obj);
-        if (element) gc_incref(frame->vm->gc, element);
-    }
-}
-
-// Быстрая версия STORE_SUBSCR без проверок
-static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
-    Object* index_obj = frame_stack_pop(frame);
-    Object* array_obj = frame_stack_pop(frame);
-    Object* value_obj = frame_stack_pop(frame);
-    
-    // БЫСТРАЯ ВЕРСИЯ: минимальные проверки
-    if (!array_obj || !index_obj || !value_obj) {
-        if (frame->vm && frame->vm->gc) {
-            if (value_obj) gc_decref(frame->vm->gc, value_obj);
-            if (array_obj) gc_decref(frame->vm->gc, array_obj);
-            if (index_obj) gc_decref(frame->vm->gc, index_obj);
-        }
-        return;
-    }
-    
-    // Быстрая замена элемента
-    int64_t index = index_obj->as.int_value;
-    Object* old_element = array_obj->as.array.items[index];
-    array_obj->as.array.items[index] = value_obj;
-    
-    // Обновляем счетчики ссылок
-    if (frame->vm && frame->vm->gc) {
-        gc_incref(frame->vm->gc, value_obj);
-        if (old_element) gc_decref(frame->vm->gc, old_element);
-        gc_decref(frame->vm->gc, index_obj);
-        gc_decref(frame->vm->gc, array_obj);
     }
 }
 
