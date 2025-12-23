@@ -1,6 +1,6 @@
 #include "ast.h"
 #include <stdio.h>
-#include "../debug.h"
+#include "../system.h"
 #include <assert.h>
 #include <stdbool.h>
 

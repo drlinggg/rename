@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../debug.h"
+#include "../system.h"
 #include "bytecode.h"
 
 static inline void bytecode_set_arg(bytecode* bc, uint32_t arg) {

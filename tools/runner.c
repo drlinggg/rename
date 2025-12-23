@@ -10,31 +10,49 @@
 #include "../src/runtime/vm/heap.h"
 #include "../src/compiler/string_table.h"
 #include "../src/runtime/vm/object.h"
-#include "../src/debug.h"
+#include "../src/system.h"
 
 int main(int argc, char** argv) {
-    clock_t start_time = clock(); // Начало замера времени
+    clock_t start_time = clock();
     
     if (argc < 2) {
-        printf("Usage: %s [--debug|-d] <source_file.lang>\n", argv[0]);
+        printf("Usage: %s [--debug|-d] [--jit|-j] <source_file.lang>\n", argv[0]);
+        printf("Options:\n");
+        printf("  -d, --debug     Enable debug mode\n");
+        printf("  -j, --jit       Enable JIT compilation\n");
         return 1;
     }
 
-    // --- DEBUG FLAG CHECK ---
     int argi = 1;
-    if (strcmp(argv[argi], "--debug") == 0 || strcmp(argv[argi], "-d") == 0) {
-        debug_enabled = 1;
-        argi++;
-        DPRINT("[RUNNER] Debug mode enabled\n");
+    
+    while (argi < argc) {
+        if (strcmp(argv[argi], "--debug") == 0 || strcmp(argv[argi], "-d") == 0) {
+            debug_enabled = 1;
+            DPRINT("[RUNNER] Debug mode enabled\n");
+            argi++;
+        }
+        else if (strcmp(argv[argi], "--jit") == 0 || strcmp(argv[argi], "-j") == 0) {
+            jit_enabled = 1;
+            DPRINT("[RUNNER] JIT compilation enabled\n");
+            argi++;
+        }
+        else {
+            // Первый не-флаг - это имя файла
+            break;
+        }
     }
 
     if (argi >= argc) {
-        printf("Usage: %s [--debug|-d] <source_file.lang>\n", argv[0]);
+        printf("Usage: %s [--debug|-d] [--jit|-j] <source_file.lang>\n", argv[0]);
+        printf("Options:\n");
+        printf("  -d, --debug     Enable debug mode\n");
+        printf("  -j, --jit       Enable JIT compilation\n");
+        printf("  --no-jit        Disable JIT compilation\n");
         return 1;
     }
 
     const char* filename = argv[argi];
-
+    
     lexer* l = lexer_create(filename);
     if (!l) {
         fprintf(stderr, "Failed to create lexer for file: %s\n", filename);

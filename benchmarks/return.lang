@@ -3,5 +3,7 @@ int return_func() {
 }
 
 int main() {
-    return return_func() == 5;
+//    return return_func() == 5;
+    int a = 5;
+    int b = 6;
 }

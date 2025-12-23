@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "../../src/debug.h"
+#include "../../src/system.h"
 
 
 FILE* create_temp_file(const char* content) {

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../debug.h"
+#include "../system.h"
 #include "../lexer/token.h"
 #include "compiler.h"
 #include "scope.h"

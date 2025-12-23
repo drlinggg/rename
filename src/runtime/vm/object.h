@@ -32,9 +32,7 @@ struct Object {
         CodeObj* codeptr; // for OBJ_CODE
         
         struct {
-            int64_t executed_times;
             CodeObj* codeptr;
-            CodeObj* jit_codeptr;
         } function;
 
         struct {

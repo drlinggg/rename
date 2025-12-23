@@ -1,8 +1,8 @@
-#include "vm.h"
+#include "../../builtins/builtins.h"
 #include "../../runtime/gc/gc.h"
 #include "../../runtime/jit/jit.h"
-#include "../../debug.h"
-#include "../../builtins/builtins.h"
+#include "../../system.h"
+#include "vm.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -640,8 +640,6 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     }
 }
 
-// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_CONST С GC ====================
-
 static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
     CodeObj* code = frame->code;
     if (arg >= code->constants_count) {
@@ -661,11 +659,13 @@ static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
         FAST_PUSH_NO_GC(frame, o);
     } else if (c.type == VAL_INT) {
         int64_t val = c.int_val;
-        // Используем кэш если возможно
         if (val >= INT_CACHE_MIN && val <= INT_CACHE_MAX) {
-            o = frame->vm->heap->int_cache[val - INT_CACHE_MIN];
+            Object* o = frame->vm->heap->int_cache[val - INT_CACHE_MIN];
+            DPRINT("[VM] LOAD_CONST %lld: CACHE HIT at %p (ref_count=%u)\n", 
+                (long long)val, (void*)o, o->ref_count);
             FAST_PUSH_NO_GC(frame, o);
         } else {
+            DPRINT("[VM] LOAD_CONST %lld: CACHE MISS\n", (long long)val);            
             o = heap_alloc_int(frame->vm->heap, val);
             FAST_PUSH_GC(frame, o);
         }
@@ -674,8 +674,6 @@ static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
         FAST_PUSH_GC(frame, o);
     }
 }
-
-// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_SUBSCR С GC ====================
 
 static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
     Object* index_obj = FAST_POP_NO_GC(frame);
@@ -703,8 +701,6 @@ static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
     GC_DECREF_IF_NEEDED(frame, index_obj);
     GC_DECREF_IF_NEEDED(frame, array_obj);
 }
-
-// ==================== ОПТИМИЗИРОВАННЫЙ STORE_SUBSCR С GC ====================
 
 static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
     Object* index_obj = FAST_POP_NO_GC(frame);
@@ -821,19 +817,8 @@ static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
     if (maybe && maybe->type == OBJ_CODE) {
         CodeObj* codeptr = maybe->as.codeptr;
         
-        // JIT ОПТИМИЗАЦИЯ: пробуем скомпилировать функцию
-        if (frame->vm && frame->vm->jit) {
-            DPRINT("[VM] JIT compiling function: %s\n", 
-                   codeptr->name ? codeptr->name : "anonymous");
-            
-            CodeObj* jit_code = jit_compile_function(frame->vm->jit, codeptr);
-            
-            if (jit_code && jit_code != codeptr) {
-                DPRINT("[VM] JIT compilation successful, using optimized version\n");
-                codeptr = jit_code;
-            }
-        }
-        
+        JIT_COMPILE_IF_ENABLED(frame->vm, codeptr);
+
         if (frame->vm && frame->vm->gc) {
             gc_decref(frame->vm->gc, maybe);
         }
@@ -1225,10 +1210,7 @@ static void op_DEL_SUBSCR(Frame* frame, uint32_t arg) {
     }
 }
 
-// Реализация COMPARE_AND_SWAP:
 static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
-    // ВАЖНО: в нашем JIT мы генерируем стековую версию COMPARE_AND_SWAP
-    // Со стека снимаем: j+1, j, массив (в обратном порядке)
     
     if (frame->stack_size < 3) {
         DPRINT("[VM] COMPARE_AND_SWAP: stack underflow\n");

@@ -2,7 +2,7 @@
 #include "../runtime/vm/vm.h"
 #include "../runtime/vm/object.h"
 #include "../runtime/vm/heap.h"
-#include "../debug.h"
+#include "../system.h"
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
