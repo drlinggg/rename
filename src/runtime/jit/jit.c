@@ -66,7 +66,7 @@ int is_sorting_function(CodeObj* code) {
     return 0;
 }
 
-// Находит точный паттерн сортировки в байткоде (индексы 59-68 в вашем примере)
+// Находит точный паттерн сортировки в байткоде
 int find_sorting_pattern(bytecode_array* code, size_t* pattern_start, size_t* pattern_end) {
     if (!code || !code->bytecodes || code->count < 20) return 0;
     
@@ -75,7 +75,6 @@ int find_sorting_pattern(bytecode_array* code, size_t* pattern_start, size_t* pa
         // Проверяем 10 инструкций подряд на паттерн сравнения
         bytecode* bc = &code->bytecodes[i];
         
-        // Паттерн из вашего байткода (инструкции 59-68):
         // 59: LOAD_FAST 1 (массив)
         // 60: LOAD_FAST 4 (j)
         // 61: LOAD_SUBSCR -> numbers[j]
@@ -121,47 +120,76 @@ int find_sorting_pattern(bytecode_array* code, size_t* pattern_start, size_t* pa
     return 0;
 }
 
-// Заменяет паттерн сравнения и обмена на COMPARE_AND_SWAP
 int replace_with_compare_and_swap(bytecode_array* code, size_t pattern_start, size_t pattern_end) {
     if (!code || pattern_end <= pattern_start || pattern_end >= code->count) {
         return 0;
     }
     
-    // Вычисляем индексы j и j+1 из байткода
-    // j находится в local 4, но нам нужно значение как константу для аргумента COMPARE_AND_SWAP
-    // В вашем коде j вычисляется динамически, поэтому мы не можем использовать непосредственные значения
+    // АНАЛИЗИРУЕМ СУЩЕСТВУЮЩИЙ БАЙТКОД, чтобы получить фактические индексы
+    bytecode* orig = &code->bytecodes[pattern_start];
     
-    // Вместо этого, генерируем код, который использует стековую версию COMPARE_AND_SWAP:
-    // 1. LOAD_FAST array (local 1)
-    // 2. LOAD_FAST j (local 4)
-    // 3. LOAD_FAST j (local 4)
-    // 4. LOAD_CONST 1
-    // 5. BINARY_OP ADD -> j+1
-    // 6. COMPARE_AND_SWAP (0xF0)
+    // Извлекаем индексы из оригинального байткода:
+    // Паттерн: LOAD_FAST array_idx, LOAD_FAST j_idx, LOAD_SUBSCR,
+    //          LOAD_FAST array_idx, LOAD_FAST j_idx, LOAD_CONST 1,
+    //          BINARY_OP ADD, LOAD_SUBSCR, BINARY_OP GT, ...
     
-    // Создаем новые инструкции
+    if (pattern_start + 9 >= code->count) return 0;
+    
+    // 1. Получаем индекс массива (должен быть одинаковый в двух местах)
+    uint32_t array_idx1 = bytecode_get_arg(orig[0]);  // Первый LOAD_FAST
+    uint32_t array_idx2 = bytecode_get_arg(orig[3]);  // Четвертый LOAD_FAST
+    
+    if (array_idx1 != array_idx2) {
+        DPRINT("[JIT] Warning: array indices differ: %u vs %u\n", array_idx1, array_idx2);
+        // Используем первый
+    }
+    uint32_t array_index = array_idx1;
+    
+    // 2. Получаем индекс j (переменной цикла)
+    uint32_t j_idx1 = bytecode_get_arg(orig[1]);  // Второй LOAD_FAST
+    uint32_t j_idx2 = bytecode_get_arg(orig[4]);  // Пятый LOAD_FAST
+    
+    if (j_idx1 != j_idx2) {
+        DPRINT("[JIT] Warning: j indices differ: %u vs %u\n", j_idx1, j_idx2);
+    }
+    uint32_t j_index = j_idx1;
+    
+    // 3. Получаем константу 1 (для j+1 вычисления)
+    uint32_t const_one_idx = bytecode_get_arg(orig[5]);  // LOAD_CONST
+    
+    // 4. Проверяем, что это действительно ADD операция
+    bytecode add_op = orig[6];
+    if (add_op.op_code != BINARY_OP || (bytecode_get_arg(add_op) & 0xFF) != 0x00) {
+        DPRINT("[JIT] Warning: Expected BINARY_OP ADD, got something else\n");
+        return 0;
+    }
+    
+    DPRINT("[JIT] Found pattern: array_idx=%u, j_idx=%u, const_1_idx=%u\n",
+           array_index, j_index, const_one_idx);
+    
+    // Создаем новые инструкции с ИЗВЛЕЧЕННЫМИ индексами
     bytecode new_instructions[6];
     
-    // 1. LOAD_FAST 1 (массив)
-    new_instructions[0] = bytecode_create_with_number(LOAD_FAST, 0x000001);
+    // 1. LOAD_FAST array_index (массив)
+    new_instructions[0] = bytecode_create_with_number(LOAD_FAST, array_index);
     
-    // 2. LOAD_FAST 4 (j)
-    new_instructions[1] = bytecode_create_with_number(LOAD_FAST, 0x000004);
+    // 2. LOAD_FAST j_index (j)
+    new_instructions[1] = bytecode_create_with_number(LOAD_FAST, j_index);
     
-    // 3. LOAD_FAST 4 (j) - снова для второго индекса
-    new_instructions[2] = bytecode_create_with_number(LOAD_FAST, 0x000004);
+    // 3. LOAD_FAST j_index (j) - снова для второго индекса
+    new_instructions[2] = bytecode_create_with_number(LOAD_FAST, j_index);
     
-    // 4. LOAD_CONST 1 (значение 1)
-    new_instructions[3] = bytecode_create_with_number(LOAD_CONST, 0x000001);
+    // 4. LOAD_CONST const_one_idx (значение 1)
+    new_instructions[3] = bytecode_create_with_number(LOAD_CONST, const_one_idx);
     
     // 5. BINARY_OP ADD (для вычисления j+1)
-    new_instructions[4] = bytecode_create_with_number(BINARY_OP, 0x000000);
+    new_instructions[4] = bytecode_create_with_number(BINARY_OP, 0x000000); // 0x00 = ADD
     
     // 6. COMPARE_AND_SWAP
     new_instructions[5] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x000000);
     
     // Заменяем старые инструкции на новые
-    size_t old_count = pattern_end - pattern_start + 1; // 25 инструкций
+    size_t old_count = pattern_end - pattern_start + 1;
     size_t new_count = 6;
     
     if (old_count == new_count) {

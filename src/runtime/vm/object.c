@@ -38,9 +38,7 @@ Object* object_new_function(CodeObj* code) {
     Object* o = malloc(sizeof(Object));
     o->type = OBJ_FUNCTION;
     o->ref_count = 1;
-    o->as.function.executed_times = 0;
     o->as.function.codeptr = code;
-    o->as.function.jit_codeptr = NULL;
     return o;
 }
 
@@ -72,24 +70,14 @@ Object* object_new_array_with_size(size_t initial_size) {
     return obj;
 }
 
-// Функция для получения элемента массива по индексу
 Object* object_array_get(Object* array, size_t index) {
-    if (!array || array->type != OBJ_ARRAY) return NULL;
-    if (index >= array->as.array.size) return NULL;
     return array->as.array.items[index];
 }
 
 // Функция для установки элемента массива по индексу
 void object_array_set(Object* array, size_t index, Object* element) {
-    if (!array || array->type != OBJ_ARRAY || index >= array->as.array.size) return;
-    
-    // Уменьшаем счетчик для старого элемента
-    if (array->as.array.items[index]) {
-        object_decref(array->as.array.items[index]);
-    }
-    
+    object_decref(array->as.array.items[index]);
     object_incref(element);
-    
     array->as.array.items[index] = element;
 }
 
@@ -100,7 +88,6 @@ void object_decref(Object* obj) {
         obj->ref_count--;
         
         if (obj->ref_count == 0) {
-            // Освобождаем вложенные ресурсы
             if (obj->type == OBJ_ARRAY && obj->as.array.items) {
                 free(obj->as.array.items);
             }

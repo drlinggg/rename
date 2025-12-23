@@ -640,8 +640,6 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     }
 }
 
-// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_CONST С GC ====================
-
 static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
     CodeObj* code = frame->code;
     if (arg >= code->constants_count) {
@@ -661,11 +659,13 @@ static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
         FAST_PUSH_NO_GC(frame, o);
     } else if (c.type == VAL_INT) {
         int64_t val = c.int_val;
-        // Используем кэш если возможно
         if (val >= INT_CACHE_MIN && val <= INT_CACHE_MAX) {
-            o = frame->vm->heap->int_cache[val - INT_CACHE_MIN];
+            Object* o = frame->vm->heap->int_cache[val - INT_CACHE_MIN];
+            DPRINT("[VM] LOAD_CONST %lld: CACHE HIT at %p (ref_count=%u)\n", 
+                (long long)val, (void*)o, o->ref_count);
             FAST_PUSH_NO_GC(frame, o);
         } else {
+            DPRINT("[VM] LOAD_CONST %lld: CACHE MISS\n", (long long)val);            
             o = heap_alloc_int(frame->vm->heap, val);
             FAST_PUSH_GC(frame, o);
         }
@@ -674,8 +674,6 @@ static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
         FAST_PUSH_GC(frame, o);
     }
 }
-
-// ==================== ОПТИМИЗИРОВАННЫЙ LOAD_SUBSCR С GC ====================
 
 static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
     Object* index_obj = FAST_POP_NO_GC(frame);
@@ -703,8 +701,6 @@ static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
     GC_DECREF_IF_NEEDED(frame, index_obj);
     GC_DECREF_IF_NEEDED(frame, array_obj);
 }
-
-// ==================== ОПТИМИЗИРОВАННЫЙ STORE_SUBSCR С GC ====================
 
 static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
     Object* index_obj = FAST_POP_NO_GC(frame);
@@ -1225,10 +1221,7 @@ static void op_DEL_SUBSCR(Frame* frame, uint32_t arg) {
     }
 }
 
-// Реализация COMPARE_AND_SWAP:
 static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
-    // ВАЖНО: в нашем JIT мы генерируем стековую версию COMPARE_AND_SWAP
-    // Со стека снимаем: j+1, j, массив (в обратном порядке)
     
     if (frame->stack_size < 3) {
         DPRINT("[VM] COMPARE_AND_SWAP: stack underflow\n");

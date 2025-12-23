@@ -180,9 +180,9 @@ Heap* heap_create(void) {
     pool_init(&heap->int_pool, 2000000);        // Блоки по 100K int объектов
     pool_init(&heap->bool_pool, 2);        // Блоки по 10K bool
     pool_init(&heap->none_pool, 1);            // 1 слот для синглтона
-    pool_init(&heap->array_pool, 100);       // Блоки по 10K массивов
-    pool_init(&heap->function_pool, 100);     // Блоки по 5K функций
-    pool_init(&heap->code_pool, 100);         // Блоки по 1K code объектов
+    pool_init(&heap->array_pool, 100);       // Блоки по 100 массивов
+    pool_init(&heap->function_pool, 100);     // Блоки по 100 функций
+    pool_init(&heap->code_pool, 100);         // Блоки по 100 code объектов
     pool_init(&heap->native_func_pool, 100);   // Блоки по 100 нативных функций
     
     // Инициализируем синглтоны
@@ -213,8 +213,6 @@ void heap_destroy(Heap* heap) {
     // Освобождаем синглтоны (они уже были в пулах)
     free(heap);
 }
-
-// ==================== ФУНКЦИИ АЛЛОКАЦИИ ====================
 
 Object* heap_alloc_int(Heap* heap, int64_t v) {
     Object* cached = get_int_from_cache(heap, v);
@@ -361,7 +359,6 @@ size_t heap_live_objects(Heap* heap) {
            pool_used_objects(&heap->native_func_pool);
 }
 
-// Вспомогательная функция для подсчета блоков в пуле
 static size_t pool_block_count(ObjectPool* pool) {
     size_t count = 0;
     MemoryBlock* block = pool->first;
