@@ -1,8 +1,8 @@
-#include "vm.h"
+#include "../../builtins/builtins.h"
 #include "../../runtime/gc/gc.h"
 #include "../../runtime/jit/jit.h"
 #include "../../system.h"
-#include "../../builtins/builtins.h"
+#include "vm.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -817,21 +817,8 @@ static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
     if (maybe && maybe->type == OBJ_CODE) {
         CodeObj* codeptr = maybe->as.codeptr;
         
-        // JIT ОПТИМИЗАЦИЯ: пробуем скомпилировать функцию
-        if (frame->vm && frame->vm->jit) {
-            DPRINT("[VM] JIT compiling function: %s\n", 
-                   codeptr->name ? codeptr->name : "anonymous");
-            
-            CodeObj* jit_code = jit_compile_function(frame->vm->jit, codeptr);
+        JIT_COMPILE_IF_ENABLED(frame->vm, codeptr);
 
-            bytecode_array_print(&jit_code->code);
-            
-            if (jit_code && jit_code != codeptr) {
-                DPRINT("[VM] JIT compilation successful, using optimized version\n");
-                codeptr = jit_code;
-            }
-        }
-        
         if (frame->vm && frame->vm->gc) {
             gc_decref(frame->vm->gc, maybe);
         }
