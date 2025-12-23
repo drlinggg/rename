@@ -179,7 +179,6 @@ int main(int argc, char** argv) {
     call_main.local_count = 0;
     call_main.constants = NULL;
     call_main.constants_count = 0;
-    
     Object* ret = vm_execute(vm, &call_main);
     char* s = object_to_string(ret);
     if (s) {

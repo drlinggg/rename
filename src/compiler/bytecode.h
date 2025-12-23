@@ -39,6 +39,7 @@
 #define LOOP_END 0x25
 #define BREAK_LOOP 0x33
 #define CONTINUE_LOOP 0x44
+#define COMPARE_AND_SWAP 0xF0
 
 
 typedef struct __attribute__((packed, aligned(1))) {
