@@ -78,16 +78,14 @@ void quicksort(int[] arr, int size) {
 }
 
 int main() {
-    int n = 100;
+    int n = 10000;
     int[n] numbers;
     
     for (int i = 0; i < n; i = i + 1) {
         numbers[i] = randint(1, 500);
     }
 
-    print(numbers);
-    //quicksort(numbers, n);
-    bubble_sort(numbers, n);
-    print(numbers);
+    quicksort(numbers, n);
+    //bubble_sort(numbers, n);
     return 0;
 }

@@ -43,5 +43,6 @@ Value value_create_bool(bool value);
 Value value_create_none();
 Value value_create_code(CodeObj* code_obj);
 void value_free(Value value);
+void free_code_obj(CodeObj* code);
 
 #endif // VALUE_H
