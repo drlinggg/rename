@@ -1,8 +1,156 @@
 #include "jit.h"
 #include "../../debug.h"
+#include "../vm/object.h"
+#include "../../compiler/bytecode.h"
+#include "../../compiler/value.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+
+// ---------- helpers для добавления констант ----------
+static size_t jit_add_constant(CodeObj* code, Value v) {
+    // ищем совпадающую константу
+    for (size_t i = 0; i < code->constants_count; ++i) {
+        if (values_equal(code->constants[i], v)) {
+            return i;
+        }
+    }
+
+    // расширяем массив
+    size_t new_count = code->constants_count + 1;
+    Value* new_consts = realloc(code->constants, new_count * sizeof(Value));
+
+    code->constants = new_consts;
+    code->constants[code->constants_count] = v;
+    code->constants_count = new_count;
+
+    return new_count - 1;
+}
+
+// ---------- helpers для вычисления операций ----------
+static Value eval_binary(Value a, Value b, uint8_t op, bool* ok) {
+    *ok = false;
+    Value result = value_create_none();
+
+    // Арифметика над int
+    if (a.type == VAL_INT && b.type == VAL_INT) {
+        int64_t x = a.int_val;
+        int64_t y = b.int_val;
+
+        switch (op) {
+            case 0x00: // ADD
+                result = value_create_int(x + y);
+                break;
+            case 0x0A: // SUB
+                result = value_create_int(x - y);
+                break;
+            case 0x05: // MUL
+                result = value_create_int(x * y);
+                break;
+            case 0x0B: // TRUE_DIVIDE (целочисленное деление здесь)
+                result = value_create_int(y == 0 ? 0 : x / y);
+                break;
+            case 0x06: // REMAINDER
+                result = value_create_int(y == 0 ? 0 : x % y);
+                break;
+
+            // сравнения 0x50..0x55
+            case 0x50: result = value_create_bool(x == y); break;
+            case 0x51: result = value_create_bool(x != y); break;
+            case 0x52: result = value_create_bool(x <  y); break;
+            case 0x53: result = value_create_bool(x <= y); break;
+            case 0x54: result = value_create_bool(x >  y); break;
+            case 0x55: result = value_create_bool(x >= y); break;
+            default:
+                return result;
+        }
+
+        *ok = true;
+        return result;
+    }
+
+    // bool-логика (and/or) и сравнения над bool
+    if (a.type == VAL_BOOL && b.type == VAL_BOOL) {
+        bool x = a.bool_val;
+        bool y = b.bool_val;
+
+        switch (op) {
+            // and / or лежат в 0x60 / 0x61
+            case 0x60: result = value_create_bool(x && y); break;
+            case 0x61: result = value_create_bool(x || y); break;
+
+            case 0x50: result = value_create_bool(x == y); break;
+            case 0x51: result = value_create_bool(x != y); break;
+            default:
+                return result;
+        }
+
+        *ok = true;
+        return result;
+    }
+
+    // IS (0x56) — над любыми типами, но сворачиваем только для двух констант
+    if (op == 0x56) {
+        bool eq = values_equal(a, b);
+        *ok = true;
+        return value_create_bool(eq);
+    }
+
+    // иные комбинации типов не поддерживаем
+    return result;
+}
+
+static Value eval_unary(Value v, uint8_t op, bool* ok) {
+    *ok = false;
+    Value result = value_create_none();
+
+    // унарные операции определены только для int и bool
+    if (v.type == VAL_INT) {
+        int64_t x = v.int_val;
+        switch (op) {
+            case 0x00: // +x
+                result = value_create_int(+x);
+                break;
+            case 0x01: // -x
+                result = value_create_int(-x);
+                break;
+            default:
+                return result;
+        }
+        *ok = true;
+        return result;
+    }
+
+    if (v.type == VAL_BOOL) {
+        // в VM у тебя not = 0x03
+        if (op == 0x03) {
+            result = value_create_bool(!v.bool_val);
+            *ok = true;
+        }
+        return result;
+    }
+
+    return result;
+}
+
+
+static Value eval_to_bool(Value v, bool* ok) {
+    *ok = true;
+    if (v.type == VAL_BOOL) return v;
+    if (v.type == VAL_INT)  return value_create_bool(v.int_val != 0);
+    if (v.type == VAL_NONE) return value_create_bool(false);
+    // другие типы можно трактовать как true
+    return value_create_bool(true);
+}
+
+static Value eval_to_int(Value v, bool* ok) {
+    *ok = true;
+    if (v.type == VAL_INT) return v;
+    if (v.type == VAL_BOOL) return value_create_int(v.bool_val ? 1 : 0);
+    // остальные — 0
+    return value_create_int(0);
+}
 
 struct JIT {
     size_t compiled_count;
@@ -283,5 +431,191 @@ CodeObj* jit_compile_function(JIT* jit, CodeObj* code) {
         return optimized;
     }
     
-    return code; // Возвращаем оригинал, если не оптимизировали
+    if (!jit || !code) {
+        return NULL;
+    }
+
+    bytecode_array* orig = &code->code;
+    if (!orig->bytecodes || orig->count == 0) {
+        return NULL; // нечего оптимизировать
+    }
+
+    // создаём новый CodeObj — оптимизированный
+    CodeObj* opt = malloc(sizeof(CodeObj));
+    if (!opt) return NULL;
+
+    memset(opt, 0, sizeof(CodeObj));
+    // копируем метаданные
+    opt->name        = code->name ? strdup(code->name) : NULL;
+    opt->arg_count   = code->arg_count;
+    opt->local_count = code->local_count;
+
+    // копируем константы
+    opt->constants_count = code->constants_count;
+    if (code->constants_count > 0) {
+        opt->constants = malloc(code->constants_count * sizeof(Value));
+        if (!opt->constants) {
+            free(opt->name);
+            free(opt);
+            return NULL;
+        }
+        memcpy(opt->constants, code->constants,
+               code->constants_count * sizeof(Value));
+    } else {
+        opt->constants = NULL;
+    }
+
+    // подготовим буфер под байткод (не больше исходного; потом ужмём)
+    bytecode* out_bc = malloc(orig->count * sizeof(bytecode));
+    if (!out_bc) {
+        free(opt->constants);
+        free(opt->name);
+        free(opt);
+        return NULL;
+    }
+    uint32_t out_count = 0;
+
+    uint32_t i = 0;
+    while (i < orig->count) {
+        bytecode bc = orig->bytecodes[i];
+        uint8_t op   = bc.op_code;
+        uint32_t arg = bytecode_get_arg(bc);
+
+        // -------- 1) длинная цепочка констант + BINARY_OP (арифметика / логика) --------
+        if (op == LOAD_CONST && i + 2 < orig->count &&
+            orig->bytecodes[i+1].op_code == LOAD_CONST &&
+            orig->bytecodes[i+2].op_code == BINARY_OP) {
+
+            bytecode bc_l0 = orig->bytecodes[i];
+            bytecode bc_l1 = orig->bytecodes[i+1];
+            bytecode bc_op = orig->bytecodes[i+2];
+
+            uint32_t k0 = bytecode_get_arg(bc_l0);
+            uint32_t k1 = bytecode_get_arg(bc_l1);
+            uint8_t  bop = bytecode_get_arg(bc_op) & 0xFF;
+
+            if (k0 < opt->constants_count && k1 < opt->constants_count) {
+                Value acc = opt->constants[k0];
+                Value v1  = opt->constants[k1];
+                bool ok   = false;
+                Value res = eval_binary(acc, v1, bop, &ok);
+
+                if (ok) {
+                    // пытаемся продолжить свёртку: [LOAD_CONST k2][BINARY_OP bop]...
+                    uint32_t j = i + 3;
+                    while (j + 1 < orig->count &&
+                           orig->bytecodes[j].op_code     == LOAD_CONST &&
+                           orig->bytecodes[j+1].op_code   == BINARY_OP &&
+                           (bytecode_get_arg(orig->bytecodes[j+1]) & 0xFF) == bop) {
+
+                        uint32_t k_next = bytecode_get_arg(orig->bytecodes[j]);
+                        if (k_next >= opt->constants_count) break;
+
+                        Value v_next = opt->constants[k_next];
+                        res = eval_binary(res, v_next, bop, &ok);
+                        if (!ok) break;
+
+                        j += 2; // съели LOAD_CONST + BINARY_OP
+                    }
+
+                    // записываем результат в пул констант и одну инструкцию LOAD_CONST
+                    size_t idx_res = jit_add_constant(opt, res);
+                    out_bc[out_count++] =
+                        bytecode_create_with_number(LOAD_CONST, (uint32_t)idx_res);
+
+                    i = j; // пропускаем всю свёрнутую цепочку
+                    continue;
+                }
+            }
+        }
+
+        // -------- 2) короткие паттерны: [LOAD_CONST, BINARY_OP-cmp] --------
+        if (op == LOAD_CONST && i + 2 <= orig->count) {
+            if (i + 1 < orig->count &&
+                orig->bytecodes[i+1].op_code == BINARY_OP) {
+
+                bytecode bc_l0 = orig->bytecodes[i];
+                bytecode bc_op = orig->bytecodes[i+1];
+
+                uint32_t k0 = bytecode_get_arg(bc_l0);
+                uint32_t k1 = 0; // второй операнд уже на стеке, но это может быть не константа -> пропустим
+                uint8_t  bop = bytecode_get_arg(bc_op) & 0xFF;
+
+                // тут можно свернуть только если реально оба операнда константы,
+                // но в общем случае это не гарантируется, так что оставим это
+                // на более сложный анализ стека. Для простоты — пропускаем.
+            }
+        }
+
+        // -------- 3) [LOAD_CONST, UNARY_OP] --------
+        if (op == LOAD_CONST && i + 1 < orig->count &&
+            orig->bytecodes[i+1].op_code == UNARY_OP) {
+
+            uint32_t k = arg;
+            if (k < opt->constants_count) {
+                Value v  = opt->constants[k];
+                uint8_t uop = bytecode_get_arg(orig->bytecodes[i+1]) & 0xFF;
+                bool ok = false;
+                Value res = eval_unary(v, uop, &ok);
+                if (ok) {
+                    size_t idx_res = jit_add_constant(opt, res);
+                    out_bc[out_count++] =
+                        bytecode_create_with_number(LOAD_CONST, (uint32_t)idx_res);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // -------- 4) [LOAD_CONST, TO_BOOL] --------
+        if (op == LOAD_CONST && i + 1 < orig->count &&
+            orig->bytecodes[i+1].op_code == TO_BOOL) {
+
+            uint32_t k = arg;
+            if (k < opt->constants_count) {
+                bool ok = false;
+                Value v  = opt->constants[k];
+                Value res = eval_to_bool(v, &ok);
+                if (ok) {
+                    size_t idx_res = jit_add_constant(opt, res);
+                    out_bc[out_count++] =
+                        bytecode_create_with_number(LOAD_CONST, (uint32_t)idx_res);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // -------- 5) [LOAD_CONST, TO_INT] --------
+        if (op == LOAD_CONST && i + 1 < orig->count &&
+            orig->bytecodes[i+1].op_code == TO_INT) {
+
+            uint32_t k = arg;
+            if (k < opt->constants_count) {
+                bool ok = false;
+                Value v  = opt->constants[k];
+                Value res = eval_to_int(v, &ok);
+                if (ok) {
+                    size_t idx_res = jit_add_constant(opt, res);
+                    out_bc[out_count++] =
+                        bytecode_create_with_number(LOAD_CONST, (uint32_t)idx_res);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+
+        // -------- иначе: копируем инструкцию как есть --------
+        out_bc[out_count++] = bc;
+        ++i;
+    }
+
+    // ужимаем массив байткода
+    out_bc = realloc(out_bc, out_count * sizeof(bytecode));
+    opt->code.bytecodes = out_bc;
+    opt->code.count     = out_count;
+    opt->code.capacity  = out_count;
+
+    jit->compiled_count += 1;
+    return opt;
 }
