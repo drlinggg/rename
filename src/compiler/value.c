@@ -1,5 +1,6 @@
-#include "value.h"
+#include "../system.h"
 #include "bytecode.h"
+#include "value.h"
 #include <stdlib.h>
 
 bool values_equal(Value a, Value b) {
@@ -49,10 +50,7 @@ Value value_create_code(CodeObj* code_obj) {
 void value_free(Value value) {
     switch (value.type) {
         case VAL_CODE:
-            free_bytecode_array(value.code_val->code);
-            free(value.code_val->name);
-            free(value.code_val->constants);
-            free(value.code_val);
+            free_code_obj(value.code_val);
             break;
         default:
             break;
@@ -82,3 +80,20 @@ void value_free(Value value) {
     
     return value;
 }*/
+
+void free_code_obj(CodeObj* code) {
+    if (!code) return;
+    
+    DPRINT("[MEM] Freeing CodeObj '%s'\n", code->name ? code->name : "anonymous");
+    
+    if (code->name) {
+        free(code->name);
+    }
+    if (code->constants) {
+        free(code->constants);
+    }
+    if (code->code.bytecodes) {
+        free(code->code.bytecodes);
+    }
+    free(code);
+}

@@ -13,8 +13,6 @@
 #include "../src/system.h"
 
 int main(int argc, char** argv) {
-    clock_t start_time = clock();
-    
     if (argc < 2) {
         printf("Usage: %s [--debug|-d] [--jit|-j] <source_file.lang>\n", argv[0]);
         printf("Options:\n");
@@ -132,6 +130,7 @@ int main(int argc, char** argv) {
     module_code.constants = result->constants;
     module_code.constants_count = result->constants_count;
 
+    clock_t start_time = clock();
     // Execute module top-level code (defines functions and globals)
     Object* module_res = vm_execute(vm, &module_code);
     if (module_res) {

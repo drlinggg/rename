@@ -1,9 +1,10 @@
-#include "jit_types.h"
-#include "cmpswap.h"
-#include "jit.h"
 #include "../../system.h"
-#include <stdlib.h>
+#include "cmpswap.h"
+#include "const_folding.h"
+#include "jit.h"
+#include "jit_types.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 JIT* jit_create(void) {
@@ -57,27 +58,40 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
 
     CodeObj* optimized = NULL;
     
-    // Try to optimize with cmpswap
-    CodeObj* optimized_cmp_swap = jit_optimize_compare_and_swap(jit, code);
-    if (optimized_cmp_swap) {
-        DPRINT("[JIT] Optimized cmp&swap\n");
-        optimized = optimized_cmp_swap;
-        
-        // Добавляем в кэш
+    // 1. Constant folding
+    FoldStats cf_stats;
+    CodeObj* cf_optimized = jit_optimize_constant_folding(code, &cf_stats);
+    if (cf_optimized && cf_stats.removed_instructions > 0) {
+        DPRINT("[JIT] Applied constant folding: %zu optimizations\n",
+               cf_stats.removed_instructions);
+        optimized = cf_optimized;
+    }
+    
+    // 2. Compare-and-swap
+    CodeObj* cas_optimized = jit_optimize_compare_and_swap(jit, 
+        optimized ? optimized : code);
+    if (cas_optimized) {
+        DPRINT("[JIT] Applied compare-and-swap\n");
+        if (optimized && optimized != code) {
+            free_code_obj(optimized);
+        }
+        optimized = cas_optimized;
+    }
+    
+    if (optimized && optimized != code) {
         if (jit->cache_size >= jit->cache_capacity) {
             jit->cache_capacity = jit->cache_capacity ? jit->cache_capacity * 2 : 8;
-            jit->compiled_cache = realloc(jit->compiled_cache, 
+            jit->compiled_cache = realloc(jit->compiled_cache,
                                          jit->cache_capacity * sizeof(CodeObj*));
         }
-        
         jit->compiled_cache[jit->cache_size++] = optimized;
         jit->compiled_count++;
     }
-
+    
     if (optimized) {
+        bytecode_array_print(&optimized->code);
         return optimized;
     }
-    
     DPRINT("[JIT] Returning original version\n");
     return code;
 }

@@ -21,7 +21,7 @@ OBJECT_SRC = src/runtime/vm/object.c
 HEAP_SRC = src/runtime/vm/heap.c
 VM_SRC = src/runtime/vm/vm.c
 GC_SRC = src/runtime/gc/gc.c
-JIT_SRC = src/runtime/jit/jit.c src/runtime/jit/cmpswap.c
+JIT_SRC = src/runtime/jit/jit.c src/runtime/jit/cmpswap.c src/runtime/jit/const_folding.c
 
 # Test files
 AST_TEST = $(TEST_DIR)/ast/test_ast.c

@@ -320,9 +320,6 @@ Object* vm_execute(VM* vm, CodeObj* code) {
 Object* frame_execute(Frame* frame) {
     if (!frame || !frame->code) return NULL;
     
-    // Проверяем, не является ли это уже JIT-скомпилированной версией
-    // (в нашем случае JIT возвращает новый CodeObj, так что это просто замена)
-    
     CodeObj* code = frame->code;
     bytecode_array* code_arr = &code->code;
     
