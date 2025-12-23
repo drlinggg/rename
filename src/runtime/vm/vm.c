@@ -40,6 +40,7 @@ struct Frame {
 typedef void (*OpHandler)(Frame*, uint32_t);
 
 // Объявления всех функций-обработчиков
+static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg);
 static void op_LOAD_CONST(Frame* frame, uint32_t arg);
 static void op_LOAD_FAST(Frame* frame, uint32_t arg);
 static void op_STORE_FAST(Frame* frame, uint32_t arg);
@@ -104,6 +105,7 @@ static void init_op_table(void) {
     op_table[STORE_SUBSCR] = op_STORE_SUBSCR;
     op_table[DEL_SUBSCR] = op_DEL_SUBSCR;
     op_table[LOAD_SUBSCR] = op_LOAD_SUBSCR;
+    op_table[COMPARE_AND_SWAP] = op_COMPARE_AND_SWAP;
 }
 
 static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additional);
@@ -318,6 +320,9 @@ Object* vm_execute(VM* vm, CodeObj* code) {
 Object* frame_execute(Frame* frame) {
     if (!frame || !frame->code) return NULL;
     
+    // Проверяем, не является ли это уже JIT-скомпилированной версией
+    // (в нашем случае JIT возвращает новый CodeObj, так что это просто замена)
+    
     CodeObj* code = frame->code;
     bytecode_array* code_arr = &code->code;
     
@@ -421,7 +426,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
         } \
     } while(0)
 
-// ==================== ОПТИМИЗИРОВАННЫЙ BINARY_OP С GC ====================
 
 static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     uint8_t op = arg & 0xFF;
@@ -813,14 +817,37 @@ static void op_POP_TOP(Frame* frame, uint32_t arg) {
 
 static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
     Object* maybe = frame_stack_pop(frame);
+    
     if (maybe && maybe->type == OBJ_CODE) {
         CodeObj* codeptr = maybe->as.codeptr;
-        if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, maybe);
+        
+        // JIT ОПТИМИЗАЦИЯ: пробуем скомпилировать функцию
+        if (frame->vm && frame->vm->jit) {
+            DPRINT("[VM] JIT compiling function: %s\n", 
+                   codeptr->name ? codeptr->name : "anonymous");
+            
+            CodeObj* jit_code = jit_compile_function(frame->vm->jit, codeptr);
+            
+            if (jit_code && jit_code != codeptr) {
+                DPRINT("[VM] JIT compilation successful, using optimized version\n");
+                codeptr = jit_code;
+            }
+        }
+        
+        if (frame->vm && frame->vm->gc) {
+            gc_decref(frame->vm->gc, maybe);
+        }
+        
         Object* func_obj = heap_alloc_function(frame->vm->heap, codeptr);
         frame_stack_push(frame, func_obj);
-        if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, func_obj);
+        
+        if (frame->vm && frame->vm->gc) {
+            gc_decref(frame->vm->gc, func_obj);
+        }
     } else {
-        if (maybe && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, maybe);
+        if (maybe && frame->vm && frame->vm->gc) {
+            gc_decref(frame->vm->gc, maybe);
+        }
         frame_stack_push(frame, vm_get_none(frame->vm));
     }
 }
@@ -1198,7 +1225,71 @@ static void op_DEL_SUBSCR(Frame* frame, uint32_t arg) {
     }
 }
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+// Реализация COMPARE_AND_SWAP:
+static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
+    // ВАЖНО: в нашем JIT мы генерируем стековую версию COMPARE_AND_SWAP
+    // Со стека снимаем: j+1, j, массив (в обратном порядке)
+    
+    if (frame->stack_size < 3) {
+        DPRINT("[VM] COMPARE_AND_SWAP: stack underflow\n");
+        return;
+    }
+    
+    // Снимаем со стека в обратном порядке (последний загруженный - первый снимается)
+    Object* j_plus_1_obj = FAST_POP_NO_GC(frame); // j+1
+    Object* j_obj = FAST_POP_NO_GC(frame);        // j
+    Object* array_obj = FAST_POP_NO_GC(frame);    // массив
+    
+    if (!array_obj || array_obj->type != OBJ_ARRAY) {
+        DPRINT("[VM] COMPARE_AND_SWAP: expected array\n");
+        // Возвращаем обратно
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, j_obj);
+        FAST_PUSH_NO_GC(frame, j_plus_1_obj);
+        return;
+    }
+    
+    if (!j_obj || j_obj->type != OBJ_INT || !j_plus_1_obj || j_plus_1_obj->type != OBJ_INT) {
+        DPRINT("[VM] COMPARE_AND_SWAP: indices must be integers\n");
+        // Возвращаем обратно
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, j_obj);
+        FAST_PUSH_NO_GC(frame, j_plus_1_obj);
+        return;
+    }
+    
+    int64_t j = j_obj->as.int_value;
+    int64_t j_plus_1 = j_plus_1_obj->as.int_value;
+    
+    // Проверка границ (только в debug)
+    #ifdef DEBUG
+    if (j < 0 || j >= array_obj->as.array.size || 
+        j_plus_1 < 0 || j_plus_1 >= array_obj->as.array.size) {
+        DPRINT("[VM] COMPARE_AND_SWAP: indices out of bounds: %lld, %lld (size=%zu)\n",
+               (long long)j, (long long)j_plus_1, array_obj->as.array.size);
+        // Возвращаем обратно
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, j_obj);
+        FAST_PUSH_NO_GC(frame, j_plus_1_obj);
+        return;
+    }
+    #endif
+    
+    // Получаем элементы
+    Object* a = array_obj->as.array.items[j];
+    Object* b = array_obj->as.array.items[j_plus_1];
+    
+    // Сравниваем и меняем если нужно
+    if (a->as.int_value > b->as.int_value) {
+        array_obj->as.array.items[j] = b;
+        array_obj->as.array.items[j_plus_1] = a;
+    }
+    
+    // Освобождаем временные объекты (индексы)
+    GC_DECREF_IF_NEEDED(frame, j_obj);
+    GC_DECREF_IF_NEEDED(frame, j_plus_1_obj);
+    // Массив не освобождаем - он остается с теми же ссылками
+}
 
 static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_t argc) {
     if (!vm || !code) return NULL;
