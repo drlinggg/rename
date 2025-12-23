@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdlib.h>
-#include "../debug.h"
+#include "../system.h"
 
 typedef enum {
     PRECEDENCE_NONE = 0,

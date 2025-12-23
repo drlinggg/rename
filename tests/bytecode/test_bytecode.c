@@ -1,5 +1,5 @@
 #include "../../src/compiler/bytecode.h"
-#include "../../src/debug.h"
+#include "../../src/system.h"
 #include <stdio.h>
 #include <assert.h>
 

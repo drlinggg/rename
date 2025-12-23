@@ -1,94 +1,93 @@
-// Функция для обмена двух элементов массива
-int swap(int[] array, int i, int j) {
+void swap(int[] array, int i, int j) {
     int temp = array[i];
     array[i] = array[j];
     array[j] = temp;
 }
 
-// Функция для сортировки массива
-int sort_array(int[] array, int size) {
+void bubble_sort(int[] array, int size) {
+    int temp;
     for (int i = 0; i < size - 1; i = i + 1) {
         for (int j = 0; j < size - 1 - i; j = j + 1) {
-            if ( (array[j]) > (array[j + 1]) ) {
-                swap(array, j, j + 1);
+            if (array[j] > array[j + 1]) {
+                swap(array, j, j+1);
             }
         }
     }
 }
 
-// Функция для печати массива
-int print_array(int[] array, int size) {
-    for (int i = 0; i < size; i = i + 1) {
-        print(array[i]);
-    }
-}
-
-void sort(int n) {
-    int[n] numbers;
+void quicksort_iterative(int[] arr, int left, int right) {
+    // Создаем стек для хранения границ
+    int[1000000] stack;  // Большой стек на 1М элементов
+    int top = -1;
     
-    for (int i = 0; i < n; i = i + 1) {
-        numbers[i] = randint(1, 500);
-    }
-    print_array(numbers);
-    input();
-    sort_array(numbers, n);
-    print_array(numbers);
-}
-
-void clean_sort(int n) {
-    int[n] numbers;
+    // Помещаем начальные границы в стек
+    top = top + 1;
+    stack[top] = left;
+    top = top + 1;
+    stack[top] = right;
     
-    for (int i = 0; i < n; i = i + 1) {
-        numbers[i] = randint(1, 500);
-    }
-
-    int temp;
-    for (int i = 0; i < n - 1; i = i + 1) {
-        for (int j = 0; j < n - 1 - i; j = j + 1) {
-            if ( (numbers[j]) > (numbers[j + 1]) ) {
-                temp = numbers[i];
-                numbers[i] = numbers[j];
-                numbers[j] = temp;
+    // Пока стек не пуст
+    while (top >= 0) {
+        // Извлекаем правую и левую границы
+        right = stack[top];
+        top = top - 1;
+        left = stack[top];
+        top = top - 1;
+        
+        // Разделяем массив
+        int pivot = arr[right];
+        int i = left - 1;
+        
+        for (int j = left; j < right; j = j + 1) {
+            if (arr[j] <= pivot) {
+                i = i + 1;
+                int temp = arr[i];
+                arr[i] = arr[j];
+                arr[j] = temp;
             }
         }
+        
+        int temp = arr[i + 1];
+        arr[i + 1] = arr[right];
+        arr[right] = temp;
+        
+        int pi = i + 1;
+        
+        // Если есть элементы слева от опорного, помещаем в стек
+        if (pi - 1 > left) {
+            top = top + 1;
+            stack[top] = left;
+            top = top + 1;
+            stack[top] = pi - 1;
+        }
+        
+        // Если есть элементы справа от опорного, помещаем в стек
+        if (pi + 1 < right) {
+            top = top + 1;
+            stack[top] = pi + 1;
+            top = top + 1;
+            stack[top] = right;
+        }
     }
 }
 
-// Функция quicksort
-void quicksort(int[] arr, int left, int right) {
-    if (left >= right) {
-        return;
+void quicksort(int[] arr, int size) {
+    if (size > 1) {
+        quicksort_iterative(arr, 0, size - 1);
     }
-    
-    int pivot = arr[right];
-    int i = left - 1;
-    
-    for (int j = left; j < right; j = j + 1) {
-        if (arr[j] <= pivot) {
-            i = i + 1;
-            int temp = arr[i];
-            arr[i] = arr[j];
-            arr[j] = temp;
-        }
-    }
-    
-    int temp = arr[i + 1];
-    arr[i + 1] = arr[right];
-    arr[right] = temp;
-    
-    int pi = i + 1;
-    
-    quicksort(arr, left, pi - 1);
-    quicksort(arr, pi + 1, right);
 }
 
 int main() {
-    int n = 1000000;
+    int n = 100;
     int[n] numbers;
     
     for (int i = 0; i < n; i = i + 1) {
         numbers[i] = randint(1, 500);
     }
 
-    quicksort(numbers, 0, n-1);
+    print(numbers);
+    //quicksort(numbers, n);
+    bubble_sort(numbers, n);
+    print(numbers);
+    return 0;
 }

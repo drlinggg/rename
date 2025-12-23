@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "../../src/debug.h"
+#include "../../src/system.h"
 
 
 Token create_token(TokenType type, const char* value, int line, int column) {

@@ -10,7 +10,7 @@
 #include "../src/runtime/vm/heap.h"
 #include "../src/compiler/string_table.h"
 #include "../src/runtime/vm/object.h"
-#include "../src/debug.h"
+#include "../src/system.h"
 
 int main(int argc, char** argv) {
     clock_t start_time = clock(); // Начало замера времени

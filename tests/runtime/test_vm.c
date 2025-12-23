@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#include "../../src/debug.h"
+#include "../../src/system.h"
 #include "../../src/runtime/vm/vm.h"
 #include "../../src/compiler/bytecode.h"
 #include "../../src/compiler/value.h"

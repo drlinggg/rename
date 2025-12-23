@@ -1,5 +1,5 @@
 #include "heap.h"
-#include "../../debug.h"
+#include "../../system.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

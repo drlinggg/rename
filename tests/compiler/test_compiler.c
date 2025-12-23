@@ -1,7 +1,7 @@
 #include "../../src/compiler/compiler.h"
 #include "../../src/AST/ast.h"
 #include "../../src/lexer/token.h"
-#include "../../src/debug.h"
+#include "../../src/system.h"
 #include "../builtins/builtins.h"
 #include <stdio.h>
 #include <assert.h>

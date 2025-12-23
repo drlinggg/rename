@@ -1,7 +1,7 @@
 #include "vm.h"
 #include "../../runtime/gc/gc.h"
 #include "../../runtime/jit/jit.h"
-#include "../../debug.h"
+#include "../../system.h"
 #include "../../builtins/builtins.h"
 #include <stdio.h>
 #include <string.h>
@@ -823,6 +823,8 @@ static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
                    codeptr->name ? codeptr->name : "anonymous");
             
             CodeObj* jit_code = jit_compile_function(frame->vm->jit, codeptr);
+
+            bytecode_array_print(&jit_code->code);
             
             if (jit_code && jit_code != codeptr) {
                 DPRINT("[VM] JIT compilation successful, using optimized version\n");

@@ -1,7 +1,7 @@
 #include "jit_types.h"
 #include "cmpswap.h"
 #include "jit.h"
-#include "../../debug.h"
+#include "../../system.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

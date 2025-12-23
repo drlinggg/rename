@@ -1,30 +1,30 @@
-#include "jit_types.h"
 #include "cmpswap.h"
 #include "../../compiler/bytecode.h"
 #include "../../compiler/value.h"
 #include "../../runtime/vm/vm.h"
-#include "../../debug.h"
+#include "../../system.h"
 #include <string.h>
 
 static int is_load_fast_with_index(bytecode bc, uint32_t expected_index) {
     return (bc.op_code == LOAD_FAST && bytecode_get_arg(bc) == expected_index);
 }
 
-static int find_sorting_pattern_in_bytecode(bytecode_array* code, size_t* start, size_t* end) {
-    if (!code || !code->bytecodes || code->count < 10) {
+// arr[j] > arr[j+1]
+static int find_bubble_sort_pattern(bytecode_array* code, size_t* start, size_t* end) {
+    if (!code || !code->bytecodes || code->count < 25) {
         return 0;
     }
     
-    // Look for the pattern: if (arr[j] > arr[j+1]) { swap }
-    for (size_t i = 0; i <= code->count - 10; i++) {
+    for (size_t i = 0; i <= code->count - 25; i++) {
         bytecode* bc = &code->bytecodes[i];
         
-        // Pattern: LOAD_FAST arr, LOAD_FAST j, LOAD_SUBSCR,
-        //          LOAD_FAST arr, LOAD_FAST j, LOAD_CONST 1,
-        //          BINARY_OP ADD, LOAD_SUBSCR, BINARY_OP GT,
-        //          POP_JUMP_IF_FALSE
+        // 1. if (arr[j] > arr[j+1]) {
+        // 2.   temp = arr[j];
+        // 3.   arr[j] = arr[j+1];
+        // 4.   arr[j+1] = temp;
+        // }
         
-        // Check opcodes
+        // Шаг 1: if condition
         if (bc[0].op_code != LOAD_FAST || bc[1].op_code != LOAD_FAST ||
             bc[2].op_code != LOAD_SUBSCR || bc[3].op_code != LOAD_FAST ||
             bc[4].op_code != LOAD_FAST || bc[5].op_code != LOAD_CONST ||
@@ -33,41 +33,94 @@ static int find_sorting_pattern_in_bytecode(bytecode_array* code, size_t* start,
             continue;
         }
         
-        // Check that array indices are the same
-        uint32_t arr_idx1 = bytecode_get_arg(bc[0]);
-        uint32_t arr_idx2 = bytecode_get_arg(bc[3]);
-        if (arr_idx1 != arr_idx2) {
+        if ((bytecode_get_arg(bc[6]) & 0xFF) != 0x00 ||  // ADD
+            (bytecode_get_arg(bc[8]) & 0xFF) != 0x54) {  // GT
             continue;
         }
         
-        // Check that j indices are the same
-        uint32_t j_idx1 = bytecode_get_arg(bc[1]);
-        uint32_t j_idx2 = bytecode_get_arg(bc[4]);
-        if (j_idx1 != j_idx2) {
+        // Шаг 2: temp = arr[j] (должен следовать сразу)
+        if (i + 10 >= code->count) continue;
+        if (bc[10].op_code != LOAD_FAST || bc[11].op_code != LOAD_FAST ||
+            bc[12].op_code != LOAD_SUBSCR || bc[13].op_code != STORE_FAST) {
             continue;
         }
         
-        // Check that BINARY_OP at position 6 is ADD
-        if ((bytecode_get_arg(bc[6]) & 0xFF) != 0x00) {
+        // Проверяем что индексы совпадают
+        uint32_t array_idx = bytecode_get_arg(bc[0]);
+        uint32_t j_idx = bytecode_get_arg(bc[1]);
+        
+        if (bytecode_get_arg(bc[10]) != array_idx ||
+            bytecode_get_arg(bc[11]) != j_idx) {
             continue;
         }
         
-        // Check that BINARY_OP at position 8 is GT
-        if ((bytecode_get_arg(bc[8]) & 0xFF) != 0x54) {
+        // Шаг 3: arr[j] = arr[j+1]
+        if (i + 14 >= code->count) continue;
+        if (bc[14].op_code != LOAD_FAST || bc[15].op_code != LOAD_FAST ||
+            bc[16].op_code != LOAD_CONST || bc[17].op_code != BINARY_OP ||
+            bc[18].op_code != LOAD_SUBSCR || bc[19].op_code != STORE_SUBSCR) {
             continue;
         }
         
-        // Found the comparison pattern
+        // Шаг 4: arr[j+1] = temp
+        if (i + 20 >= code->count) continue;
+        if (bc[20].op_code != LOAD_FAST ||  // temp
+            bc[21].op_code != LOAD_FAST ||  // array
+            bc[22].op_code != LOAD_FAST ||  // j
+            bc[23].op_code != LOAD_CONST || // 1
+            bc[24].op_code != BINARY_OP) {  // ADD
+            continue;
+        }
+        
+        // Нашли полный паттерн!
+        *start = i;
+        *end = i + 24; // Последняя инструкция перед STORE_SUBSCR
+        
+        DPRINT("[JIT] Found complete bubble pattern at %zu-%zu\n", *start, *end);
+        return 1;
+    }
+    
+    return 0;
+}
+
+// arr[i] > pivot
+static int find_quicksort_pattern(bytecode_array* code, size_t* start, size_t* end) {
+    if (!code || !code->bytecodes || code->count < 8) {
+        return 0;
+    }
+    
+    for (size_t i = 0; i <= code->count - 8; i++) {
+        bytecode* bc = &code->bytecodes[i];
+        
+        // Ищем любой паттерн сравнения элементов массива
+        // LOAD_FAST arr, LOAD_FAST index, LOAD_SUBSCR, 
+        // LOAD_FAST something, BINARY_OP COMPARE, POP_JUMP_IF_FALSE
+        if (bc[0].op_code != LOAD_FAST || 
+            bc[1].op_code != LOAD_FAST || 
+            bc[2].op_code != LOAD_SUBSCR ||
+            bc[3].op_code != LOAD_FAST ||
+            bc[4].op_code != BINARY_OP ||
+            bc[5].op_code != POP_JUMP_IF_FALSE) {
+            continue;
+        }
+        
+        uint32_t compare_op = bytecode_get_arg(bc[4]) & 0xFF;
+        if (compare_op != 0x53 && // LESS_THAN
+            compare_op != 0x54 && // GREATER_THAN
+            compare_op != 0x55) { // LESS_EQUAL
+            continue;
+        }
+        
         *start = i;
         
-        // Try to find the end of the swap block (approximately)
-        size_t potential_end = i + 10;
+        // Ищем ближайший конец блока
+        size_t potential_end = i + 6;
         size_t max_search = i + 30;
         if (max_search > code->count) max_search = code->count;
         
-        // find a JUMP_BACKWARD after the comparison
-        for (size_t j = i + 10; j < max_search; j++) {
-            if (code->bytecodes[j].op_code == JUMP_BACKWARD) {
+        for (size_t j = i + 6; j < max_search; j++) {
+            if (code->bytecodes[j].op_code == JUMP_BACKWARD || 
+                code->bytecodes[j].op_code == JUMP_FORWARD) {
                 potential_end = j;
                 break;
             }
@@ -80,7 +133,23 @@ static int find_sorting_pattern_in_bytecode(bytecode_array* code, size_t* start,
     return 0;
 }
 
-// Extract indices from the found pattern
+// General
+static int find_sorting_pattern_in_bytecode(bytecode_array* code, size_t* start, size_t* end) {
+    // Сначала ищем пузырек
+    if (find_bubble_sort_pattern(code, start, end)) {
+        DPRINT("[JIT] Found bubble sort pattern\n");
+        return 1;
+    }
+    
+    // Потом быструю сортировку
+    if (find_quicksort_pattern(code, start, end)) {
+        DPRINT("[JIT] Found quicksort pattern\n");
+        return 1;
+    }
+    
+    return 0;
+}
+
 static int extract_pattern_info(bytecode_array* code, size_t pattern_start, PatternInfo* info) {
     if (!code || pattern_start + 9 >= code->count) {
         return 0;
@@ -88,55 +157,42 @@ static int extract_pattern_info(bytecode_array* code, size_t pattern_start, Patt
     
     bytecode* bc = &code->bytecodes[pattern_start];
     
-    // Extract array index (from first LOAD_FAST)
-    info->array_index = bytecode_get_arg(bc[0]);
-    
-    // Extract j index (from second LOAD_FAST)
-    info->j_index = bytecode_get_arg(bc[1]);
-    
-    // Extract constant 1 index (from LOAD_CONST)
-    info->const_one_index = bytecode_get_arg(bc[5]);
-    
-    // Verify the pattern
-    if (bytecode_get_arg(bc[3]) != info->array_index) {
-        DPRINT("[JIT] Warning: Inconsistent array indices\n");
-        return 0;
+    if (bc[0].op_code == LOAD_FAST && bc[1].op_code == LOAD_FAST &&
+        bc[2].op_code == LOAD_SUBSCR && bc[3].op_code == LOAD_FAST) {
+        
+        info->array_index = bytecode_get_arg(bc[0]);
+        info->j_index = bytecode_get_arg(bc[1]);
+        info->const_one_index = bytecode_get_arg(bc[5]);
+        
+        if (bytecode_get_arg(bc[3]) != info->array_index) {
+            DPRINT("[JIT] Warning: Inconsistent array indices\n");
+            return 0;
+        }
+        
+        if (bytecode_get_arg(bc[4]) != info->j_index) {
+            DPRINT("[JIT] Warning: Inconsistent j indices\n");
+            return 0;
+        }
+        
+        DPRINT("[JIT] Extracted pattern: array@%u, j@%u, const_1@%u\n",
+               info->array_index, info->j_index, info->const_one_index);
+        
+        return 1;
     }
     
-    if (bytecode_get_arg(bc[4]) != info->j_index) {
-        DPRINT("[JIT] Warning: Inconsistent j indices\n");
-        return 0;
-    }
-    
-    DPRINT("[JIT] Extracted pattern: array@%u, j@%u, const_1@%u\n",
-           info->array_index, info->j_index, info->const_one_index);
-    
-    return 1;
+    return 0;
 }
 
-// Generate optimized bytecode for COMPARE_AND_SWAP
 static bytecode_array generate_compare_and_swap_code(PatternInfo* info) {
     bytecode new_instructions[6];
     
-    // 1. LOAD_FAST array
     new_instructions[0] = bytecode_create_with_number(LOAD_FAST, info->array_index);
-    
-    // 2. LOAD_FAST j
     new_instructions[1] = bytecode_create_with_number(LOAD_FAST, info->j_index);
-    
-    // 3. LOAD_FAST j (for j+1 calculation)
     new_instructions[2] = bytecode_create_with_number(LOAD_FAST, info->j_index);
-    
-    // 4. LOAD_CONST 1
     new_instructions[3] = bytecode_create_with_number(LOAD_CONST, info->const_one_index);
-    
-    // 5. BINARY_OP ADD (calculate j+1)
-    new_instructions[4] = bytecode_create_with_number(BINARY_OP, 0x000000); // ADD
-    
-    // 6. COMPARE_AND_SWAP
+    new_instructions[4] = bytecode_create_with_number(BINARY_OP, 0x000000);
     new_instructions[5] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x000000);
     
-    // Create bytecode array
     bytecode* bc_copy = malloc(6 * sizeof(bytecode));
     if (!bc_copy) {
         bytecode_array empty = {0};
@@ -147,14 +203,12 @@ static bytecode_array generate_compare_and_swap_code(PatternInfo* info) {
     return create_bytecode_array(bc_copy, 6);
 }
 
-// Replace pattern with optimized code
 static int replace_pattern(bytecode_array* code, size_t pattern_start, size_t pattern_end, 
                           PatternInfo* info) {
     if (!code || pattern_end <= pattern_start || pattern_end >= code->count) {
         return 0;
     }
     
-    // Generate optimized code
     bytecode_array optimized = generate_compare_and_swap_code(info);
     if (optimized.count == 0) {
         return 0;
@@ -166,7 +220,6 @@ static int replace_pattern(bytecode_array* code, size_t pattern_start, size_t pa
     DPRINT("[JIT] Replacing %zu instructions with %zu optimized instructions\n", 
            old_size, new_size);
     
-    // Create new bytecode array
     size_t new_total = code->count - old_size + new_size;
     bytecode* new_bytecodes = malloc(new_total * sizeof(bytecode));
     if (!new_bytecodes) {
@@ -174,20 +227,15 @@ static int replace_pattern(bytecode_array* code, size_t pattern_start, size_t pa
         return 0;
     }
     
-    // Copy part before pattern
     memcpy(new_bytecodes, code->bytecodes, pattern_start * sizeof(bytecode));
-    
-    // Insert optimized code
     memcpy(&new_bytecodes[pattern_start], optimized.bytecodes, new_size * sizeof(bytecode));
     
-    // Copy part after pattern
     size_t after_pattern = pattern_end + 1;
     size_t remaining = code->count - after_pattern;
     memcpy(&new_bytecodes[pattern_start + new_size], 
            &code->bytecodes[after_pattern], 
            remaining * sizeof(bytecode));
     
-    // Replace old array
     free(code->bytecodes);
     code->bytecodes = new_bytecodes;
     code->count = new_total;
@@ -197,7 +245,6 @@ static int replace_pattern(bytecode_array* code, size_t pattern_start, size_t pa
     return 1;
 }
 
-// Public functions
 int is_sorting_function(void* code_ptr) {
     CodeObj* code = (CodeObj*)code_ptr;
     if (!code || !code->code.bytecodes) {
@@ -209,24 +256,21 @@ int is_sorting_function(void* code_ptr) {
 }
 
 void* jit_optimize_compare_and_swap(void* jit_ptr, void* original_ptr) {
-    JIT* jit = (JIT*)jit_ptr;
     CodeObj* original = (CodeObj*)original_ptr;
     
-    if (!jit || !original) {
-        return NULL;
-    }
-    
-    DPRINT("[JIT] Analyzing function: %s\n", 
+    DPRINT("[JIT] Checking function: %s\n", 
            original->name ? original->name : "anonymous");
+    DPRINT("[JIT] Bytecode count: %zu\n", original->code.count);
     
-    // Find sorting pattern
+    for (int i = 0; i < 20 && i < original->code.count; i++) {
+        bytecode bc = original->code.bytecodes[i];
+        bytecode_print(&bc);
+    }
     size_t pattern_start, pattern_end;
     if (!find_sorting_pattern_in_bytecode(&original->code, &pattern_start, &pattern_end)) {
         DPRINT("[JIT] No sorting pattern found\n");
         return NULL;
     }
-    
-    DPRINT("[JIT] Found sorting pattern at [%zu-%zu]\n", pattern_start, pattern_end);
     
     // Extract pattern information
     PatternInfo info;
