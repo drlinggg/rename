@@ -20,9 +20,4 @@ typedef struct {
 CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats);
 int jit_can_constant_fold(CodeObj* code);
 
-int is_constant_foldable(Value a, Value b, uint8_t op);
-int is_unary_foldable(Value a, uint8_t op);
-Value fold_binary_constant(Value a, Value b, uint8_t op);
-Value fold_unary_constant(Value a, uint8_t op);
-
 #endif // CONST_FOLDING_H
