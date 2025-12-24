@@ -3,6 +3,35 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Объявления вспомогательных функций
+static int is_truthy(Value v);
+static int is_falsy(Value v);
+static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats);
+static CodeObj* deep_copy_codeobj(CodeObj* original);
+static int is_constant_foldable(Value a, Value b, uint8_t op);
+static int is_unary_foldable(Value a, uint8_t op);
+static Value fold_binary_constant(Value a, Value b, uint8_t op);
+static Value fold_unary_constant(Value a, uint8_t op);
+
+// Вспомогательная функция для пропуска NOP
+static size_t skip_nops(bytecode_array* bc, size_t start_index) {
+    while (start_index < bc->count && bc->bytecodes[start_index].op_code == NOP) {
+        start_index++;
+    }
+    return start_index;
+}
+
+// Получение цели прыжка (абсолютный индекс)
+static size_t get_jump_target(bytecode_array* bc, size_t ins_index, uint32_t arg, uint8_t op) {
+    if (op == JUMP_BACKWARD) {
+        return ins_index - arg;
+    } else if (op == JUMP_FORWARD || op == POP_JUMP_IF_FALSE || op == POP_JUMP_IF_TRUE) {
+        return ins_index + 1 + arg; // +1 потому что смещение от следующей инструкции
+    }
+    return (size_t)-1;
+}
+
+// Реализации функций проверки истинности
 static int is_truthy(Value v) {
     if (v.type == VAL_BOOL) return v.bool_val;
     if (v.type == VAL_INT) return v.int_val != 0;
@@ -13,225 +42,7 @@ static int is_falsy(Value v) {
     return !is_truthy(v);
 }
 
-int is_constant_foldable(Value a, Value b, uint8_t op) {
-    if (op >= 0x00 && op <= 0x0B) { // ADD, SUB, MUL, DIV, MOD
-        return a.type == VAL_INT && b.type == VAL_INT;
-    }
-    
-    if (op >= 0x50 && op <= 0x55) { // EQ, NE, LT, LE, GT, GE
-        return (a.type == VAL_INT && b.type == VAL_INT) ||
-               (a.type == VAL_BOOL && b.type == VAL_BOOL);
-    }
-    
-    if (op == 0x60 || op == 0x61) { // AND, OR
-        return a.type == VAL_BOOL && b.type == VAL_BOOL;
-    }
-    
-    return 0;
-}
-
-int is_unary_foldable(Value a, uint8_t op) {
-    if (op == 0x00 || op == 0x01) { // POSITIVE, NEGATIVE
-        return a.type == VAL_INT;
-    }
-    
-    if (op == 0x03) { // NOT
-        return a.type == VAL_BOOL;
-    }
-    
-    return 0;
-}
-
-Value fold_binary_constant(Value a, Value b, uint8_t op) {
-    if (a.type == VAL_INT && b.type == VAL_INT) {
-        int64_t x = a.int_val;
-        int64_t y = b.int_val;
-        
-        switch (op) {
-            case 0x00: return value_create_int(x + y);      // ADD
-            case 0x0A: return value_create_int(x - y);      // SUB
-            case 0x05: return value_create_int(x * y);      // MUL
-            case 0x0B: return value_create_int(y != 0 ? x / y : 0); // DIV
-            case 0x06: return value_create_int(y != 0 ? x % y : 0); // MOD
-            
-            case 0x50: return value_create_bool(x == y);    // EQ
-            case 0x51: return value_create_bool(x != y);    // NE
-            case 0x52: return value_create_bool(x < y);     // LT
-            case 0x53: return value_create_bool(x <= y);    // LE
-            case 0x54: return value_create_bool(x > y);     // GT
-            case 0x55: return value_create_bool(x >= y);    // GE
-        }
-    }
-    
-    if (a.type == VAL_BOOL && b.type == VAL_BOOL) {
-        bool x = a.bool_val;
-        bool y = b.bool_val;
-        
-        switch (op) {
-            case 0x60: return value_create_bool(x && y);    // AND
-            case 0x61: return value_create_bool(x || y);    // OR
-            case 0x50: return value_create_bool(x == y);    // EQ
-            case 0x51: return value_create_bool(x != y);    // NE
-        }
-    }
-    
-    return value_create_none();
-}
-
-Value fold_unary_constant(Value a, uint8_t op) {
-    if (a.type == VAL_INT) {
-        int64_t x = a.int_val;
-        switch (op) {
-            case 0x00: return value_create_int(+x);        // POSITIVE
-            case 0x01: return value_create_int(-x);        // NEGATIVE
-        }
-    }
-    
-    if (a.type == VAL_BOOL && op == 0x03) {
-        return value_create_bool(!a.bool_val);            // NOT
-    }
-    
-    return value_create_none();
-}
-
-// Упрощенная оптимизация условий
-static void optimize_conditions_simple(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
-    // Проходим по байткоду и оптимизируем условия
-    for (size_t i = 0; i + 1 < bc->count; i++) {
-        // Паттерн: LOAD_CONST -> POP_JUMP_IF_FALSE
-        if (bc->bytecodes[i].op_code == LOAD_CONST &&
-            bc->bytecodes[i + 1].op_code == POP_JUMP_IF_FALSE) {
-            
-            uint32_t const_idx = bytecode_get_arg(bc->bytecodes[i]);
-            if (const_idx >= code->constants_count) continue;
-            
-            Value v = code->constants[const_idx];
-            
-            if (is_falsy(v)) {
-                // if (false) - заменяем на безусловный прыжок
-                uint32_t jump_offset = bytecode_get_arg(bc->bytecodes[i + 1]);
-                bc->bytecodes[i].op_code = NOP;
-                bc->bytecodes[i + 1] = bytecode_create_with_number(JUMP_FORWARD, jump_offset);
-                stats->peephole_optimizations++;
-            } else if (is_truthy(v)) {
-                // if (true) - удаляем обе инструкции
-                bc->bytecodes[i].op_code = NOP;
-                bc->bytecodes[i + 1].op_code = NOP;
-                stats->peephole_optimizations++;
-            }
-        }
-    }
-}
-
-// Простая функция для удаления NOP и фиксации прыжков
-static void remove_nops_and_fix_jumps(bytecode_array* bc) {
-    // Первый проход: построение карты перехода
-    size_t* new_indices = malloc(bc->count * sizeof(size_t));
-    size_t new_count = 0;
-    
-    for (size_t i = 0; i < bc->count; i++) {
-        if (bc->bytecodes[i].op_code == NOP) {
-            new_indices[i] = (size_t)-1;
-        } else {
-            new_indices[i] = new_count++;
-        }
-    }
-    
-    // Второй проход: пересчет смещений для прыжков
-    for (size_t i = 0; i < bc->count; i++) {
-        bytecode* ins = &bc->bytecodes[i];
-        uint8_t op = ins->op_code;
-        
-        if (new_indices[i] == (size_t)-1) continue; // Пропускаем NOP
-        
-        // Обрабатываем только инструкции с прыжками
-        if (op != JUMP_FORWARD && op != JUMP_BACKWARD && 
-            op != POP_JUMP_IF_FALSE && op != POP_JUMP_IF_TRUE) {
-            continue;
-        }
-        
-        uint32_t old_offset = bytecode_get_arg(*ins);
-        size_t old_target;
-        
-        // Вычисляем старую цель
-        if (op == JUMP_BACKWARD) {
-            old_target = i - old_offset;
-        } else {
-            old_target = i + old_offset;
-        }
-        
-        // Проверяем, что цель в пределах
-        if (old_target >= bc->count) {
-            continue;
-        }
-        
-        // Находим новый индекс цели
-        size_t new_target = new_indices[old_target];
-        
-        // Если цель была удалена, пропускаем
-        if (new_target == (size_t)-1) {
-            // Ищем ближайшую живую инструкцию
-            if (op == JUMP_BACKWARD) {
-                for (size_t j = old_target; j > 0; j--) {
-                    if (new_indices[j] != (size_t)-1) {
-                        new_target = new_indices[j];
-                        break;
-                    }
-                }
-            } else {
-                for (size_t j = old_target; j < bc->count; j++) {
-                    if (new_indices[j] != (size_t)-1) {
-                        new_target = new_indices[j];
-                        break;
-                    }
-                }
-            }
-            
-            if (new_target == (size_t)-1) {
-                continue;
-            }
-        }
-        
-        // Вычисляем новое смещение
-        size_t new_i = new_indices[i];
-        uint32_t new_offset;
-        
-        if (op == JUMP_BACKWARD) {
-            if (new_target > new_i) {
-                // Это не должно происходить, но на всякий случай
-                continue;
-            }
-            new_offset = (uint32_t)(new_i - new_target);
-        } else {
-            if (new_target < new_i) {
-                // Это не должно происходить, но на всякий случай
-                continue;
-            }
-            new_offset = (uint32_t)(new_target - new_i);
-        }
-        
-        // Обновляем инструкцию
-        *ins = bytecode_create_with_number(op, new_offset);
-    }
-    
-    // Третий проход: создаем новый массив без NOP
-    bytecode* new_array = malloc(new_count * sizeof(bytecode));
-    size_t idx = 0;
-    
-    for (size_t i = 0; i < bc->count; i++) {
-        if (bc->bytecodes[i].op_code != NOP) {
-            new_array[idx++] = bc->bytecodes[i];
-        }
-    }
-    
-    free(bc->bytecodes);
-    bc->bytecodes = new_array;
-    bc->count = new_count;
-    bc->capacity = new_count;
-    
-    free(new_indices);
-}
-
+// Реализация поиска/добавления константы
 static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats) {
     for (size_t i = 0; i < code->constants_count; i++) {
         if (values_equal(code->constants[i], v)) {
@@ -250,6 +61,7 @@ static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats) {
     return code->constants_count - 1;
 }
 
+// Реализация глубокого копирования CodeObj
 static CodeObj* deep_copy_codeobj(CodeObj* original) {
     if (!original) return NULL;
     
@@ -289,82 +101,402 @@ static CodeObj* deep_copy_codeobj(CodeObj* original) {
     return copy;
 }
 
-static void nop_instructions(bytecode_array* bc, size_t start, size_t count) {
-    if (start >= bc->count || count == 0) return;
+// Улучшенный пересчет прыжков с учетом особенностей VM
+static void recalculate_jumps(bytecode_array* bc) {
+    // Сначала строим карту: старый индекс -> новый индекс
+    size_t* old_to_new = malloc(bc->count * sizeof(size_t));
+    size_t* new_to_old = malloc(bc->count * sizeof(size_t));
+    size_t new_count = 0;
     
-    size_t to_nop = count;
-    if (start + to_nop > bc->count) {
-        to_nop = bc->count - start;
+    for (size_t i = 0; i < bc->count; i++) {
+        if (bc->bytecodes[i].op_code != NOP) {
+            old_to_new[i] = new_count;
+            new_to_old[new_count] = i;
+            new_count++;
+        } else {
+            old_to_new[i] = (size_t)-1;
+        }
     }
     
-    for (size_t i = start; i < start + to_nop; i++) {
+    // Пересчитываем все прыжки
+    for (size_t new_i = 0; new_i < new_count; new_i++) {
+        size_t old_i = new_to_old[new_i];
+        bytecode* ins = &bc->bytecodes[old_i];
+        uint8_t op = ins->op_code;
+        
+        if (op != JUMP_FORWARD && op != JUMP_BACKWARD && 
+            op != POP_JUMP_IF_FALSE && op != POP_JUMP_IF_TRUE) {
+            continue;
+        }
+        
+        uint32_t old_arg = bytecode_get_arg(*ins);
+        
+        // Получаем старую цель прыжка
+        size_t old_target = get_jump_target(bc, old_i, old_arg, op);
+        if (old_target >= bc->count) {
+            continue;
+        }
+        
+        // Находим новый индекс цели
+        size_t new_target = old_to_new[old_target];
+        if (new_target == (size_t)-1) {
+            // Цель была удалена - ищем ближайшую живую инструкцию
+            if (op == JUMP_BACKWARD) {
+                for (size_t j = old_target; j > 0; j--) {
+                    if (old_to_new[j] != (size_t)-1) {
+                        new_target = old_to_new[j];
+                        break;
+                    }
+                }
+            } else {
+                for (size_t j = old_target; j < bc->count; j++) {
+                    if (old_to_new[j] != (size_t)-1) {
+                        new_target = old_to_new[j];
+                        break;
+                    }
+                }
+            }
+            if (new_target == (size_t)-1) continue;
+        }
+        
+        // Вычисляем новое смещение
+        uint32_t new_arg;
+        if (op == JUMP_BACKWARD) {
+            if (new_target > new_i) continue;
+            new_arg = (uint32_t)(new_i - new_target);
+        } else {
+            // JUMP_FORWARD, POP_JUMP_IF_FALSE, POP_JUMP_IF_TRUE
+            if (new_target < new_i + 1) continue;
+            new_arg = (uint32_t)(new_target - new_i - 1); // -1 для VM
+        }
+        
+        // Обновляем инструкцию
+        *ins = bytecode_create_with_number(op, new_arg);
+    }
+    
+    // Удаляем NOP и сжимаем массив
+    bytecode* new_array = malloc(new_count * sizeof(bytecode));
+    size_t idx = 0;
+    for (size_t i = 0; i < bc->count; i++) {
+        if (bc->bytecodes[i].op_code != NOP) {
+            new_array[idx++] = bc->bytecodes[i];
+        }
+    }
+    
+    free(bc->bytecodes);
+    bc->bytecodes = new_array;
+    bc->count = new_count;
+    bc->capacity = new_count;
+    
+    free(old_to_new);
+    free(new_to_old);
+}
+
+static void mark_as_nop(bytecode_array* bc, size_t index) {
+    if (index < bc->count) {
+        bc->bytecodes[index].op_code = NOP;
+    }
+}
+
+static void mark_as_nops(bytecode_array* bc, size_t start, size_t end) {
+    for (size_t i = start; i <= end && i < bc->count; i++) {
         bc->bytecodes[i].op_code = NOP;
     }
 }
 
-static void apply_simple_peephole(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
-    size_t i = 0;
+// Жадное сворачивание цепочек операций
+static int fold_operation_chain(CodeObj* code, bytecode_array* bc, size_t start, FoldStats* stats) {
+    size_t pos = start;
+    int changed = 0;
     
-    while (i < bc->count) {
-        // Упрощенный паттерн: LOAD_CONST -> LOAD_CONST -> BINARY_OP
-        if (i + 2 < bc->count &&
-            bc->bytecodes[i].op_code == LOAD_CONST &&
-            bc->bytecodes[i+1].op_code == LOAD_CONST &&
-            bc->bytecodes[i+2].op_code == BINARY_OP) {
+    // Пытаемся найти цепочку: LOAD_CONST (BINARY_OP LOAD_CONST)*
+    // Сначала просто собираем все операции
+    size_t chain_start = pos;
+    size_t chain_end = pos;
+    
+    // Ищем конец цепочки
+    while (pos < bc->count) {
+        bytecode ins = bc->bytecodes[pos];
+        uint8_t op = ins.op_code;
+        
+        if (op == LOAD_CONST) {
+            chain_end = pos;
+            pos = skip_nops(bc, pos + 1);
+        } 
+        else if (op == BINARY_OP) {
+            // Проверяем, что это арифметическая операция
+            uint8_t binop = bytecode_get_arg(ins) & 0xFF;
+            if (binop < 0x00 || binop > 0x0B) { // Не арифметика
+                break;
+            }
+            chain_end = pos;
+            pos = skip_nops(bc, pos + 1);
+        }
+        else {
+            break;
+        }
+    }
+    
+    // Если цепочка слишком короткая, выходим
+    if (chain_end - chain_start < 2) {
+        return 0;
+    }
+    
+    // Выполняем свертку для всей цепочки
+    // Сначала собираем все константы и операции
+    Value current_value = value_create_none();
+    uint8_t last_op = 0xFF;
+    int has_value = 0;
+    
+    for (size_t i = chain_start; i <= chain_end; i = skip_nops(bc, i + 1)) {
+        bytecode ins = bc->bytecodes[i];
+        uint8_t op = ins.op_code;
+        
+        if (op == LOAD_CONST) {
+            uint32_t const_idx = bytecode_get_arg(ins);
+            if (const_idx >= code->constants_count) break;
             
-            uint32_t idx_a = bytecode_get_arg(bc->bytecodes[i]);
-            uint32_t idx_b = bytecode_get_arg(bc->bytecodes[i+1]);
-            uint8_t binop = bytecode_get_arg(bc->bytecodes[i+2]) & 0xFF;
+            Value v = code->constants[const_idx];
             
-            if (idx_a < code->constants_count && idx_b < code->constants_count) {
-                Value val_a = code->constants[idx_a];
-                Value val_b = code->constants[idx_b];
+            if (!has_value) {
+                // Первое значение в цепочке
+                current_value = v;
+                has_value = 1;
+            } else if (last_op != 0xFF) {
+                // Есть операция и новое значение - сворачиваем
+                if (is_constant_foldable(current_value, v, last_op)) {
+                    current_value = fold_binary_constant(current_value, v, last_op);
+                    changed = 1;
+                } else {
+                    // Нельзя свернуть - заканчиваем
+                    break;
+                }
+            }
+        }
+        else if (op == BINARY_OP) {
+            last_op = bytecode_get_arg(ins) & 0xFF;
+        }
+    }
+    
+    // Если что-то свернулось
+    if (changed && has_value) {
+        // Добавляем свернутую константу
+        size_t new_const_idx = find_or_add_constant(code, current_value, stats);
+        if (new_const_idx != (size_t)-1) {
+            // Заменяем всю цепочку одной LOAD_CONST
+            bc->bytecodes[chain_start] = bytecode_create_with_number(LOAD_CONST, new_const_idx);
+            
+            // Помечаем остальные инструкции цепочки как NOP
+            for (size_t i = chain_start + 1; i <= chain_end; i++) {
+                mark_as_nop(bc, i);
+                stats->removed_instructions++;
+            }
+            
+            stats->folded_constants++;
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+// Поиск цепочек операций для свертки
+static int find_and_fold_chains(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+    int changed = 0;
+    
+    for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
+        // Ищем начало цепочки: LOAD_CONST
+        if (bc->bytecodes[i].op_code == LOAD_CONST) {
+            // Пробуем свернуть цепочку, начиная с этой позиции
+            if (fold_operation_chain(code, bc, i, stats)) {
+                changed = 1;
+                break;  // Начинаем заново после изменений
+            }
+        }
+    }
+    
+    return changed;
+}
+
+// Упрощенная оптимизация условий if
+static void optimize_constant_ifs(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+    for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
+        // Ищем LOAD_CONST -> POP_JUMP_IF_FALSE
+        size_t const_idx = skip_nops(bc, i);
+        if (const_idx >= bc->count) break;
+        
+        size_t jump_idx = skip_nops(bc, const_idx + 1);
+        if (jump_idx >= bc->count) break;
+        
+        if (bc->bytecodes[const_idx].op_code == LOAD_CONST &&
+            bc->bytecodes[jump_idx].op_code == POP_JUMP_IF_FALSE) {
+            
+            uint32_t cidx = bytecode_get_arg(bc->bytecodes[const_idx]);
+            if (cidx >= code->constants_count) continue;
+            
+            Value v = code->constants[cidx];
+            
+            if (is_falsy(v)) {
+                // if (false) - заменяем на безусловный прыжок
+                uint32_t jump_offset = bytecode_get_arg(bc->bytecodes[jump_idx]);
                 
-                // Только для целочисленных операций
-                if (val_a.type == VAL_INT && val_b.type == VAL_INT) {
-                    int64_t x = val_a.int_val;
-                    int64_t y = val_b.int_val;
+                // Удаляем LOAD_CONST
+                mark_as_nop(bc, const_idx);
+                
+                // Заменяем POP_JUMP_IF_FALSE на JUMP_FORWARD
+                bc->bytecodes[jump_idx] = bytecode_create_with_number(JUMP_FORWARD, jump_offset);
+                
+                stats->peephole_optimizations++;
+                
+            } else if (is_truthy(v)) {
+                // if (true) - удаляем условный прыжок
+                mark_as_nop(bc, const_idx);
+                mark_as_nop(bc, jump_idx);
+                stats->peephole_optimizations++;
+            }
+        }
+    }
+}
+
+// Реализации функций для свертки констант
+static int is_constant_foldable(Value a, Value b, uint8_t op) {
+    if (op >= 0x00 && op <= 0x0B) { // ADD, SUB, MUL, DIV, MOD
+        return a.type == VAL_INT && b.type == VAL_INT;
+    }
+    
+    if (op >= 0x50 && op <= 0x55) { // EQ, NE, LT, LE, GT, GE
+        return (a.type == VAL_INT && b.type == VAL_INT) ||
+               (a.type == VAL_BOOL && b.type == VAL_BOOL);
+    }
+    
+    if (op == 0x60 || op == 0x61) { // AND, OR
+        return a.type == VAL_BOOL && b.type == VAL_BOOL;
+    }
+    
+    return 0;
+}
+
+static int is_unary_foldable(Value a, uint8_t op) {
+    if (op == 0x00 || op == 0x01) { // POSITIVE, NEGATIVE
+        return a.type == VAL_INT;
+    }
+    
+    if (op == 0x03) { // NOT
+        return a.type == VAL_BOOL;
+    }
+    
+    return 0;
+}
+
+static Value fold_binary_constant(Value a, Value b, uint8_t op) {
+    if (a.type == VAL_INT && b.type == VAL_INT) {
+        int64_t x = a.int_val;
+        int64_t y = b.int_val;
+        
+        switch (op) {
+            case 0x00: return value_create_int(x + y);      // ADD
+            case 0x0A: return value_create_int(x - y);      // SUB
+            case 0x05: return value_create_int(x * y);      // MUL
+            case 0x0B: return value_create_int(y != 0 ? x / y : 0); // DIV
+            case 0x06: return value_create_int(y != 0 ? x % y : 0); // MOD
+            
+            case 0x50: return value_create_bool(x == y);    // EQ
+            case 0x51: return value_create_bool(x != y);    // NE
+            case 0x52: return value_create_bool(x < y);     // LT
+            case 0x53: return value_create_bool(x <= y);    // LE
+            case 0x54: return value_create_bool(x > y);     // GT
+            case 0x55: return value_create_bool(x >= y);    // GE
+        }
+    }
+    
+    if (a.type == VAL_BOOL && b.type == VAL_BOOL) {
+        bool x = a.bool_val;
+        bool y = b.bool_val;
+        
+        switch (op) {
+            case 0x60: return value_create_bool(x && y);    // AND
+            case 0x61: return value_create_bool(x || y);    // OR
+            case 0x50: return value_create_bool(x == y);    // EQ
+            case 0x51: return value_create_bool(x != y);    // NE
+        }
+    }
+    
+    return value_create_none();
+}
+
+static Value fold_unary_constant(Value a, uint8_t op) {
+    if (a.type == VAL_INT) {
+        int64_t x = a.int_val;
+        switch (op) {
+            case 0x00: return value_create_int(+x);        // POSITIVE
+            case 0x01: return value_create_int(-x);        // NEGATIVE
+        }
+    }
+    
+    if (a.type == VAL_BOOL && op == 0x03) {
+        return value_create_bool(!a.bool_val);            // NOT
+    }
+    
+    return value_create_none();
+}
+
+
+static int aggressive_constant_folding(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+    int changed = 0;
+    
+    // Многократно применяем сворачивание, пока есть изменения
+    int local_changed;
+    do {
+        local_changed = 0;
+        
+        for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
+            // Ищем любой BINARY_OP или UNARY_OP между константами
+            if (i + 2 < bc->count) {
+                bytecode ins1 = bc->bytecodes[i];
+                bytecode ins2 = bc->bytecodes[i + 1];
+                bytecode ins3 = bc->bytecodes[skip_nops(bc, i + 2)];
+                
+                // Паттерн: LOAD_CONST LOAD_CONST BINARY_OP
+                if (ins1.op_code == LOAD_CONST && 
+                    ins2.op_code == LOAD_CONST && 
+                    ins3.op_code == BINARY_OP) {
                     
-                    // Простые оптимизации
-                    if (binop == 0x00) { // ADD
-                        if (x == 0) {
-                            // 0 + y -> y
-                            bc->bytecodes[i] = bc->bytecodes[i+1];
-                            nop_instructions(bc, i+1, 2);
-                            stats->peephole_optimizations++;
-                            continue;
-                        } else if (y == 0) {
-                            // x + 0 -> x
-                            nop_instructions(bc, i+1, 2);
-                            stats->peephole_optimizations++;
-                            continue;
-                        }
-                    } else if (binop == 0x05) { // MUL
-                        if (x == 1) {
-                            // 1 * y -> y
-                            bc->bytecodes[i] = bc->bytecodes[i+1];
-                            nop_instructions(bc, i+1, 2);
-                            stats->peephole_optimizations++;
-                            continue;
-                        } else if (y == 1) {
-                            // x * 1 -> x
-                            nop_instructions(bc, i+1, 2);
-                            stats->peephole_optimizations++;
-                            continue;
-                        } else if (x == 0 || y == 0) {
-                            // x * 0 -> 0
-                            bc->bytecodes[i] = bytecode_create_with_number(LOAD_CONST, 0);
-                            nop_instructions(bc, i+1, 2);
-                            stats->peephole_optimizations++;
-                            continue;
+                    uint32_t const_idx1 = bytecode_get_arg(ins1);
+                    uint32_t const_idx2 = bytecode_get_arg(ins2);
+                    uint8_t binop = bytecode_get_arg(ins3) & 0xFF;
+                    
+                    if (const_idx1 < code->constants_count && 
+                        const_idx2 < code->constants_count) {
+                        
+                        Value a = code->constants[const_idx1];
+                        Value b = code->constants[const_idx2];
+                        
+                        if (is_constant_foldable(a, b, binop)) {
+                            Value result = fold_binary_constant(a, b, binop);
+                            size_t new_idx = find_or_add_constant(code, result, stats);
+                            
+                            if (new_idx != (size_t)-1) {
+                                // Заменяем три инструкции на одну
+                                bc->bytecodes[i] = bytecode_create_with_number(LOAD_CONST, new_idx);
+                                mark_as_nops(bc, i + 1, i + 2);
+                                stats->folded_constants++;
+                                stats->removed_instructions += 2;
+                                local_changed = 1;
+                                changed = 1;
+                            }
                         }
                     }
                 }
             }
         }
         
-        i++;
-    }
+        if (local_changed) {
+            recalculate_jumps(bc);
+        }
+        
+    } while (local_changed);  // Исправлено: while (local_changed) вместо while (changed)
+    
+    return changed;
 }
 
 CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats) {
@@ -384,123 +516,50 @@ CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats) {
     
     bytecode_array* bc = &optimized->code;
     int changed;
+    int iteration = 0;
     
-    // Простая константная свертка
     do {
         changed = 0;
+        iteration++;
         
-        for (size_t i = 0; i < bc->count; i++) {
-            // Паттерн: LOAD_CONST a, LOAD_CONST b, BINARY_OP op
-            if (i + 2 < bc->count &&
-                bc->bytecodes[i].op_code == LOAD_CONST &&
-                bc->bytecodes[i+1].op_code == LOAD_CONST &&
-                bc->bytecodes[i+2].op_code == BINARY_OP) {
-                
-                uint32_t idx_a = bytecode_get_arg(bc->bytecodes[i]);
-                uint32_t idx_b = bytecode_get_arg(bc->bytecodes[i+1]);
-                uint8_t binop = bytecode_get_arg(bc->bytecodes[i+2]) & 0xFF;
-                
-                if (idx_a < optimized->constants_count &&
-                    idx_b < optimized->constants_count) {
-                    
-                    Value val_a = optimized->constants[idx_a];
-                    Value val_b = optimized->constants[idx_b];
-                    
-                    if (is_constant_foldable(val_a, val_b, binop)) {
-                        Value result = fold_binary_constant(val_a, val_b, binop);
-                        
-                        if (result.type != VAL_NONE) {
-                            size_t new_idx = find_or_add_constant(optimized, result, stats);
-                            
-                            if (new_idx != (size_t)-1) {
-                                bc->bytecodes[i] = bytecode_create_with_number(LOAD_CONST, new_idx);
-                                nop_instructions(bc, i + 1, 2);
-                                
-                                stats->folded_constants++;
-                                stats->removed_instructions += 2;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Паттерн: LOAD_CONST a, UNARY_OP op
-            if (i + 1 < bc->count &&
-                bc->bytecodes[i].op_code == LOAD_CONST &&
-                bc->bytecodes[i+1].op_code == UNARY_OP) {
-                
-                uint32_t idx_a = bytecode_get_arg(bc->bytecodes[i]);
-                uint8_t unop = bytecode_get_arg(bc->bytecodes[i+1]) & 0xFF;
-                
-                if (idx_a < optimized->constants_count) {
-                    Value val_a = optimized->constants[idx_a];
-                    
-                    if (is_unary_foldable(val_a, unop)) {
-                        Value result = fold_unary_constant(val_a, unop);
-                        
-                        if (result.type != VAL_NONE) {
-                            size_t new_idx = find_or_add_constant(optimized, result, stats);
-                            
-                            if (new_idx != (size_t)-1) {
-                                bc->bytecodes[i] = bytecode_create_with_number(LOAD_CONST, new_idx);
-                                nop_instructions(bc, i + 1, 1);
-                                
-                                stats->folded_constants++;
-                                stats->removed_instructions += 1;
-                                changed = 1;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
+        DPRINT("[JIT-CF] Iteration %d\n", iteration);
+        
+        // Шаг 1: Агрессивное сворачивание базовых операций
+        if (aggressive_constant_folding(optimized, bc, stats)) {
+            changed = 1;
+            // Не вызываем recalculate_jumps здесь - она уже вызвана внутри aggressive_constant_folding
         }
+        
+        // Шаг 2: Сворачивание длинных цепочек
+        if (find_and_fold_chains(optimized, bc, stats)) {
+            changed = 1;
+            recalculate_jumps(bc);
+        }
+        
+        // Шаг 3: Оптимизация условий if
+        optimize_constant_ifs(optimized, bc, stats);
+        if (stats->peephole_optimizations > 0) {
+            changed = 1;
+            recalculate_jumps(bc);
+            stats->peephole_optimizations = 0; // Сброс для следующей итерации
+        }
+        
+        // Лимит итераций для безопасности
+        if (iteration > 100) {
+            DPRINT("[JIT-CF] Warning: reached iteration limit\n");
+            break;
+        }
+        
     } while (changed && bc->count > 0);
     
-    // Применяем простые peephole оптимизации
-    apply_simple_peephole(optimized, bc, stats);
-    
-    // Оптимизируем условия
-    optimize_conditions_simple(optimized, bc, stats);
-    
-    // Удаляем NOP и фиксируем прыжки
-    remove_nops_and_fix_jumps(bc);
+    // Финальный пересчет прыжков
+    recalculate_jumps(bc);
     
     DPRINT("[JIT-CF] Optimization complete:\n");
     DPRINT("  Folded constants: %zu\n", stats->folded_constants);
     DPRINT("  Removed instructions: %zu\n", stats->removed_instructions);
-    DPRINT("  Peephole optimizations: %zu\n", stats->peephole_optimizations);
     DPRINT("  Original size: %zu, Optimized size: %zu\n", 
            original->code.count, bc->count);
     
     return optimized;
-}
-
-int jit_can_constant_fold(CodeObj* code) {
-    if (!code || !code->code.bytecodes || !code->constants || code->code.count < 2) {
-        return 0;
-    }
-    
-    bytecode_array* bc = &code->code;
-    int patterns = 0;
-    
-    for (size_t i = 0; i < bc->count - 1; i++) {
-        // LOAD_CONST -> UNARY_OP
-        if (bc->bytecodes[i].op_code == LOAD_CONST &&
-            bc->bytecodes[i+1].op_code == UNARY_OP) {
-            patterns++;
-        }
-        
-        // LOAD_CONST -> LOAD_CONST -> BINARY_OP
-        if (i + 2 < bc->count &&
-            bc->bytecodes[i].op_code == LOAD_CONST &&
-            bc->bytecodes[i+1].op_code == LOAD_CONST &&
-            bc->bytecodes[i+2].op_code == BINARY_OP) {
-            patterns++;
-        }
-    }
-    
-    return patterns > 0;
 }
