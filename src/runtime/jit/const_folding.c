@@ -198,95 +198,106 @@ static void mark_as_nop(bytecode_array* bc, size_t index) {
     }
 }
 
+static void mark_as_nops(bytecode_array* bc, size_t start, size_t end) {
+    for (size_t i = start; i <= end && i < bc->count; i++) {
+        bc->bytecodes[i].op_code = NOP;
+    }
+}
+
 // Жадное сворачивание цепочек операций
 static int fold_operation_chain(CodeObj* code, bytecode_array* bc, size_t start, FoldStats* stats) {
-    // Мы будем складывать константы в стек и сворачивать операции по мере их появления
     size_t pos = start;
-    Value stack[64];  // Максимальная глубина стека
-    size_t stack_size = 0;
     int changed = 0;
     
-    // Массивы для отметки инструкций, которые нужно удалить
-    int* to_remove = calloc(bc->count, sizeof(int));
+    // Пытаемся найти цепочку: LOAD_CONST (BINARY_OP LOAD_CONST)*
+    // Сначала просто собираем все операции
+    size_t chain_start = pos;
+    size_t chain_end = pos;
     
+    // Ищем конец цепочки
     while (pos < bc->count) {
         bytecode ins = bc->bytecodes[pos];
         uint8_t op = ins.op_code;
         
         if (op == LOAD_CONST) {
-            uint32_t const_idx = bytecode_get_arg(ins);
-            if (const_idx >= code->constants_count) break;
-            stack[stack_size++] = code->constants[const_idx];
-            to_remove[pos] = 1;  // Пометить для удаления
+            chain_end = pos;
             pos = skip_nops(bc, pos + 1);
-        }
-        else if (op == BINARY_OP && stack_size >= 2) {
+        } 
+        else if (op == BINARY_OP) {
+            // Проверяем, что это арифметическая операция
             uint8_t binop = bytecode_get_arg(ins) & 0xFF;
-            Value b = stack[--stack_size];
-            Value a = stack[--stack_size];
-            
-            if (is_constant_foldable(a, b, binop)) {
-                Value result = fold_binary_constant(a, b, binop);
-                if (result.type != VAL_NONE) {
-                    stack[stack_size++] = result;
-                    to_remove[pos] = 1;  // Пометить для удаления
-                    changed = 1;
-                } else {
-                    // Нельзя свернуть, возвращаем значения обратно
-                    stack[stack_size++] = a;
-                    stack[stack_size++] = b;
-                    break;  // Заканчиваем цепочку
-                }
-            } else {
-                // Нельзя свернуть
+            if (binop < 0x00 || binop > 0x0B) { // Не арифметика
                 break;
             }
-            pos = skip_nops(bc, pos + 1);
-        }
-        else if (op == UNARY_OP && stack_size >= 1) {
-            uint8_t unop = bytecode_get_arg(ins) & 0xFF;
-            Value a = stack[--stack_size];
-            
-            if (is_unary_foldable(a, unop)) {
-                Value result = fold_unary_constant(a, unop);
-                if (result.type != VAL_NONE) {
-                    stack[stack_size++] = result;
-                    to_remove[pos] = 1;  // Пометить для удаления
-                    changed = 1;
-                } else {
-                    stack[stack_size++] = a;
-                    break;
-                }
-            } else {
-                break;
-            }
+            chain_end = pos;
             pos = skip_nops(bc, pos + 1);
         }
         else {
-            break;  // Не операция для свертки
+            break;
         }
     }
     
-    // Если что-то свернулось и остался результат
-    if (changed && stack_size == 1) {
-        // Добавляем новую константу
-        size_t new_const_idx = find_or_add_constant(code, stack[0], stats);
-        if (new_const_idx != (size_t)-1) {
-            // Заменяем первую инструкцию в цепочке на результат
-            bc->bytecodes[start] = bytecode_create_with_number(LOAD_CONST, new_const_idx);
-            // Удаляем остальные инструкции в цепочке
-            for (size_t i = start + 1; i < pos; i++) {
-                if (to_remove[i]) {
-                    mark_as_nop(bc, i);
-                    stats->removed_instructions++;
+    // Если цепочка слишком короткая, выходим
+    if (chain_end - chain_start < 2) {
+        return 0;
+    }
+    
+    // Выполняем свертку для всей цепочки
+    // Сначала собираем все константы и операции
+    Value current_value = value_create_none();
+    uint8_t last_op = 0xFF;
+    int has_value = 0;
+    
+    for (size_t i = chain_start; i <= chain_end; i = skip_nops(bc, i + 1)) {
+        bytecode ins = bc->bytecodes[i];
+        uint8_t op = ins.op_code;
+        
+        if (op == LOAD_CONST) {
+            uint32_t const_idx = bytecode_get_arg(ins);
+            if (const_idx >= code->constants_count) break;
+            
+            Value v = code->constants[const_idx];
+            
+            if (!has_value) {
+                // Первое значение в цепочке
+                current_value = v;
+                has_value = 1;
+            } else if (last_op != 0xFF) {
+                // Есть операция и новое значение - сворачиваем
+                if (is_constant_foldable(current_value, v, last_op)) {
+                    current_value = fold_binary_constant(current_value, v, last_op);
+                    changed = 1;
+                } else {
+                    // Нельзя свернуть - заканчиваем
+                    break;
                 }
             }
-            stats->folded_constants++;
+        }
+        else if (op == BINARY_OP) {
+            last_op = bytecode_get_arg(ins) & 0xFF;
         }
     }
     
-    free(to_remove);
-    return changed;
+    // Если что-то свернулось
+    if (changed && has_value) {
+        // Добавляем свернутую константу
+        size_t new_const_idx = find_or_add_constant(code, current_value, stats);
+        if (new_const_idx != (size_t)-1) {
+            // Заменяем всю цепочку одной LOAD_CONST
+            bc->bytecodes[chain_start] = bytecode_create_with_number(LOAD_CONST, new_const_idx);
+            
+            // Помечаем остальные инструкции цепочки как NOP
+            for (size_t i = chain_start + 1; i <= chain_end; i++) {
+                mark_as_nop(bc, i);
+                stats->removed_instructions++;
+            }
+            
+            stats->folded_constants++;
+            return 1;
+        }
+    }
+    
+    return 0;
 }
 
 // Поиск цепочек операций для свертки
@@ -430,6 +441,63 @@ static Value fold_unary_constant(Value a, uint8_t op) {
 }
 
 
+static int aggressive_constant_folding(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+    int changed = 0;
+    
+    // Многократно применяем сворачивание, пока есть изменения
+    int local_changed;
+    do {
+        local_changed = 0;
+        
+        for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
+            // Ищем любой BINARY_OP или UNARY_OP между константами
+            if (i + 2 < bc->count) {
+                bytecode ins1 = bc->bytecodes[i];
+                bytecode ins2 = bc->bytecodes[i + 1];
+                bytecode ins3 = bc->bytecodes[skip_nops(bc, i + 2)];
+                
+                // Паттерн: LOAD_CONST LOAD_CONST BINARY_OP
+                if (ins1.op_code == LOAD_CONST && 
+                    ins2.op_code == LOAD_CONST && 
+                    ins3.op_code == BINARY_OP) {
+                    
+                    uint32_t const_idx1 = bytecode_get_arg(ins1);
+                    uint32_t const_idx2 = bytecode_get_arg(ins2);
+                    uint8_t binop = bytecode_get_arg(ins3) & 0xFF;
+                    
+                    if (const_idx1 < code->constants_count && 
+                        const_idx2 < code->constants_count) {
+                        
+                        Value a = code->constants[const_idx1];
+                        Value b = code->constants[const_idx2];
+                        
+                        if (is_constant_foldable(a, b, binop)) {
+                            Value result = fold_binary_constant(a, b, binop);
+                            size_t new_idx = find_or_add_constant(code, result, stats);
+                            
+                            if (new_idx != (size_t)-1) {
+                                // Заменяем три инструкции на одну
+                                bc->bytecodes[i] = bytecode_create_with_number(LOAD_CONST, new_idx);
+                                mark_as_nops(bc, i + 1, i + 2);
+                                stats->folded_constants++;
+                                stats->removed_instructions += 2;
+                                local_changed = 1;
+                                changed = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (local_changed) {
+            recalculate_jumps(bc);
+        }
+        
+    } while (local_changed);  // Исправлено: while (local_changed) вместо while (changed)
+    
+    return changed;
+}
 
 CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats) {
     if (!original || !original->code.bytecodes || !original->constants) {
@@ -448,23 +516,38 @@ CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats) {
     
     bytecode_array* bc = &optimized->code;
     int changed;
+    int iteration = 0;
     
     do {
         changed = 0;
+        iteration++;
         
-        // Шаг 1: Сворачиваем цепочки операций
+        DPRINT("[JIT-CF] Iteration %d\n", iteration);
+        
+        // Шаг 1: Агрессивное сворачивание базовых операций
+        if (aggressive_constant_folding(optimized, bc, stats)) {
+            changed = 1;
+            // Не вызываем recalculate_jumps здесь - она уже вызвана внутри aggressive_constant_folding
+        }
+        
+        // Шаг 2: Сворачивание длинных цепочек
         if (find_and_fold_chains(optimized, bc, stats)) {
             changed = 1;
             recalculate_jumps(bc);
-            continue;
         }
         
-        // Шаг 2: Оптимизация условий if
+        // Шаг 3: Оптимизация условий if
         optimize_constant_ifs(optimized, bc, stats);
         if (stats->peephole_optimizations > 0) {
             changed = 1;
             recalculate_jumps(bc);
             stats->peephole_optimizations = 0; // Сброс для следующей итерации
+        }
+        
+        // Лимит итераций для безопасности
+        if (iteration > 100) {
+            DPRINT("[JIT-CF] Warning: reached iteration limit\n");
+            break;
         }
         
     } while (changed && bc->count > 0);
@@ -475,7 +558,6 @@ CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats) {
     DPRINT("[JIT-CF] Optimization complete:\n");
     DPRINT("  Folded constants: %zu\n", stats->folded_constants);
     DPRINT("  Removed instructions: %zu\n", stats->removed_instructions);
-    DPRINT("  Peephole optimizations: %zu\n", stats->peephole_optimizations);
     DPRINT("  Original size: %zu, Optimized size: %zu\n", 
            original->code.count, bc->count);
     
