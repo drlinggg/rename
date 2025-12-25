@@ -130,6 +130,11 @@ int main(int argc, char** argv) {
     module_code.constants = result->constants;
     module_code.constants_count = result->constants_count;
 
+    if (debug_enabled) {
+        DPRINT("[RUNNER] Module bytecode listing:\n");
+        bytecode_array_print(&module_code.code);
+    }
+
     clock_t start_time = clock();
     // Execute module top-level code (defines functions and globals)
     Object* module_res = vm_execute(vm, &module_code);

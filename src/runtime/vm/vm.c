@@ -723,6 +723,13 @@ static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
     // Освобождаем временные объекты
     GC_DECREF_IF_NEEDED(frame, index_obj);
     GC_DECREF_IF_NEEDED(frame, array_obj);
+
+    /* Debug: log stores to the main benchmark array (size 1000) for low indices */
+    if (debug_enabled && array_obj && array_obj->type == OBJ_ARRAY && array_obj->as.array.size == 1000 && index >= 0 && index < 30) {
+        int64_t val = 0;
+        if (value_obj && value_obj->type == OBJ_INT) val = value_obj->as.int_value;
+        DPRINT("[VM] STORE_SUBSCR: array=%p idx=%lld <- %lld (old=%lld)\n", (void*)array_obj, (long long)index, (long long)val, (long long)(old_element ? old_element->as.int_value : 0));
+    }
 }
 
 static void op_LOAD_FAST(Frame* frame, uint32_t arg) {
@@ -1260,8 +1267,36 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     
     // Сравниваем и меняем если нужно
     if (a->as.int_value > b->as.int_value) {
-        array_obj->as.array.items[j] = b;
-        array_obj->as.array.items[j_plus_1] = a;
+        DPRINT("[VM] COMPARE_AND_SWAP: swapping indices %lld and %lld (vals %lld > %lld) frame=%p\n",
+            (long long)j, (long long)j_plus_1,
+            (long long)(a ? a->as.int_value : 0), (long long)(b ? b->as.int_value : 0), (void*)frame);
+        /* Preserve old pointers and update refcounts similarly to STORE_SUBSCR
+         * to avoid premature frees or leaks when swapping elements. */
+        Object* old_a = array_obj->as.array.items[j];
+        Object* old_b = array_obj->as.array.items[j_plus_1];
+
+        /* Place b into position j */
+        array_obj->as.array.items[j] = old_b;
+        GC_INCREF_IF_NEEDED(frame, old_b);
+        GC_DECREF_IF_NEEDED(frame, old_a);
+
+        /* Place a into position j+1 */
+        array_obj->as.array.items[j_plus_1] = old_a;
+        GC_INCREF_IF_NEEDED(frame, old_a);
+        GC_DECREF_IF_NEEDED(frame, old_b);
+
+        /* Debug: print post-swap values and a quick sanity check */
+        Object* new_a = array_obj->as.array.items[j];
+        Object* new_b = array_obj->as.array.items[j_plus_1];
+        DPRINT("[VM] COMPARE_AND_SWAP: after swap indices %lld=%lld, %lld=%lld\n",
+            (long long)j, (long long)(new_a ? new_a->as.int_value : 0),
+            (long long)j_plus_1, (long long)(new_b ? new_b->as.int_value : 0));
+    #ifdef DEBUG
+        if (new_a && new_b && new_a->as.int_value > new_b->as.int_value) {
+            DPRINT("[VM] COMPARE_AND_SWAP: sanity check FAILED at frame=%p for indices %lld,%lld\n",
+            (void*)frame, (long long)j, (long long)j_plus_1);
+        }
+    #endif
     }
     
     // Освобождаем временные объекты (индексы)

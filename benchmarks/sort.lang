@@ -1,7 +1,5 @@
 void swap(int[] array, int i, int j) {
-    int temp = array[i];
-    array[i] = array[j];
-    array[j] = temp;
+
 }
 
 void bubble_sort(int[] array, int size) {
@@ -9,83 +7,23 @@ void bubble_sort(int[] array, int size) {
     for (int i = 0; i < size - 1; i = i + 1) {
         for (int j = 0; j < size - 1 - i; j = j + 1) {
             if (array[j] > array[j + 1]) {
-                swap(array, j, j+1);
+                temp = array[j + 1];
+                array[j + 1] = array[j];
+                array[j] = temp;
             }
         }
-    }
-}
-
-void quicksort_iterative(int[] arr, int left, int right) {
-    // Создаем стек для хранения границ
-    int[1000000] stack;  // Большой стек на 1М элементов
-    int top = -1;
-    
-    // Помещаем начальные границы в стек
-    top = top + 1;
-    stack[top] = left;
-    top = top + 1;
-    stack[top] = right;
-    
-    // Пока стек не пуст
-    while (top >= 0) {
-        // Извлекаем правую и левую границы
-        right = stack[top];
-        top = top - 1;
-        left = stack[top];
-        top = top - 1;
-        
-        // Разделяем массив
-        int pivot = arr[right];
-        int i = left - 1;
-        
-        for (int j = left; j < right; j = j + 1) {
-            if (arr[j] <= pivot) {
-                i = i + 1;
-                int temp = arr[i];
-                arr[i] = arr[j];
-                arr[j] = temp;
-            }
-        }
-        
-        int temp = arr[i + 1];
-        arr[i + 1] = arr[right];
-        arr[right] = temp;
-        
-        int pi = i + 1;
-        
-        // Если есть элементы слева от опорного, помещаем в стек
-        if (pi - 1 > left) {
-            top = top + 1;
-            stack[top] = left;
-            top = top + 1;
-            stack[top] = pi - 1;
-        }
-        
-        // Если есть элементы справа от опорного, помещаем в стек
-        if (pi + 1 < right) {
-            top = top + 1;
-            stack[top] = pi + 1;
-            top = top + 1;
-            stack[top] = right;
-        }
-    }
-}
-
-void quicksort(int[] arr, int size) {
-    if (size > 1) {
-        quicksort_iterative(arr, 0, size - 1);
     }
 }
 
 int main() {
-    int n = 10000;
+    int n = 2000;
     int[n] numbers;
     
     for (int i = 0; i < n; i = i + 1) {
         numbers[i] = randint(1, 500);
     }
 
-    quicksort(numbers, n);
-    //bubble_sort(numbers, n);
+    bubble_sort(numbers, n);
+    print(numbers);
     return 0;
 }

@@ -1,18 +1,21 @@
 #ifndef CMPSWAP_H
 #define CMPSWAP_H
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+#include "../../compiler/bytecode.h"
+#include "../../compiler/value.h"
 
-// Структура для паттерна поиска
 typedef struct {
-    uint32_t array_index;      // Index of array in locals
-    uint32_t j_index;          // Index of loop variable j
-    uint32_t const_one_index;  // Index of constant 1
-} PatternInfo;
+    size_t optimized_patterns;
+} CmpswapStats;
 
-int is_sorting_function(void* code);
-void* jit_optimize_compare_and_swap(void* jit, void* original);
+typedef struct {
+    size_t array_local_idx;   // индекс массива в локальных переменных
+    size_t index_local_idx;   // индекс переменной цикла (j/i)
+    size_t temp_local_idx;    // индекс временной переменной (если есть)
+    size_t const_one_idx;     // индекс константы 1
+} PatternMatch;
+
+int has_sorting_pattern(CodeObj* code);
+CodeObj* jit_optimize_cmpswap(CodeObj* original, CmpswapStats* stats);
 
 #endif // CMPSWAP_H

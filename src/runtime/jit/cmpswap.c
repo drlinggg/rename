@@ -1,322 +1,369 @@
 #include "cmpswap.h"
-#include "../../compiler/bytecode.h"
-#include "../../compiler/value.h"
-#include "../../runtime/vm/vm.h"
 #include "../../system.h"
 #include <string.h>
+#include <stdlib.h>
 
-static int is_load_fast_with_index(bytecode bc, uint32_t expected_index) {
-    return (bc.op_code == LOAD_FAST && bytecode_get_arg(bc) == expected_index);
+// Вспомогательные функции
+static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMatch* match);
+static int is_binary_add(bytecode bc);
+static int is_binary_gt(bytecode bc);
+static int is_load_local_with_idx(bytecode bc, size_t idx);
+static int is_store_local_with_idx(bytecode bc, size_t idx);
+static CodeObj* deep_copy_codeobj(CodeObj* original);
+static void recalculate_jumps(bytecode_array* bc);
+
+// Проверка, является ли инструкция BINARY_OP ADD
+static int is_binary_add(bytecode bc) {
+    if (bc.op_code != BINARY_OP) return 0;
+    uint32_t arg = bytecode_get_arg(bc);
+    // ADD обычно имеет код 0x00
+    return arg == 0x00;
 }
 
-// arr[j] > arr[j+1]
-static int find_bubble_sort_pattern(bytecode_array* code, size_t* start, size_t* end) {
-    if (!code || !code->bytecodes || code->count < 25) {
-        return 0;
-    }
-    
-    for (size_t i = 0; i <= code->count - 25; i++) {
-        bytecode* bc = &code->bytecodes[i];
-        
-        // 1. if (arr[j] > arr[j+1]) {
-        // 2.   temp = arr[j];
-        // 3.   arr[j] = arr[j+1];
-        // 4.   arr[j+1] = temp;
-        // }
-        
-        // Шаг 1: if condition
-        if (bc[0].op_code != LOAD_FAST || bc[1].op_code != LOAD_FAST ||
-            bc[2].op_code != LOAD_SUBSCR || bc[3].op_code != LOAD_FAST ||
-            bc[4].op_code != LOAD_FAST || bc[5].op_code != LOAD_CONST ||
-            bc[6].op_code != BINARY_OP || bc[7].op_code != LOAD_SUBSCR ||
-            bc[8].op_code != BINARY_OP || bc[9].op_code != POP_JUMP_IF_FALSE) {
-            continue;
-        }
-        
-        if ((bytecode_get_arg(bc[6]) & 0xFF) != 0x00 ||  // ADD
-            (bytecode_get_arg(bc[8]) & 0xFF) != 0x54) {  // GT
-            continue;
-        }
-        
-        // Шаг 2: temp = arr[j] (должен следовать сразу)
-        if (i + 10 >= code->count) continue;
-        if (bc[10].op_code != LOAD_FAST || bc[11].op_code != LOAD_FAST ||
-            bc[12].op_code != LOAD_SUBSCR || bc[13].op_code != STORE_FAST) {
-            continue;
-        }
-        
-        // Проверяем что индексы совпадают
-        uint32_t array_idx = bytecode_get_arg(bc[0]);
-        uint32_t j_idx = bytecode_get_arg(bc[1]);
-        
-        if (bytecode_get_arg(bc[10]) != array_idx ||
-            bytecode_get_arg(bc[11]) != j_idx) {
-            continue;
-        }
-        
-        // Шаг 3: arr[j] = arr[j+1]
-        if (i + 14 >= code->count) continue;
-        if (bc[14].op_code != LOAD_FAST || bc[15].op_code != LOAD_FAST ||
-            bc[16].op_code != LOAD_CONST || bc[17].op_code != BINARY_OP ||
-            bc[18].op_code != LOAD_SUBSCR || bc[19].op_code != STORE_SUBSCR) {
-            continue;
-        }
-        
-        // Шаг 4: arr[j+1] = temp
-        if (i + 20 >= code->count) continue;
-        if (bc[20].op_code != LOAD_FAST ||  // temp
-            bc[21].op_code != LOAD_FAST ||  // array
-            bc[22].op_code != LOAD_FAST ||  // j
-            bc[23].op_code != LOAD_CONST || // 1
-            bc[24].op_code != BINARY_OP) {  // ADD
-            continue;
-        }
-        
-        // Нашли полный паттерн!
-        *start = i;
-        *end = i + 24; // Последняя инструкция перед STORE_SUBSCR
-        
-        DPRINT("[JIT] Found complete bubble pattern at %zu-%zu\n", *start, *end);
-        return 1;
-    }
-    
-    return 0;
+// Проверка, является ли инструкция BINARY_OP GT
+static int is_binary_gt(bytecode bc) {
+    if (bc.op_code != BINARY_OP) return 0;
+    uint32_t arg = bytecode_get_arg(bc);
+    // GT (greater than) обычно имеет код 0x54
+    return arg == 0x54;
 }
 
-// arr[i] > pivot
-static int find_quicksort_pattern(bytecode_array* code, size_t* start, size_t* end) {
-    if (!code || !code->bytecodes || code->count < 8) {
-        return 0;
-    }
-    
-    for (size_t i = 0; i <= code->count - 8; i++) {
-        bytecode* bc = &code->bytecodes[i];
-        
-        // Ищем любой паттерн сравнения элементов массива
-        // LOAD_FAST arr, LOAD_FAST index, LOAD_SUBSCR, 
-        // LOAD_FAST something, BINARY_OP COMPARE, POP_JUMP_IF_FALSE
-        if (bc[0].op_code != LOAD_FAST || 
-            bc[1].op_code != LOAD_FAST || 
-            bc[2].op_code != LOAD_SUBSCR ||
-            bc[3].op_code != LOAD_FAST ||
-            bc[4].op_code != BINARY_OP ||
-            bc[5].op_code != POP_JUMP_IF_FALSE) {
-            continue;
-        }
-        
-        uint32_t compare_op = bytecode_get_arg(bc[4]) & 0xFF;
-        if (compare_op != 0x53 && // LESS_THAN
-            compare_op != 0x54 && // GREATER_THAN
-            compare_op != 0x55) { // LESS_EQUAL
-            continue;
-        }
-        
-        *start = i;
-        
-        // Ищем ближайший конец блока
-        size_t potential_end = i + 6;
-        size_t max_search = i + 30;
-        if (max_search > code->count) max_search = code->count;
-        
-        for (size_t j = i + 6; j < max_search; j++) {
-            if (code->bytecodes[j].op_code == JUMP_BACKWARD || 
-                code->bytecodes[j].op_code == JUMP_FORWARD) {
-                potential_end = j;
-                break;
-            }
-        }
-        
-        *end = potential_end;
-        return 1;
-    }
-    
-    return 0;
+// Проверка LOAD_FAST с определенным индексом
+static int is_load_local_with_idx(bytecode bc, size_t idx) {
+    if (bc.op_code != LOAD_FAST) return 0;
+    return bytecode_get_arg(bc) == idx;
 }
 
-// General
-static int find_sorting_pattern_in_bytecode(bytecode_array* code, size_t* start, size_t* end) {
-    // Сначала ищем пузырек
-    if (find_bubble_sort_pattern(code, start, end)) {
-        DPRINT("[JIT] Found bubble sort pattern\n");
-        return 1;
-    }
-    
-    // Потом быструю сортировку
-    if (find_quicksort_pattern(code, start, end)) {
-        DPRINT("[JIT] Found quicksort pattern\n");
-        return 1;
-    }
-    
-    return 0;
+// Проверка STORE_FAST с определенным индексом
+static int is_store_local_with_idx(bytecode bc, size_t idx) {
+    if (bc.op_code != STORE_FAST) return 0;
+    return bytecode_get_arg(bc) == idx;
 }
 
-static int extract_pattern_info(bytecode_array* code, size_t pattern_start, PatternInfo* info) {
-    if (!code || pattern_start + 9 >= code->count) {
-        return 0;
-    }
+// Поиск паттерна пузырьковой сортировки
+static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMatch* match) {
+    if (start + 25 >= bc->count) return 0;
     
-    bytecode* bc = &code->bytecodes[pattern_start];
+    bytecode* ins = &bc->bytecodes[start];
     
-    if (bc[0].op_code == LOAD_FAST && bc[1].op_code == LOAD_FAST &&
-        bc[2].op_code == LOAD_SUBSCR && bc[3].op_code == LOAD_FAST) {
-        
-        info->array_index = bytecode_get_arg(bc[0]);
-        info->j_index = bytecode_get_arg(bc[1]);
-        info->const_one_index = bytecode_get_arg(bc[5]);
-        
-        if (bytecode_get_arg(bc[3]) != info->array_index) {
-            DPRINT("[JIT] Warning: Inconsistent array indices\n");
-            return 0;
-        }
-        
-        if (bytecode_get_arg(bc[4]) != info->j_index) {
-            DPRINT("[JIT] Warning: Inconsistent j indices\n");
-            return 0;
-        }
-        
-        DPRINT("[JIT] Extracted pattern: array@%u, j@%u, const_1@%u\n",
-               info->array_index, info->j_index, info->const_one_index);
-        
-        return 1;
-    }
+    // Шаг 1: if (arr[j] > arr[j+1])
+    // arr[j]
+    if (!is_load_local_with_idx(ins[0], 0)) return 0;  // array (локальная 0)
+    if (!is_load_local_with_idx(ins[1], 4)) return 0;  // j (локальная 4, как видно из байткода)
+    if (ins[2].op_code != LOAD_SUBSCR) return 0;
     
-    return 0;
-}
-
-static bytecode_array generate_compare_and_swap_code(PatternInfo* info) {
-    bytecode new_instructions[6];
+    // arr[j+1]
+    if (!is_load_local_with_idx(ins[3], 0)) return 0;  // array
+    if (!is_load_local_with_idx(ins[4], 4)) return 0;  // j
+    if (ins[5].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[6])) return 0;
+    if (ins[7].op_code != LOAD_SUBSCR) return 0;
     
-    new_instructions[0] = bytecode_create_with_number(LOAD_FAST, info->array_index);
-    new_instructions[1] = bytecode_create_with_number(LOAD_FAST, info->j_index);
-    new_instructions[2] = bytecode_create_with_number(LOAD_FAST, info->j_index);
-    new_instructions[3] = bytecode_create_with_number(LOAD_CONST, info->const_one_index);
-    new_instructions[4] = bytecode_create_with_number(BINARY_OP, 0x000000);
-    new_instructions[5] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x000000);
+    // Сравнение >
+    if (!is_binary_gt(ins[8])) return 0;
+    if (ins[9].op_code != POP_JUMP_IF_FALSE) return 0;
     
-    bytecode* bc_copy = malloc(6 * sizeof(bytecode));
-    if (!bc_copy) {
-        bytecode_array empty = {0};
-        return empty;
-    }
+    // Запоминаем индексы
+    match->array_local_idx = bytecode_get_arg(ins[0]);
+    match->index_local_idx = bytecode_get_arg(ins[1]);
+    match->const_one_idx = bytecode_get_arg(ins[5]);
     
-    memcpy(bc_copy, new_instructions, 6 * sizeof(bytecode));
-    return create_bytecode_array(bc_copy, 6);
-}
-
-static int replace_pattern(bytecode_array* code, size_t pattern_start, size_t pattern_end, 
-                          PatternInfo* info) {
-    if (!code || pattern_end <= pattern_start || pattern_end >= code->count) {
-        return 0;
-    }
+    // Шаг 2: temp = arr[j+1] (в коде: int temp = array[j + 1])
+    if (!is_load_local_with_idx(ins[10], 0)) return 0;  // array
+    if (!is_load_local_with_idx(ins[11], 4)) return 0;  // j
+    if (ins[12].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[13])) return 0;
+    if (ins[14].op_code != LOAD_SUBSCR) return 0;
+    if (ins[15].op_code != STORE_FAST) return 0;
     
-    bytecode_array optimized = generate_compare_and_swap_code(info);
-    if (optimized.count == 0) {
-        return 0;
-    }
+    match->temp_local_idx = bytecode_get_arg(ins[15]);
     
-    size_t old_size = pattern_end - pattern_start + 1;
-    size_t new_size = optimized.count;
+    // Шаг 3: array[j + 1] = array[j]
+    if (!is_load_local_with_idx(ins[16], 0)) return 0;  // array
+    if (!is_load_local_with_idx(ins[17], 4)) return 0;  // j
+    if (ins[18].op_code != LOAD_SUBSCR) return 0;
+    if (!is_load_local_with_idx(ins[19], 0)) return 0;  // array
+    if (!is_load_local_with_idx(ins[20], 4)) return 0;  // j
+    if (ins[21].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[22])) return 0;
+    if (ins[23].op_code != STORE_SUBSCR) return 0;
     
-    DPRINT("[JIT] Replacing %zu instructions with %zu optimized instructions\n", 
-           old_size, new_size);
+    // Шаг 4: array[j] = temp
+    if (!is_load_local_with_idx(ins[24], match->temp_local_idx)) return 0;
+    if (!is_load_local_with_idx(ins[25], 0)) return 0;  // array
+    if (!is_load_local_with_idx(ins[26], 4)) return 0;  // j
+    if (ins[27].op_code != STORE_SUBSCR) return 0;
     
-    size_t new_total = code->count - old_size + new_size;
-    bytecode* new_bytecodes = malloc(new_total * sizeof(bytecode));
-    if (!new_bytecodes) {
-        free_bytecode_array(optimized);
-        return 0;
-    }
-    
-    memcpy(new_bytecodes, code->bytecodes, pattern_start * sizeof(bytecode));
-    memcpy(&new_bytecodes[pattern_start], optimized.bytecodes, new_size * sizeof(bytecode));
-    
-    size_t after_pattern = pattern_end + 1;
-    size_t remaining = code->count - after_pattern;
-    memcpy(&new_bytecodes[pattern_start + new_size], 
-           &code->bytecodes[after_pattern], 
-           remaining * sizeof(bytecode));
-    
-    free(code->bytecodes);
-    code->bytecodes = new_bytecodes;
-    code->count = new_total;
-    code->capacity = new_total;
-    
-    free_bytecode_array(optimized);
     return 1;
 }
 
-int is_sorting_function(void* code_ptr) {
-    CodeObj* code = (CodeObj*)code_ptr;
-    if (!code || !code->code.bytecodes) {
-        return 0;
-    }
+// Глубокая копия CodeObj
+static CodeObj* deep_copy_codeobj(CodeObj* original) {
+    if (!original) return NULL;
     
-    size_t start, end;
-    return find_sorting_pattern_in_bytecode(&code->code, &start, &end);
-}
-
-void* jit_optimize_compare_and_swap(void* jit_ptr, void* original_ptr) {
-    CodeObj* original = (CodeObj*)original_ptr;
+    CodeObj* copy = malloc(sizeof(CodeObj));
+    if (!copy) return NULL;
     
-    DPRINT("[JIT] Checking function: %s\n", 
-           original->name ? original->name : "anonymous");
-    DPRINT("[JIT] Bytecode count: %zu\n", original->code.count);
+    copy->name = original->name ? strdup(original->name) : NULL;
+    copy->local_count = original->local_count;
+    copy->arg_count = original->arg_count;
+    copy->constants_count = original->constants_count;
     
-    for (int i = 0; i < 20 && i < original->code.count; i++) {
-        bytecode bc = original->code.bytecodes[i];
-        bytecode_print(&bc);
-    }
-    size_t pattern_start, pattern_end;
-    if (!find_sorting_pattern_in_bytecode(&original->code, &pattern_start, &pattern_end)) {
-        DPRINT("[JIT] No sorting pattern found\n");
-        return NULL;
-    }
-    
-    // Extract pattern information
-    PatternInfo info;
-    if (!extract_pattern_info(&original->code, pattern_start, &info)) {
-        DPRINT("[JIT] Failed to extract pattern information\n");
-        return NULL;
-    }
-    
-    // Create optimized copy
-    CodeObj* optimized = malloc(sizeof(CodeObj));
-    if (!optimized) {
-        return NULL;
-    }
-    
-    // Copy basic information
-    optimized->name = original->name ? strdup(original->name) : NULL;
-    optimized->local_count = original->local_count;
-    optimized->constants_count = original->constants_count;
-    optimized->arg_count = original->arg_count;
-    
-    // Copy constants
     if (original->constants_count > 0 && original->constants) {
-        optimized->constants = malloc(original->constants_count * sizeof(Value));
-        memcpy(optimized->constants, original->constants, 
+        copy->constants = malloc(original->constants_count * sizeof(Value));
+        if (!copy->constants) {
+            free(copy->name);
+            free(copy);
+            return NULL;
+        }
+        memcpy(copy->constants, original->constants,
                original->constants_count * sizeof(Value));
     } else {
-        optimized->constants = NULL;
+        copy->constants = NULL;
     }
     
-    // Copy bytecode
-    optimized->code.count = original->code.count;
-    optimized->code.capacity = original->code.count;
-    optimized->code.bytecodes = malloc(original->code.count * sizeof(bytecode));
-    memcpy(optimized->code.bytecodes, original->code.bytecodes, 
+    copy->code.count = original->code.count;
+    copy->code.capacity = original->code.count;
+    copy->code.bytecodes = malloc(original->code.count * sizeof(bytecode));
+    if (!copy->code.bytecodes) {
+        free(copy->constants);
+        free(copy->name);
+        free(copy);
+        return NULL;
+    }
+    memcpy(copy->code.bytecodes, original->code.bytecodes,
            original->code.count * sizeof(bytecode));
     
-    // Apply optimization
-    if (!replace_pattern(&optimized->code, pattern_start, pattern_end, &info)) {
-        DPRINT("[JIT] Failed to apply optimization\n");
-        free(optimized->code.bytecodes);
-        if (optimized->constants) free(optimized->constants);
-        if (optimized->name) free(optimized->name);
-        free(optimized);
+    return copy;
+}
+
+// Пересчет прыжков (упрощенная версия)
+// Улучшенный пересчет прыжков
+static void recalculate_jumps(bytecode_array* bc) {
+    // Шаг 1: Строим карту старых позиций -> новых позиций
+    size_t* old_to_new = malloc(bc->count * sizeof(size_t));
+    size_t new_count = 0;
+    
+    for (size_t i = 0; i < bc->count; i++) {
+        if (bc->bytecodes[i].op_code != NOP) {
+            old_to_new[i] = new_count++;
+        } else {
+            old_to_new[i] = (size_t)-1; // Помечаем как удаленную
+        }
+    }
+    
+    // Шаг 2: Пересчитываем аргументы инструкций прыжков
+    size_t new_idx = 0;
+    for (size_t old_idx = 0; old_idx < bc->count; old_idx++) {
+        if (bc->bytecodes[old_idx].op_code == NOP) {
+            continue;
+        }
+        
+        bytecode* ins = &bc->bytecodes[old_idx];
+        uint8_t op = ins->op_code;
+        
+        // Проверяем, является ли инструкция прыжком
+        int is_jump = (op == JUMP_FORWARD || op == JUMP_BACKWARD || 
+                      op == POP_JUMP_IF_FALSE || op == POP_JUMP_IF_TRUE);
+        
+        if (is_jump) {
+            uint32_t old_target;
+            uint32_t old_arg = bytecode_get_arg(*ins);
+            
+            // Вычисляем старую цель прыжка
+            if (op == JUMP_BACKWARD) {
+                old_target = old_idx - old_arg;
+            } else {
+                // JUMP_FORWARD, POP_JUMP_IF_FALSE, POP_JUMP_IF_TRUE
+                old_target = old_idx + old_arg + 1; // +1 потому что прыжок вперед считается от следующей инструкции
+            }
+            
+            // Проверяем, что цель в пределах массива
+            if (old_target < bc->count) {
+                // Находим новую цель
+                size_t new_target = old_to_new[old_target];
+                
+                // Если цель была удалена, находим ближайшую живую инструкцию
+                if (new_target == (size_t)-1) {
+                    // Ищем вперед или назад в зависимости от типа прыжка
+                    if (op == JUMP_BACKWARD) {
+                        for (size_t t = old_target; t > 0; t--) {
+                            if (old_to_new[t] != (size_t)-1) {
+                                new_target = old_to_new[t];
+                                break;
+                            }
+                        }
+                    } else {
+                        for (size_t t = old_target; t < bc->count; t++) {
+                            if (old_to_new[t] != (size_t)-1) {
+                                new_target = old_to_new[t];
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // Вычисляем новый аргумент
+                uint32_t new_arg;
+                if (op == JUMP_BACKWARD) {
+                    if (new_target >= new_idx) {
+                        // Некорректный прыжок назад - делаем NOP
+                        ins->op_code = NOP;
+                        continue;
+                    }
+                    new_arg = (uint32_t)(new_idx - new_target);
+                } else {
+                    if (new_target <= new_idx) {
+                        // Некорректный прыжок вперед - делаем NOP
+                        ins->op_code = NOP;
+                        continue;
+                    }
+                    new_arg = (uint32_t)(new_target - new_idx - 1);
+                }
+                
+                // Обновляем инструкцию
+                *ins = bytecode_create_with_number(op, new_arg);
+            } else {
+                // Цель вне границ - делаем NOP
+                ins->op_code = NOP;
+            }
+        }
+        
+        new_idx++;
+    }
+    
+    // Шаг 3: Удаляем NOP инструкции
+    bytecode* new_array = malloc(new_count * sizeof(bytecode));
+    size_t idx = 0;
+    
+    for (size_t i = 0; i < bc->count; i++) {
+        if (bc->bytecodes[i].op_code != NOP) {
+            new_array[idx++] = bc->bytecodes[i];
+        }
+    }
+    
+    free(bc->bytecodes);
+    bc->bytecodes = new_array;
+    bc->count = new_count;
+    bc->capacity = new_count;
+    
+    free(old_to_new);
+}
+
+// Замена паттерна на COMPARE_AND_SWAP
+static void replace_with_cmpswap(bytecode_array* bc, size_t start, PatternMatch* match) {
+    // Помечаем старые инструкции как NOP (28 инструкций в паттерне)
+    for (size_t i = start; i < start + 28 && i < bc->count; i++) {
+        bc->bytecodes[i].op_code = NOP;
+    }
+    
+    // Вставляем новые инструкции на место первой инструкции паттерна
+    // 1. LOAD_FAST array
+    bc->bytecodes[start] = bytecode_create_with_number(LOAD_FAST, match->array_local_idx);
+    
+    // 2. LOAD_FAST j
+    bc->bytecodes[start + 1] = bytecode_create_with_number(LOAD_FAST, match->index_local_idx);
+    
+    // 3. LOAD_FAST j (снова, для j+1)
+    bc->bytecodes[start + 2] = bytecode_create_with_number(LOAD_FAST, match->index_local_idx);
+    
+    // 4. LOAD_CONST 1
+    bc->bytecodes[start + 3] = bytecode_create_with_number(LOAD_CONST, match->const_one_idx);
+    
+    // 5. BINARY_OP ADD (вычисляем j+1)
+    bc->bytecodes[start + 4] = bytecode_create_with_number(BINARY_OP, 0x00); // ADD
+    
+    // 6. COMPARE_AND_SWAP
+    bc->bytecodes[start + 5] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x00);
+    
+    // Оставшиеся позиции (start + 6 до start + 27) остаются как NOP
+}
+
+// Поиск всех паттернов в функции
+static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
+    bytecode_array* bc = &code->code;
+    int changed = 0;
+    
+    for (size_t i = 0; i < bc->count; i++) {
+        PatternMatch match;
+        if (match_bubble_sort_pattern(bc, i, &match)) {
+            DPRINT("[JIT-CMPSWAP] Found pattern at position %zu\n", i);
+            DPRINT("[JIT-CMPSWAP] array_idx=%zu, index_idx=%zu, const_idx=%zu, temp_idx=%zu\n",
+                   match.array_local_idx, match.index_local_idx, 
+                   match.const_one_idx, match.temp_local_idx);
+            
+            replace_with_cmpswap(bc, i, &match);
+            stats->optimized_patterns++;
+            changed = 1;
+            
+            // Пропускаем замененный паттерн
+            i += 27; // 28 инструкций - 1 (уже инкрементируется в цикле)
+        }
+    }
+    
+    if (changed) {
+        DPRINT("[JIT-CMPSWAP] Recalculating jumps...\n");
+        recalculate_jumps(bc);
+    }
+    
+    return changed;
+}
+
+int has_sorting_pattern(CodeObj* code) {
+    if (!code || !code->code.bytecodes) return 0;
+    
+    PatternMatch match;
+    for (size_t i = 0; i < code->code.count; i++) {
+        if (match_bubble_sort_pattern(&code->code, i, &match)) {
+            DPRINT("[JIT-CMPSWAP] Found sorting pattern at position %zu\n", i);
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+CodeObj* jit_optimize_cmpswap(CodeObj* original, CmpswapStats* stats) {
+    if (!original || !original->code.bytecodes || !original->constants) {
+        DPRINT("[JIT-CMPSWAP] Invalid input\n");
         return NULL;
     }
     
-    DPRINT("[JIT] Successfully optimized function\n");
-    return optimized;
+    DPRINT("[JIT-CMPSWAP] Starting optimization for '%s'\n",
+           original->name ? original->name : "anonymous");
+    
+    memset(stats, 0, sizeof(CmpswapStats));
+    
+    // Проверяем, есть ли паттерн
+    if (!has_sorting_pattern(original)) {
+        DPRINT("[JIT-CMPSWAP] No sorting patterns found\n");
+        return NULL;
+    }
+    
+    // Создаем копию для оптимизации
+    CodeObj* optimized = deep_copy_codeobj(original);
+    if (!optimized) {
+        DPRINT("[JIT-CMPSWAP] Failed to copy CodeObj\n");
+        return NULL;
+    }
+    
+    DPRINT("[JIT-CMPSWAP] Original bytecode size: %zu\n", original->code.count);
+    DPRINT("[JIT-CMPSWAP] Copied bytecode size: %zu\n", optimized->code.count);
+    
+    // Применяем оптимизацию
+    if (find_and_replace_patterns(optimized, stats)) {
+        DPRINT("[JIT-CMPSWAP] Optimization successful. Patterns optimized: %zu\n",
+               stats->optimized_patterns);
+        DPRINT("[JIT-CMPSWAP] Optimized bytecode size: %zu\n", optimized->code.count);
+        return optimized;
+    }
+    
+    // Если оптимизация не применилась, освобождаем память
+    DPRINT("[JIT-CMPSWAP] Optimization did not apply\n");
+    free(optimized->code.bytecodes);
+    if (optimized->constants) free(optimized->constants);
+    if (optimized->name) free(optimized->name);
+    free(optimized);
+    
+    return NULL;
 }
