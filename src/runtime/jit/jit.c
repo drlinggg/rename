@@ -130,6 +130,7 @@ static CodeObj* deep_copy_codeobj(CodeObj* original) {
 }
 
 // Основная функция JIT-компиляции
+// Основная функция JIT-компиляции
 void* jit_compile_function(JIT* jit, void* code_ptr) {
     if (!jit || !code_ptr) {
         DPRINT("[JIT] Invalid parameters\n");
@@ -147,64 +148,60 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         return cached;
     }
     
+    CodeObj* optimized = original;
+    bool was_optimized = false;
+    
     // 2. Применяем свертку констант
     FoldStats cf_stats;
-    CodeObj* cf_optimized = jit_optimize_constant_folding(original, &cf_stats);
+    CodeObj* cf_result = jit_optimize_constant_folding(original, &cf_stats);
     
-    CodeObj* current_optimized = original;
-    
-    if (cf_optimized && cf_optimized != original) {
+    if (cf_result && cf_result != original) {
         DPRINT("[JIT] Constant folding: folded %zu constants, removed %zu instructions\n",
                cf_stats.folded_constants, cf_stats.removed_instructions);
-        current_optimized = cf_optimized;
-    } else if (cf_optimized && cf_optimized == original) {
-        // Создаем копию для дальнейших оптимизаций
-        current_optimized = deep_copy_codeobj(original);
+        optimized = cf_result;
+        was_optimized = true;
     }
     
     // 3. Применяем оптимизацию compare-and-swap
     CmpswapStats cas_stats;
-    CodeObj* cas_optimized = jit_optimize_cmpswap(current_optimized, &cas_stats);
+    CodeObj* cas_result = jit_optimize_cmpswap(optimized, &cas_stats);
     
-    if (cas_optimized && cas_optimized != current_optimized) {
+    if (cas_result && cas_result != optimized) {
         DPRINT("[JIT] Compare-and-swap: optimized %zu patterns\n",
                cas_stats.optimized_patterns);
         
-        // Освобождаем предыдущую оптимизированную версию, если она существует
-        if (current_optimized != original) {
-            free_code_obj(current_optimized);
+        // Освобождаем предыдущую оптимизированную версию, если нужно
+        if (was_optimized && optimized != original) {
+            free_code_obj(optimized);
         }
-        current_optimized = cas_optimized;
-    } else if (cas_optimized && cas_optimized == current_optimized) {
-        // Если оптимизация не применилась, но мы работаем с копией
-        // Оставляем current_optimized как есть
-    } else {
-        // Если cas_optimized == NULL и мы работаем с копией
-        // Нужно проверить, нужно ли добавить current_optimized в кэш
-        if (current_optimized != original && current_optimized) {
-            // Не было оптимизаций, но есть копия
-            // Освобождаем копию и возвращаем оригинал
-            free_code_obj(current_optimized);
-            current_optimized = original;
-        }
+        
+        optimized = cas_result;
+        was_optimized = true;
     }
     
-    // 4. Добавляем в кэш, если функция оптимизирована
-    if (current_optimized && current_optimized != original) {
-        jit_add_to_cache(jit, current_optimized);
+    // 4. Добавляем в кэш, если функция была оптимизирована
+    if (was_optimized && optimized) {
+        jit_add_to_cache(jit, optimized);
         
-        // Отладочный вывод байткода
         DPRINT("[JIT] Optimized bytecode for '%s':\n",
-               current_optimized->name ? current_optimized->name : "anonymous");
-        bytecode_array_print(&current_optimized->code);
+               optimized->name ? optimized->name : "anonymous");
+        bytecode_array_print(&optimized->code);
         
-        return current_optimized;
+        return optimized;
     }
     
-    DPRINT("[JIT] No optimizations applied for '%s'\n",
+    // 5. Если оптимизаций не было, но функция еще не в кэше
+    // Создаем копию и добавляем в кэш для будущего использования
+    CodeObj* copy = deep_copy_codeobj(original);
+    if (copy) {
+        jit_add_to_cache(jit, copy);
+        DPRINT("[JIT] Added '%s' to cache without optimizations\n",
+               copy->name ? copy->name : "anonymous");
+    }
+    
+    DPRINT("[JIT] No optimizations applied for '%s', returning original\n",
            original->name ? original->name : "anonymous");
     
-    // Возвращаем оригинал, если оптимизаций не было
     return original;
 }
 
