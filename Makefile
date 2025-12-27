@@ -2,6 +2,7 @@ CC = gcc
 CFLAGS = -I src -I src/AST -I src/lexer -I src/parser -I src/compiler -I src/runtime -I src/runtime/vm -I src/runtime/gc -I src/runtime/jit
 SRC_DIR = src
 TEST_DIR = tests
+LDFLAGS = -lm
 
 # Source files
 AST_SRC = $(SRC_DIR)/AST/ast.c
@@ -34,7 +35,7 @@ VM_BIGFLOAT_TEST = $(TEST_DIR)/runtime/test_vm_bigfloat.c
 BIGFLOAT_VM_TEST = $(TEST_DIR)/runtime/test_bigfloat.c
 
 # Targets
-all: test_ast test_lexer test_parser test_bytecode test_compiler test_vm
+all: test_ast test_lexer test_parser test_bytecode test_compiler test_vm test_vm_bigfloat test_bigfloat
 
 test_ast: $(AST_TEST) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC)
 	$(CC) $(CFLAGS) $(AST_TEST) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
@@ -46,19 +47,19 @@ test_parser: $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(SYSTEM_SRC) 
 	$(CC) $(CFLAGS) $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
 
 test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) -o $@
+	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) -o $@ $(LDFLAGS)  # ← ДОБАВЬТЕ ЗДЕСЬ
 
 test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
+	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@ $(LDFLAGS)  # ← И ЗДЕСЬ
 
 test_vm: $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ -lm
+	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
 
 test_vm_bigfloat: $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ -lm
+	$(CC) $(CFLAGS) $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
 
-test_bigfloat: $(BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@
+test_bigfloat: $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
+	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)  # ← И ЗДЕСЬ
 
 test: all
 	@echo "[Make] Running AST tests..."
@@ -79,7 +80,7 @@ test: all
 
 runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o bin/rename -lm
+	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o bin/rename $(LDFLAGS)
 
 run_benchmark: runner
 	@echo "[Make] Running benchmark: benchmarks/first_program.lang"
