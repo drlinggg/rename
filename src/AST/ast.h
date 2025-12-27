@@ -14,7 +14,7 @@ typedef struct { // debug info
 } SourceLocation;
 
 typedef enum {
-     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_NONE,
+     TYPE_INT, TYPE_LONG, TYPE_BOOL, TYPE_NONE, TYPE_FLOAT,
 } TypeVar;
 
 typedef enum NodeType {
@@ -38,6 +38,7 @@ typedef enum NodeType {
     NODE_BINARY_EXPRESSION,
     NODE_UNARY_EXPRESSION,
     NODE_LITERAL_EXPRESSION,
+    NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS,
     NODE_VARIABLE_EXPRESSION,
     NODE_FUNCTION_CALL_EXPRESSION,
 
@@ -78,6 +79,12 @@ typedef struct {
     TypeVar type;
     int64_t value;
 } LiteralExpression;
+
+typedef struct {
+    ASTNode base;
+    TypeVar type;
+    char* value; // long arithmetics
+} LiteralExpressionLongArithmetics;
 
 typedef struct {
     ASTNode base;
@@ -186,6 +193,7 @@ void ast_free(ASTNode* node);
 ASTNode* ast_new_binary_expression(SourceLocation loc, ASTNode* left, Token op, ASTNode* right);
 ASTNode* ast_new_unary_expression(SourceLocation loc, Token op, ASTNode* operand);
 ASTNode* ast_new_literal_expression(SourceLocation loc, TypeVar type, int64_t value);
+ASTNode* ast_new_literal_expression_long_arithmetics(SourceLocation loc, TypeVar type, const char* value);
 ASTNode* ast_new_variable_expression(SourceLocation loc, const char* name);
 ASTNode* ast_new_call_expression(SourceLocation loc, ASTNode* callee, ASTNode** args, int arg_count);
 ASTNode* ast_new_assignment_statement(SourceLocation loc, ASTNode* left, ASTNode* right);

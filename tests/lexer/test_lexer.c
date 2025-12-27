@@ -236,6 +236,139 @@ void test_function() {
     printf("Function test passed!\n\n");
 }
 
+void test_float_numbers() {
+    printf("Testing float numbers...\n");
+    
+    const char* code = "123.456 0.5 3.14159 1000.0 0.001 42. 3.14e-10";
+    FILE* temp = create_temp_file(code);
+    assert(temp != NULL);
+    
+    lexer* l = lexer_create_from_stream(temp, "test_float_numbers");
+    assert(l != NULL);
+    
+    const char* expected_values[] = {
+        "123.456", "0.5", "3.14159", "1000.0", 
+        "0.001", "42.", "3.14e-10", "EOF"
+    };
+    TokenType expected_types[] = {
+        FLOAT_LITERAL, FLOAT_LITERAL, FLOAT_LITERAL, FLOAT_LITERAL,
+        FLOAT_LITERAL, FLOAT_LITERAL, FLOAT_LITERAL, END_OF_FILE
+    };
+
+    Token* tokens = lexer_parse_file(l, "test_float_numbers");
+    assert(tokens != NULL);
+    
+    for (int i = 0; i < 8; i++) {
+        printf("  Expected: %s (type: %d), Got: %s (type: %d)\n", 
+               expected_values[i], expected_types[i], 
+               tokens[i].value, tokens[i].type);
+        
+        assert(strcmp(tokens[i].value, expected_values[i]) == 0);
+        assert(tokens[i].type == expected_types[i]);
+        
+        printf("  ✓ %s\n", tokens[i].value);
+    }
+    
+    for (int i = 0; tokens[i].type != END_OF_FILE || tokens[i].value != NULL; i++) {
+        free(tokens[i].value);
+    }
+    free(tokens);
+    
+    lexer_destroy(l);
+    printf("Float numbers test passed!\n\n");
+}
+
+void test_mixed_numbers() {
+    printf("Testing mixed int and float numbers...\n");
+    
+    const char* code = "123 45.67 890 1.0 0 3.14";
+    FILE* temp = create_temp_file(code);
+    assert(temp != NULL);
+    
+    lexer* l = lexer_create_from_stream(temp, "test_mixed_numbers");
+    assert(l != NULL);
+    
+    const char* expected_values[] = {
+        "123", "45.67", "890", "1.0", "0", "3.14", "EOF"
+    };
+    TokenType expected_types[] = {
+        INT_LITERAL, FLOAT_LITERAL, INT_LITERAL, FLOAT_LITERAL, 
+        INT_LITERAL, FLOAT_LITERAL, END_OF_FILE
+    };
+
+    Token* tokens = lexer_parse_file(l, "test_mixed_numbers");
+    assert(tokens != NULL);
+    
+    for (int i = 0; i < 6; i++) {
+        printf("  Token %d: %s (type: %d)\n", i, tokens[i].value, tokens[i].type);
+        assert(strcmp(tokens[i].value, expected_values[i]) == 0);
+        
+        if (strchr(expected_values[i], '.')) {
+            printf("  Expected FLOAT_LITERAL (21), got: %d\n", tokens[i].type);
+            if (tokens[i].type != 21) {
+                printf("  ERROR: Expected type 21 (FLOAT_LITERAL) but got %d\n", tokens[i].type);
+                assert(tokens[i].type == 21);
+            }
+        } else {
+            printf("  Expected INT_LITERAL (19), got: %d\n", tokens[i].type);
+            if (tokens[i].type != 19) {
+                printf("  ERROR: Expected type 19 (INT_LITERAL) but got %d\n", tokens[i].type);
+                assert(tokens[i].type == 19);
+            }
+        }
+        printf("  ✓ %s\n", tokens[i].value);
+    }
+    
+    for (int i = 0; tokens[i].type != END_OF_FILE || tokens[i].value != NULL; i++) {
+        free(tokens[i].value);
+    }
+    free(tokens);
+    
+    lexer_destroy(l);
+    printf("Mixed numbers test passed!\n\n");
+}
+
+void test_float_in_expression() {
+    printf("Testing float in expression...\n");
+    
+    const char* code = "x = 3.14 + 2.5 * (1.0 - 0.5)";
+    FILE* temp = create_temp_file(code);
+    assert(temp != NULL);
+    
+    lexer* l = lexer_create_from_stream(temp, "test_float_in_expression");
+    assert(l != NULL);
+    
+    const char* expected_values[] = {
+        "x", "=", "3.14", "+", "2.5", "*", "(", "1.0", "-", "0.5", ")", "EOF"
+    };
+    TokenType expected_types[] = {
+        IDENTIFIER, OP_ASSIGN, FLOAT_LITERAL, OP_PLUS, FLOAT_LITERAL,
+        OP_MULT, LPAREN, FLOAT_LITERAL, OP_MINUS, FLOAT_LITERAL, RPAREN,
+        END_OF_FILE
+    };
+
+    Token* tokens = lexer_parse_file(l, "test_float_in_expression");
+    assert(tokens != NULL);
+    
+    for (int i = 0; i < 12; i++) {
+        printf("  %s", tokens[i].value);
+        assert(strcmp(tokens[i].value, expected_values[i]) == 0);
+        
+        if (strchr(tokens[i].value, '.')) {
+            printf(" (float)");
+        }
+        printf("\n");
+    }
+    
+    for (int i = 0; tokens[i].type != END_OF_FILE || tokens[i].value != NULL; i++) {
+        free(tokens[i].value);
+    }
+    free(tokens);
+    
+    lexer_destroy(l);
+    printf("Float in expression test passed!\n\n");
+}
+
 // gcc tests/lexer/test_lexer.c src/lexer/lexer.c src/lexer/token.c
 int main() {
     debug_enabled = 1;
@@ -247,7 +380,10 @@ int main() {
     test_operators();
     test_expression();
     test_function();
-    
+    test_float_numbers();
+    test_mixed_numbers();
+    test_float_in_expression();
+
     printf("All tests passed! ✅\n");
     return 0;
 }

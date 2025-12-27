@@ -53,6 +53,7 @@ static Token* lexer_parse_identifier(lexer *l) {
     
     // Check for keywords
     if (strcmp(buffer, "int") == 0) return token_create(KW_INT, buffer, start_line, start_column);
+    if (strcmp(buffer, "float") == 0) return token_create(KW_FLOAT, buffer, start_line, start_column);
     if (strcmp(buffer, "void") == 0) return token_create(KW_VOID, buffer, start_line, start_column);
     if (strcmp(buffer, "bool") == 0) return token_create(KW_BOOL, buffer, start_line, start_column);
     if (strcmp(buffer, "long") == 0) return token_create(KW_LONG, buffer, start_line, start_column);
@@ -83,14 +84,62 @@ static Token* lexer_parse_number(lexer *l) {
     int i = 0;
     int start_line = l->line;
     int start_column = l->column;
+    int has_dot = 0;
+    int is_float = 0;
     
+    // Парсим целую часть
     while (isdigit(l->current_char) && i < 255) {
         buffer[i++] = l->current_char;
         lexer_advance(l);
     }
+    
+    // Проверяем точку (десятичную часть)
+    if (l->current_char == '.' && i < 254) {
+        buffer[i++] = '.';
+        lexer_advance(l);
+        has_dot = 1;
+        is_float = 1;
+        
+        // Парсим дробную часть
+        while (isdigit(l->current_char) && i < 255) {
+            buffer[i++] = l->current_char;
+            lexer_advance(l);
+        }
+    }
+    
+    // Проверяем экспоненциальную часть
+    if ((l->current_char == 'e' || l->current_char == 'E') && i < 254) {
+        buffer[i++] = l->current_char;
+        lexer_advance(l);
+        is_float = 1;
+        
+        // Проверяем знак экспоненты
+        if ((l->current_char == '+' || l->current_char == '-') && i < 254) {
+            buffer[i++] = l->current_char;
+            lexer_advance(l);
+        }
+        
+        // Парсим цифры экспоненты
+        if (isdigit(l->current_char)) {
+            while (isdigit(l->current_char) && i < 255) {
+                buffer[i++] = l->current_char;
+                lexer_advance(l);
+            }
+        } else {
+            // Ошибка: после e/E должна быть хотя бы одна цифра
+            buffer[i] = '\0';
+            return token_create(ERROR, buffer, start_line, start_column);
+        }
+    }
+    
     buffer[i] = '\0';
     
-    return token_create(INT_LITERAL, buffer, start_line, start_column);
+    // Возвращаем соответствующий токен
+    if (is_float) {
+        return token_create(FLOAT_LITERAL, buffer, start_line, start_column);
+    } else {
+        return token_create(INT_LITERAL, buffer, start_line, start_column);
+    }
 }
 
 static Token* lexer_next_token(lexer *l) {

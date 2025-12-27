@@ -1020,6 +1020,17 @@ static ASTNode* parser_parse_primary_expression(Parser* parser) {
             parser_advance(parser);
             return node;
         }
+        case FLOAT_LITERAL: {
+            char* value = strdup(current->value);
+            DPRINT("[PARSER] Found FLOAT_LITERAL: value=%s\n", value);
+            ASTNode* node = ast_new_literal_expression_long_arithmetics(loc, TYPE_FLOAT, value);
+            if (!node) {
+                DPRINT("[PARSER] ERROR: Failed to create LiteralExpression for float\n");
+                return NULL;
+            }
+            parser_advance(parser);
+            return node;
+        }
         case KW_TRUE:
         case KW_FALSE: {
             int value = (strcmp(current->value, "true") == 0) ? 1 : 0;
@@ -1114,9 +1125,10 @@ static ASTNode* parser_parse_precedence(Parser* parser, Precedence min_precedenc
             break;
         case IDENTIFIER:
         case INT_LITERAL:
+        case FLOAT_LITERAL:
+        case LONG_LITERAL:
         case KW_TRUE:
         case KW_FALSE:
-        case LONG_LITERAL:
         case LPAREN:
         case KW_NONE:
             left = parser_parse_primary_expression(parser);
@@ -1202,6 +1214,7 @@ static ASTNode* parser_parse_statement(Parser* parser) {
         case KW_INT:
         case KW_LONG:
         case KW_BOOL:
+        case KW_FLOAT:
             parser_advance(parser);
             Token* next_token = parser_peek(parser);
             

@@ -5,7 +5,7 @@ typedef enum TokenType {
     // 1. Keywords
 
     // 1.1 TYPES
-    KW_INT, KW_BOOL, KW_LONG, KW_VOID, // for functions
+    KW_INT, KW_FLOAT, KW_BOOL, KW_LONG, KW_VOID, // for functions
 
     // 1.2 Special constants
     KW_NONE, KW_TRUE, KW_FALSE,
@@ -23,8 +23,8 @@ typedef enum TokenType {
     
     // 3. Literals
     INT_LITERAL, 
-    //BOOL_LITERAL, 
     LONG_LITERAL,
+    FLOAT_LITERAL,
     
     // 4. Operators
 

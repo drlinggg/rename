@@ -54,7 +54,19 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
                 literal_expr->value = 0;
                 literal_expr->type = TYPE_INT;
             }
-            break;            
+            break;
+
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS:
+            // only for float literals for now
+            node = (ASTNode*)malloc(sizeof(LiteralExpressionLongArithmetics));
+            if (node) {
+                node->node_type = node_type;
+                node->location = loc;
+                LiteralExpressionLongArithmetics* long_literal_expr = (LiteralExpressionLongArithmetics*) node;
+                long_literal_expr->value = NULL;
+                long_literal_expr->type = TYPE_FLOAT;
+            }
+            break;
             
         case NODE_VARIABLE_EXPRESSION:
             node = (ASTNode*)malloc(sizeof(VariableExpression));
@@ -668,6 +680,15 @@ static ASTNode* ast_node_copy(ASTNode* original) {
             *copy = *orig;
             return (ASTNode*)copy;
         }
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: {
+            LiteralExpressionLongArithmetics* orig = (LiteralExpressionLongArithmetics*)original;
+            LiteralExpressionLongArithmetics* copy = malloc(sizeof(LiteralExpressionLongArithmetics));
+            *copy = *orig;
+            if (orig->value) {
+                copy->value = strdup(orig->value);
+            }
+            return (ASTNode*)copy;
+        }
         case NODE_VARIABLE_EXPRESSION:
             return (ASTNode*)copy_variable_expression(original);
         case NODE_FUNCTION_CALL_EXPRESSION:
@@ -951,6 +972,15 @@ ASTNode* ast_new_literal_expression(SourceLocation loc, TypeVar type, int64_t va
     return node;
 }
 
+ASTNode* ast_new_literal_expression_long_arithmetics(SourceLocation loc, TypeVar type, const char* value) { 
+    ASTNode* node = ast_node_allocate(NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS, loc);
+    if (!node) return NULL;
+    LiteralExpressionLongArithmetics* casted_node = (LiteralExpressionLongArithmetics*) node;
+    casted_node->type = type;
+    casted_node->value = value;
+    return node;
+}
+
 ASTNode* ast_new_variable_expression(SourceLocation loc, const char* name) {
     ASTNode* node = ast_node_allocate(NODE_VARIABLE_EXPRESSION, loc);
     if (!node) return NULL;
@@ -990,6 +1020,8 @@ const TypeVar token_type_to_type_var(TokenType token_type) {
             return TYPE_BOOL;
         case KW_NONE:
             return TYPE_NONE;
+        case KW_FLOAT:
+            return TYPE_FLOAT;
         default:
             return TYPE_INT;
     }
@@ -1107,6 +1139,12 @@ void ast_free(ASTNode* node) {
             free(casted_node);
             break;
         }
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: {
+            LiteralExpressionLongArithmetics* casted_node = (LiteralExpressionLongArithmetics*) node;
+            free(casted_node->value);
+            free(casted_node);
+            break;
+        }
         case NODE_VARIABLE_EXPRESSION: {
             VariableExpression* casted_node = (VariableExpression*) node;
             free(casted_node->name);
@@ -1176,6 +1214,7 @@ const char* ast_node_type_to_string(int node_type) {
         case NODE_BINARY_EXPRESSION: return "BinaryExpression";
         case NODE_UNARY_EXPRESSION: return "UnaryExpression";
         case NODE_LITERAL_EXPRESSION: return "LiteralExpression";
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: return "LiteralExpressionLongArithmetics";
         case NODE_VARIABLE_EXPRESSION: return "VariableExpression";
         case NODE_FUNCTION_CALL_EXPRESSION: return "FunctionCallExpression";
         case NODE_ARRAY_EXPRESSION: return "ArrayExpression";
@@ -1189,6 +1228,7 @@ const char* type_var_to_string(int type_var) {
     switch (type_var) {
         case TYPE_INT: return "int";
         case TYPE_LONG: return "long";
+        case TYPE_FLOAT: return "float";
         case TYPE_BOOL: return "bool";
         case TYPE_NONE: return "none";
         default: return "unknown_type";
@@ -1199,6 +1239,7 @@ const char* token_type_to_string(int token_type) {
     switch (token_type) {
         case KW_INT: return "KW_INT";
         case KW_BOOL: return "KW_BOOL";
+        case KW_FLOAT: return "KW_FLOAT";
         case KW_LONG: return "KW_LONG";
         case KW_NONE: return "KW_NONE";
         case KW_TRUE: return "KW_TRUE";
@@ -1215,6 +1256,7 @@ const char* token_type_to_string(int token_type) {
         case KW_DOT: return "KW_DOT";
         case IDENTIFIER: return "IDENTIFIER";
         case INT_LITERAL: return "INT_LITERAL";
+        case FLOAT_LITERAL: return "FLOAT_LITERAL";
         case LONG_LITERAL: return "LONG_LITERAL";
         case OP_PLUS: return "OP_PLUS";
         case OP_MINUS: return "OP_MINUS";
@@ -1390,6 +1432,12 @@ void ast_print(ASTNode* node, int indent) {
             LiteralExpression* casted_node = (LiteralExpression*) node;
             for (int i = 0; i < indent + 1; i++) DPRINT("  ");
             DPRINT("Literal: type=%s, value=%lld\n", type_var_to_string(casted_node->type), (long long)casted_node->value);
+            break;
+        }
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: {
+            LiteralExpressionLongArithmetics* casted_node = (LiteralExpressionLongArithmetics*) node;
+            for (int i = 0; i < indent + 1; i++) DPRINT("  ");
+            DPRINT("Literal Long Arithmetics: type=%s, value=%s\n", type_var_to_string(casted_node->type), casted_node->value);
             break;
         }
         case NODE_VARIABLE_EXPRESSION: {
