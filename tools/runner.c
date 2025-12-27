@@ -119,7 +119,6 @@ int main(int argc, char** argv) {
     size_t global_count = comp->global_names ? comp->global_names->count : 0;
     Heap* heap = heap_create();
     VM* vm = vm_create(heap, global_count);
-    vm_register_builtins(vm);
 
     // Wrap top-level code into a CodeObj
     CodeObj module_code;

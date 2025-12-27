@@ -19,7 +19,7 @@ SYSTEM_SRC = $(SRC_DIR)/system.c
 # Runtime files
 OBJECT_SRC = src/runtime/vm/object.c
 HEAP_SRC = src/runtime/vm/heap.c
-VM_SRC = src/runtime/vm/vm.c
+VM_SRC = src/runtime/vm/vm.c src/runtime/vm/float_bigint.c
 GC_SRC = src/runtime/gc/gc.c
 JIT_SRC = src/runtime/jit/jit.c src/runtime/jit/cmpswap.c src/runtime/jit/const_folding.c
 
@@ -30,6 +30,8 @@ PARSER_TEST = $(TEST_DIR)/parser/test_parser.c
 BYTECODE_TEST = $(TEST_DIR)/bytecode/test_bytecode.c
 COMPILER_TEST = $(TEST_DIR)/compiler/test_compiler.c
 VM_TEST = $(TEST_DIR)/runtime/test_vm.c
+VM_BIGFLOAT_TEST = $(TEST_DIR)/runtime/test_vm_bigfloat.c
+BIGFLOAT_VM_TEST = $(TEST_DIR)/runtime/test_bigfloat.c
 
 # Targets
 all: test_ast test_lexer test_parser test_bytecode test_compiler test_vm
@@ -50,7 +52,13 @@ test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRI
 	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
 
 test_vm: $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@
+	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ -lm
+
+test_vm_bigfloat: $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
+	$(CC) $(CFLAGS) $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ -lm
+
+test_bigfloat: $(BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
+	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@
 
 test: all
 	@echo "[Make] Running AST tests..."
@@ -65,11 +73,13 @@ test: all
 	./test_compiler || exit 1
 	@echo "[Make] Running VM tests..."
 	./test_vm || exit 1
+	./test_vm_bigfloat || exit 1
+	./test_bigfloat || exit 1
 	@echo "[Make] All tests passed!"
 
 runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o bin/rename
+	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o bin/rename -lm
 
 run_benchmark: runner
 	@echo "[Make] Running benchmark: benchmarks/first_program.lang"
@@ -77,7 +87,7 @@ run_benchmark: runner
 
 clean:
 	@echo "[Make] Cleaning ..."
-	rm -f test_ast test_lexer test_parser test_bytecode test_compiler test_vm
+	rm -f test_ast test_lexer test_parser test_bytecode test_compiler test_vm test_vm_bigfloat test_bigfloat
 	rm -f bin/rename
 
 .PHONY: all test clean runner run_benchmark test_vm

@@ -6,7 +6,7 @@ int factorial(int n) {
 }
 
 int main() {
-    int n = 10;
+    int n = 20;
     int result = factorial(n);
     return result;
 }

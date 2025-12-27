@@ -178,13 +178,15 @@ Heap* heap_create(void) {
     
     // Инициализируем пулы с разными размерами блоков
     pool_init(&heap->int_pool, 2000000);        // Блоки по 100K int объектов
-    pool_init(&heap->bool_pool, 2);        // Блоки по 10K bool
-    pool_init(&heap->none_pool, 1);            // 1 слот для синглтона
     pool_init(&heap->array_pool, 100);       // Блоки по 100 массивов
     pool_init(&heap->function_pool, 100);     // Блоки по 100 функций
     pool_init(&heap->code_pool, 100);         // Блоки по 100 code объектов
     pool_init(&heap->native_func_pool, 100);   // Блоки по 100 нативных функций
-    
+    pool_init(&heap->float_pool, 10000); // Блоки по 10к для float
+
+    pool_init(&heap->bool_pool, 2);        // 2 слота для true/false
+    pool_init(&heap->none_pool, 1);            // 1 слот для синглтона
+
     // Инициализируем синглтоны
     heap->none_singleton = NULL;
     heap->true_singleton = NULL;
@@ -209,6 +211,7 @@ void heap_destroy(Heap* heap) {
     pool_destroy(&heap->function_pool);
     pool_destroy(&heap->code_pool);
     pool_destroy(&heap->native_func_pool);
+    pool_destroy(&heap->float_pool);
     
     // Освобождаем синглтоны (они уже были в пулах)
     free(heap);
@@ -230,6 +233,37 @@ Object* heap_alloc_int(Heap* heap, int64_t v) {
     o->type = OBJ_INT;
     o->ref_count = 1;
     o->as.int_value = v;
+    
+    return o;
+}
+
+Object* heap_alloc_float(Heap* heap, const char* v) {
+    heap->total_allocations++;
+    
+    Object* o = pool_alloc(&heap->float_pool);
+    if (!o) {
+        DPRINT("ERROR: Failed to allocate float object\n");
+    }
+
+    o->type = OBJ_FLOAT;
+    o->ref_count = 1;
+    o->as.float_value = bigfloat_create(v);
+    
+    return o;
+}
+
+Object* heap_alloc_float_from_bf(Heap* heap, BigFloat* bf) {
+    heap->total_allocations++;
+    
+    Object* o = pool_alloc(&heap->float_pool);
+    if (!o) {
+        DPRINT("ERROR: Failed to allocate float object from BigFloat\n");
+        bigfloat_destroy(bf);
+    }
+
+    o->type = OBJ_FLOAT;
+    o->ref_count = 1;
+    o->as.float_value = bf;
     
     return o;
 }

@@ -19,6 +19,22 @@ Object* object_new_bool(bool v) {
     return o;
 }
 
+Object* object_new_float(const char* v) {
+    Object* o = malloc(sizeof(Object));
+    o->type = OBJ_FLOAT;
+    o->ref_count = 1;
+    o->as.float_value = bigfloat_create(v);
+    return o;
+}
+
+Object* object_new_float_from_bf(BigFloat* bf) {
+    Object* o = malloc(sizeof(Object));
+    o->type = OBJ_FLOAT;
+    o->ref_count = 1;
+    o->as.float_value = bf;
+    return o;
+}
+
 Object* object_new_none(void) {
     Object* o = malloc(sizeof(Object));
     o->type = OBJ_NONE;
@@ -51,7 +67,6 @@ Object* object_new_array(void) {
     return obj;
 }
 
-// Функция для создания массива с заданной начальной емкостью
 Object* object_new_array_with_size(size_t initial_size) {
     Object* obj = malloc(sizeof(Object));
     obj->type = OBJ_ARRAY;
@@ -70,32 +85,48 @@ Object* object_new_array_with_size(size_t initial_size) {
     return obj;
 }
 
+void object_array_append(Object* array, Object* element) {
+    if (array->type != OBJ_ARRAY) return;
+    
+    array->as.array.items = realloc(array->as.array.items, 
+                                   (array->as.array.size + 1) * sizeof(Object*));
+    array->as.array.items[array->as.array.size] = element;
+    array->as.array.size++;
+}
+
 Object* object_array_get(Object* array, size_t index) {
+    if (array->type != OBJ_ARRAY || index >= array->as.array.size) {
+        return NULL;
+    }
     return array->as.array.items[index];
 }
 
-// Функция для установки элемента массива по индексу
 void object_array_set(Object* array, size_t index, Object* element) {
-    object_decref(array->as.array.items[index]);
-    object_incref(element);
+    if (array->type != OBJ_ARRAY || index >= array->as.array.size) {
+        return;
+    }
+    
+    if (array->as.array.items[index]) {
+        object_decref(array->as.array.items[index]);
+    }
+    
+    if (element) {
+        object_incref(element);
+    }
     array->as.array.items[index] = element;
 }
 
-void object_decref(Object* obj) {
-    if (!obj) return;
+void object_array_free(Object* array) {
+    if (array->type != OBJ_ARRAY) return;
     
-    if (obj->ref_count > 0 && obj->ref_count != 0x7FFFFFFF) {
-        obj->ref_count--;
-        
-        if (obj->ref_count == 0) {
-            if (obj->type == OBJ_ARRAY && obj->as.array.items) {
-                free(obj->as.array.items);
-            }
-            else if (obj->type == OBJ_NATIVE_FUNCTION && obj->as.native_function.name) {
-                free((void*)obj->as.native_function.name);
-            }
+    for (size_t i = 0; i < array->as.array.size; i++) {
+        if (array->as.array.items[i]) {
+            object_decref(array->as.array.items[i]);
         }
     }
+    free(array->as.array.items);
+    array->as.array.items = NULL;
+    array->as.array.size = 0;
 }
 
 void object_incref(Object* obj) {
@@ -106,6 +137,56 @@ void object_incref(Object* obj) {
     }
 }
 
+void object_decref(Object* obj) {
+    if (!obj) return;
+    
+    if (obj->ref_count > 0 && obj->ref_count != 0x7FFFFFFF) {
+        obj->ref_count--;
+        
+        if (obj->ref_count == 0) {
+            switch (obj->type) {
+                case OBJ_ARRAY:
+                    if (obj->as.array.items) {
+                        for (size_t i = 0; i < obj->as.array.size; i++) {
+                            if (obj->as.array.items[i]) {
+                                object_decref(obj->as.array.items[i]);
+                            }
+                        }
+                        free(obj->as.array.items);
+                    }
+                    break;
+                
+                case OBJ_NATIVE_FUNCTION:
+                    if (obj->as.native_function.name) {
+                        free((void*)obj->as.native_function.name);
+                    }
+                    break;
+                
+                case OBJ_FLOAT:
+                    if (obj->as.float_value) {
+                        bigfloat_destroy(obj->as.float_value);
+                    }
+                    break;
+                
+                case OBJ_CODE:
+                case OBJ_FUNCTION:
+                    // CodeObj освобождается отдельно
+                    break;
+                
+                default:
+                    break;
+            }
+            /* Note: objects allocated via Heap pools must not be freed here
+             * because their memory is managed by the Heap pools and will be
+             * released when the pool is destroyed. Only free internal
+             * allocations that were separately allocated (like arrays' items,
+             * native function names, or BigFloat data). Do not call free(obj)
+             * to avoid double-free/corruption. */
+            obj->ref_count = 0;
+        }
+    }
+}
+
 bool object_is_truthy(Object* o) {
     if (!o) return false;
     switch (o->type) {
@@ -113,6 +194,9 @@ bool object_is_truthy(Object* o) {
             return o->as.int_value != 0;
         case OBJ_BOOL:
             return o->as.bool_value;
+        case OBJ_FLOAT:
+            if (!o->as.float_value) return false;
+            return bigfloat_eq(o->as.float_value, bigfloat_zero());
         case OBJ_NONE:
             return false;
         case OBJ_ARRAY:
@@ -158,6 +242,15 @@ char* object_to_string(Object* o) {
             return strdup("<function>");
         case OBJ_CODE:
             return strdup("<code>");
+        case OBJ_FLOAT: {
+            if (o->as.float_value) {
+                char* bf_str = bigfloat_to_string(o->as.float_value);
+                char* result = strdup(bf_str);
+                free(bf_str);
+                return result;
+            }
+            return strdup("0.0");
+        }
         case OBJ_NATIVE_FUNCTION:
             if (o->as.native_function.name) {
                 snprintf(buf, sizeof(buf), "<native function '%s'>", o->as.native_function.name);

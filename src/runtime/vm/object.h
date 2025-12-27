@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include "../../compiler/value.h"
+#include "float_bigint.h"
 
 typedef struct VM VM;
 typedef struct Object Object;
@@ -18,7 +19,8 @@ typedef enum {
     OBJ_CODE,
     OBJ_FUNCTION,
     OBJ_ARRAY,
-    OBJ_NATIVE_FUNCTION
+    OBJ_NATIVE_FUNCTION,
+    OBJ_FLOAT,
 } ObjectType;
 
 struct Object {
@@ -29,7 +31,9 @@ struct Object {
 
         bool bool_value;
 
-        CodeObj* codeptr; // for OBJ_CODE
+        BigFloat* float_value; // для OBJ_FLOAT
+
+        CodeObj* codeptr; // для OBJ_CODE
         
         struct {
             CodeObj* codeptr;
@@ -48,6 +52,8 @@ struct Object {
 };
 
 Object* object_new_int(int64_t v);
+Object* object_new_float(const char* v);
+Object* object_new_float_from_bf(BigFloat* bf);  // Новая функция
 Object* object_new_bool(bool v);
 Object* object_new_none(void);
 Object* object_new_code(CodeObj* code);
@@ -66,4 +72,3 @@ void object_decref(Object* o);
 // Helpers
 bool object_is_truthy(Object* o);
 char* object_to_string(Object* o);
-

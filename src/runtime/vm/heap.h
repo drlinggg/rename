@@ -27,14 +27,15 @@ typedef struct ObjectPool {
 typedef struct Heap {
     // Пул для каждого типа объектов
     ObjectPool int_pool;
-    ObjectPool bool_pool;
-    ObjectPool none_pool;
     ObjectPool array_pool;
     ObjectPool function_pool;
     ObjectPool code_pool;
     ObjectPool native_func_pool;
-    
+    ObjectPool float_pool;
+
     // Синглтоны для часто используемых значений
+    ObjectPool bool_pool;
+    ObjectPool none_pool;
     Object* none_singleton;
     Object* true_singleton;
     Object* false_singleton;
@@ -53,6 +54,8 @@ void heap_destroy(Heap* heap);
 Object* heap_alloc_int(Heap* heap, int64_t v);
 Object* heap_alloc_bool(Heap* heap, bool b);
 Object* heap_alloc_none(Heap* heap);
+Object* heap_alloc_float(Heap* heap, const char* v);
+Object* heap_alloc_float_from_bf(Heap* heap, BigFloat* bf);  // Новая функция
 Object* heap_alloc_code(Heap* heap, CodeObj* code);
 Object* heap_alloc_function(Heap* heap, CodeObj* code);
 Object* heap_alloc_array(Heap* heap);

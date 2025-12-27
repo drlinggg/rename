@@ -879,7 +879,7 @@ static ASTNode* parser_parse_declaration_statement(Parser* parser) {
 
     SourceLocation loc = (SourceLocation){current->line, current->column};
     DPRINT("[PARSER] Declaration type: %d, value: %s\n", current->type, current->value);
-    if ((current->type == KW_INT || current->type == KW_BOOL) && parser_peek(parser)->type == LBRACKET) {
+    if ((current->type == KW_INT || current->type == KW_BOOL || current->type == KW_FLOAT) && parser_peek(parser)->type == LBRACKET) {
         parser_retreat(parser);
         parser_retreat(parser);
         DPRINT("[PARSER] Parsing array declaration\n");
@@ -1188,6 +1188,11 @@ static ASTNode* parser_parse_expression_statement(Parser* parser) {
 
 static ASTNode* parser_parse_statement(Parser* parser) {
     Token* current = parser_peek(parser);
+    if (!current) {
+        DPRINT("[PARSER] parser_parse_statement: current is NULL at index %zu\n", parser->current);
+        return NULL;
+    }
+    DPRINT("[PARSER] parse_statement at index %zu token=%s value='%s'\n", parser->current, token_type_to_string(current->type), current->value ? current->value : "NULL");
     ASTNode* res = NULL;
     bool flag_fun_declaration = false;
     
@@ -1232,6 +1237,12 @@ static ASTNode* parser_parse_statement(Parser* parser) {
             parser_retreat(parser);
             parser_retreat(parser);
             res = parser_parse_declaration_statement(parser);
+            if (!res) {
+                // Failed to parse declaration; retreat to previous token and return NULL
+                parser_retreat(parser);
+                parser_retreat(parser);
+                return NULL;
+            }
             if (res->node_type == NODE_FUNCTION_DECLARATION_STATEMENT) {
                 flag_fun_declaration = true;
             }

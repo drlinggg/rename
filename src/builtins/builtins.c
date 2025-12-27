@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 
 Object* builtin_print(VM* vm, int arg_count, Object** args) {
@@ -174,4 +175,31 @@ Object* builtin_randint(VM* vm, int arg_count, Object** args) {
     
     Object* obj = heap_alloc_int(heap, result);
     return obj;
+}
+
+Object* builtin_sqrt(VM* vm, int arg_count, Object** args) {
+    Heap* heap = vm_get_heap(vm);
+    if (!heap) return NULL;
+
+    if (arg_count != 1 || !args[0]) return heap_alloc_none(heap);
+
+    double val = 0.0;
+    if (args[0]->type == OBJ_FLOAT && args[0]->as.float_value) {
+        char* s = bigfloat_to_string(args[0]->as.float_value);
+        if (s) {
+            val = strtod(s, NULL);
+            free(s);
+        }
+    } else if (args[0]->type == OBJ_INT) {
+        val = (double) args[0]->as.int_value;
+    } else if (args[0]->type == OBJ_BOOL) {
+        val = args[0]->as.bool_value ? 1.0 : 0.0;
+    } else {
+        return heap_alloc_none(heap);
+    }
+
+    double res = sqrt(val);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.15g", res);
+    return heap_alloc_float(heap, strdup(buf));
 }

@@ -66,8 +66,7 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
                 long_literal_expr->value = NULL;
                 long_literal_expr->type = TYPE_FLOAT;
             }
-            break;
-            
+            break;            
         case NODE_VARIABLE_EXPRESSION:
             node = (ASTNode*)malloc(sizeof(VariableExpression));
             if (node) {
@@ -290,6 +289,24 @@ static VariableExpression* copy_variable_expression(ASTNode* original) {
     
     return copy;
 }
+
+static LiteralExpressionLongArithmetics* copy_literal_expression_long_arithmetics(ASTNode* original) {
+    LiteralExpressionLongArithmetics* orig = (LiteralExpressionLongArithmetics*)original;
+    LiteralExpressionLongArithmetics* copy = malloc(sizeof(LiteralExpressionLongArithmetics));
+    if (!copy) return NULL;
+    copy->base = orig->base;
+    copy->type = orig->type;
+    if (orig->value) {
+        copy->value = strdup(orig->value);
+        if (!copy->value) {
+            free(copy);
+            return NULL;
+        }
+    } else {
+        copy->value = NULL;
+    }
+    return copy;
+}    
 
 static FunctionCallExpression* copy_call_expression(ASTNode* original) {
     if (!original) return NULL;
@@ -681,13 +698,7 @@ static ASTNode* ast_node_copy(ASTNode* original) {
             return (ASTNode*)copy;
         }
         case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: {
-            LiteralExpressionLongArithmetics* orig = (LiteralExpressionLongArithmetics*)original;
-            LiteralExpressionLongArithmetics* copy = malloc(sizeof(LiteralExpressionLongArithmetics));
-            *copy = *orig;
-            if (orig->value) {
-                copy->value = strdup(orig->value);
-            }
-            return (ASTNode*)copy;
+            return (ASTNode*)copy_literal_expression_long_arithmetics(original);
         }
         case NODE_VARIABLE_EXPRESSION:
             return (ASTNode*)copy_variable_expression(original);
@@ -977,7 +988,15 @@ ASTNode* ast_new_literal_expression_long_arithmetics(SourceLocation loc, TypeVar
     if (!node) return NULL;
     LiteralExpressionLongArithmetics* casted_node = (LiteralExpressionLongArithmetics*) node;
     casted_node->type = type;
-    casted_node->value = value;
+    if (value) {
+        casted_node->value = strdup(value);
+        if (!casted_node->value) {
+            free(node);
+            return NULL;
+        }
+    } else {
+        casted_node->value = NULL;
+    }
     return node;
 }
 
@@ -1141,7 +1160,9 @@ void ast_free(ASTNode* node) {
         }
         case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS: {
             LiteralExpressionLongArithmetics* casted_node = (LiteralExpressionLongArithmetics*) node;
-            free(casted_node->value);
+            if (casted_node->value) {
+                free(casted_node->value);
+            }
             free(casted_node);
             break;
         }

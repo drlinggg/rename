@@ -246,7 +246,9 @@ static bytecode_array compiler_compile_variable_declaration(compiler* comp, ASTN
     }
     
     // 2. Находим индекс переменной и сохраняем
-    if (comp->current_scope == NULL) {
+    // If current scope is NULL or the current scope has no parent, we're at top-level
+    // and the variable should be treated as a global.
+    if (comp->current_scope == NULL || comp->current_scope->parent == NULL) {
         // Глобальная переменная
         int32_t global_idx = string_table_find(comp->global_names, decl->name);
         if (global_idx < 0) {
@@ -976,6 +978,30 @@ static bytecode_array compiler_compile_literal_expression(compiler* comp, ASTNod
     }
 }
 
+static bytecode_array compiler_compile_literal_expression_long_arithmetics(compiler* comp, ASTNode* node) {
+    LiteralExpressionLongArithmetics* literal = (LiteralExpressionLongArithmetics*)node;
+
+    if (literal->type == TYPE_FLOAT) {
+        DPRINT("[COMPILER] Compiling float literal\n");
+        Value constant_value = value_create_float(literal->value);
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
+        bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
+        bytecode* bc_array = malloc(sizeof(bytecode));
+        bc_array[0] = bc;
+        return create_bytecode_array(bc_array, 1);
+
+    }
+    else {
+        fprintf(stderr, "Error: type %d for long arithmetic is not supported in this version\n", literal->type);
+        Value constant_value = value_create_none();
+        uint32_t const_index = compiler_add_constant_to_compiler(comp, constant_value);
+        bytecode bc = bytecode_create_with_number(LOAD_CONST, const_index);
+        bytecode* bc_array = malloc(sizeof(bytecode));
+        bc_array[0] = bc;
+        return create_bytecode_array(bc_array, 1);
+    }
+}
+
 
 static bytecode_array compiler_compile_array_declaration(compiler* comp, ASTNode* node) {
     ArrayDeclarationStatement* array_decl = (ArrayDeclarationStatement*)node;
@@ -1098,6 +1124,8 @@ static bytecode_array compiler_compile_expression(compiler* comp, ASTNode* node)
             return compiler_compile_unary_expression(comp, node);
         case NODE_LITERAL_EXPRESSION:
             return compiler_compile_literal_expression(comp, node);
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS:
+            return compiler_compile_literal_expression_long_arithmetics(comp, node);
         case NODE_VARIABLE_EXPRESSION:
             return compiler_compile_variable_expression(comp, node);
         case NODE_FUNCTION_CALL_EXPRESSION:
@@ -1125,6 +1153,8 @@ static bytecode_array compiler_compile_expression_statement(compiler* comp, ASTN
             return compiler_compile_unary_expression(comp, expression);
         case NODE_LITERAL_EXPRESSION:
             return compiler_compile_literal_expression(comp, expression);
+        case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS:
+            return compiler_compile_literal_expression_long_arithmetics(comp, expression);
         case NODE_VARIABLE_EXPRESSION:
             return compiler_compile_variable_expression(comp, expression);
         case NODE_FUNCTION_CALL_EXPRESSION:
@@ -1238,17 +1268,21 @@ compiler* compiler_create(ASTNode* ast_tree) {
     size_t print_idx = string_table_add(comp->global_names, "print");
     size_t input_idx = string_table_add(comp->global_names, "input");
     size_t randint_idx = string_table_add(comp->global_names, "randint");
+    size_t sqrt_idx = string_table_add(comp->global_names, "sqrt");
 
     if (print_idx != 0) {
-        fprintf(stderr, "Warning: print index is %zu, expected 0\n", print_idx);
+        DPRINT("Warning: print index is %zu, expected 0\n", print_idx);
     }
     if (input_idx != 1) {
-        fprintf(stderr, "Warning: input index is %zu, expected 1\n", input_idx);
+        DPRINT("Warning: input index is %zu, expected 1\n", input_idx);
     }
     if (randint_idx != 2) {
-        fprintf(stderr, "Warning: randint index is %zu, expected 2\n", randint_idx);
+        DPRINT("Warning: randint index is %zu, expected 2\n", randint_idx);
     }
-    
+    if (sqrt_idx != 3) {
+        DPRINT("Warning: sqrt index is %zu, expected 3\n", sqrt_idx);
+    }
+
     return comp;
 }
 
