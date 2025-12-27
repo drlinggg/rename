@@ -448,6 +448,9 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
             case OBJ_BOOL:
                 left_bool = left->as.bool_value;
                 break;
+            default:
+                left_bool = false;
+                break;
         }
         switch (right->type) {
             case OBJ_INT:
@@ -456,15 +459,17 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
             case OBJ_BOOL:
                 right_bool = right->as.bool_value;
                 break;
+            default:
+                right_bool = false;
+                break;
         }
 
-        if (op == 0x60 && (left_bool && right_bool)) {
-            ret = vm_get_true(frame->vm);
-        }
-        else if (op == 0x61 && (left_bool || right_bool)) {
-            ret = vm_get_true(frame->vm);
-        }
-        else {
+        // Исправлено: 0x60 - это AND, 0x61 - это OR
+        if (op == 0x60) { // AND
+            ret = (left_bool && right_bool) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+        } else if (op == 0x61) { // OR
+            ret = (left_bool || right_bool) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+        } else {
             ret = vm_get_false(frame->vm);
         }
     }
@@ -504,20 +509,28 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 break;
             }
             case 0x06: { // REMAINDER
-                int64_t result = a % b;
-                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
-                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                if (b == 0) {
+                    ret = heap_alloc_int(frame->vm->heap, 0);
                 } else {
-                    ret = heap_alloc_int(frame->vm->heap, result);
+                    int64_t result = a % b;
+                    if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                        ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                    } else {
+                        ret = heap_alloc_int(frame->vm->heap, result);
+                    }
                 }
                 break;
             }
-            case 0x0B: { // DIV
-                int64_t result = (b == 0) ? 0 : a / b;
-                if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
-                    ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+            case 0x0B: { // DIV (целочисленное деление)
+                if (b == 0) {
+                    ret = heap_alloc_int(frame->vm->heap, 0);
                 } else {
-                    ret = heap_alloc_int(frame->vm->heap, result);
+                    int64_t result = a / b;
+                    if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
+                        ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
+                    } else {
+                        ret = heap_alloc_int(frame->vm->heap, result);
+                    }
                 }
                 break;
             }
@@ -556,245 +569,181 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         }
     }
     
-    // МЕДЛЕННЫЕ ВЕТКИ
-    // Сначала обработаем ветку для операций с float (включая смешанные float/int/bool)
+    // МЕДЛЕННЫЕ ВЕТКИ: операции с float
     else if (left->type == OBJ_FLOAT || right->type == OBJ_FLOAT) {
+        // Флаги для отслеживания временных объектов
+        bool left_is_temp = false;
+        bool right_is_temp = false;
+        
         BigFloat* bf_left = NULL;
         BigFloat* bf_right = NULL;
         
+        // Преобразуем левый операнд в BigFloat если нужно
         if (left->type == OBJ_FLOAT) {
             bf_left = left->as.float_value;
         } else if (left->type == OBJ_INT) {
             char buf[64];
             snprintf(buf, sizeof(buf), "%lld", (long long)left->as.int_value);
             bf_left = bigfloat_create(buf);
+            left_is_temp = true;
         } else if (left->type == OBJ_BOOL) {
             bf_left = bigfloat_create(left->as.bool_value ? "1" : "0");
+            left_is_temp = true;
+        } else {
+            ret = vm_get_none(frame->vm);
+            goto cleanup_float_branch;
         }
         
+        // Преобразуем правый операнд в BigFloat если нужно
         if (right->type == OBJ_FLOAT) {
             bf_right = right->as.float_value;
         } else if (right->type == OBJ_INT) {
             char buf[64];
             snprintf(buf, sizeof(buf), "%lld", (long long)right->as.int_value);
             bf_right = bigfloat_create(buf);
+            right_is_temp = true;
         } else if (right->type == OBJ_BOOL) {
             bf_right = bigfloat_create(right->as.bool_value ? "1" : "0");
+            right_is_temp = true;
+        } else {
+            ret = vm_get_none(frame->vm);
+            goto cleanup_float_branch;
         }
         
+        // Выполняем операцию
         if (!bf_left || !bf_right) {
             ret = vm_get_none(frame->vm);
-        } else {
-            BigFloat* bf_result = NULL;
-            
-            switch (op) {
-                case 0x00: // ADD
-                    bf_result = bigfloat_add(bf_left, bf_right);
-                    break;
-                case 0x0A: // SUB
-                    bf_result = bigfloat_sub(bf_left, bf_right);
-                    break;
-                case 0x05: // MUL
-                    bf_result = bigfloat_mul(bf_left, bf_right);
-                    break;
-                case 0x0B: // DIV
-                    bf_result = bigfloat_div(bf_left, bf_right);
-                    break;
-                case 0x06: // REMAINDER
-                    bf_result = bigfloat_mod(bf_left, bf_right);
-                    break;
-                case 0x50: // EQ
-                    ret = bigfloat_eq(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x51: // NE
-                    ret = !bigfloat_eq(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x52: // LT
-                    ret = bigfloat_lt(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x53: // LE
-                    ret = bigfloat_le(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x54: // GT
-                    ret = bigfloat_gt(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x55: // GE
-                    ret = bigfloat_ge(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                default:
-                    ret = vm_get_none(frame->vm);
-                    break;
-            }
-            
-            if (bf_result) {
-                ret = heap_alloc_float_from_bf(frame->vm->heap, bf_result);
-            }
-            
-            // Освобождаем временные BigFloat если они были созданы
-            if (left->type != OBJ_FLOAT && bf_left) bigfloat_destroy(bf_left);
-            if (right->type != OBJ_FLOAT && bf_right) bigfloat_destroy(bf_right);
+            goto cleanup_float_branch;
+        }
+        
+        BigFloat* bf_result = NULL;
+        
+        switch (op) {
+            case 0x00: // ADD
+                bf_result = bigfloat_add(bf_left, bf_right);
+                break;
+            case 0x0A: // SUB
+                bf_result = bigfloat_sub(bf_left, bf_right);
+                break;
+            case 0x05: // MUL
+                bf_result = bigfloat_mul(bf_left, bf_right);
+                break;
+            case 0x0B: // DIV
+                bf_result = bigfloat_div(bf_left, bf_right);
+                break;
+            case 0x06: // REMAINDER
+                bf_result = bigfloat_mod(bf_left, bf_right);
+                break;
+            case 0x50: // EQ
+                ret = bigfloat_eq(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            case 0x51: // NE
+                ret = !bigfloat_eq(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            case 0x52: // LT
+                ret = bigfloat_lt(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            case 0x53: // LE
+                ret = bigfloat_le(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            case 0x54: // GT
+                ret = bigfloat_gt(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            case 0x55: // GE
+                ret = bigfloat_ge(bf_left, bf_right) ? 
+                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
+                break;
+            default:
+                ret = vm_get_none(frame->vm);
+                break;
+        }
+        
+        // Если операция вернула BigFloat (арифметические операции)
+        if (bf_result) {
+            ret = heap_alloc_float_from_bf(frame->vm->heap, bf_result);
+        }
+        
+    cleanup_float_branch:
+        // Освобождаем временные BigFloat если они были созданы
+        if (left_is_temp && bf_left) {
+            bigfloat_destroy(bf_left);
+        }
+        if (right_is_temp && bf_right) {
+            bigfloat_destroy(bf_right);
         }
     }
+    
+    // Операции с bool
     else if (left->type == OBJ_BOOL && right->type == OBJ_BOOL) {
-        switch (arg) {
-            case 0x50: {
+        switch (op) {
+            case 0x50: { // EQ
                 ret = (left->as.bool_value == right->as.bool_value) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x51: {
+            case 0x51: { // NE
                 ret = (left->as.bool_value != right->as.bool_value) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x52:
-            case 0x53:
-            case 0x54:
-            case 0x55: {
+            case 0x52: // LT
+            case 0x53: // LE
+            case 0x54: // GT
+            case 0x55: { // GE
                 ret = vm_get_false(frame->vm);
                 break;
             }
-            case 0x56: {
+            case 0x56: { // IS
                 ret = (left == right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
             default:
-                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
                 ret = vm_get_none(frame->vm);
                 break;
         }
     }
-    else if (left->type == OBJ_FLOAT || right->type == OBJ_FLOAT) {
-        BigFloat* bf_left = NULL;
-        BigFloat* bf_right = NULL;
-        
-        if (left->type == OBJ_FLOAT) {
-            bf_left = left->as.float_value;
-        } else if (left->type == OBJ_INT) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%lld", (long long)left->as.int_value);
-            bf_left = bigfloat_create(buf);
-        } else if (left->type == OBJ_BOOL) {
-            bf_left = bigfloat_create(left->as.bool_value ? "1" : "0");
-        }
-        
-        if (right->type == OBJ_FLOAT) {
-            bf_right = right->as.float_value;
-        } else if (right->type == OBJ_INT) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%lld", (long long)right->as.int_value);
-            bf_right = bigfloat_create(buf);
-        } else if (right->type == OBJ_BOOL) {
-            bf_right = bigfloat_create(right->as.bool_value ? "1" : "0");
-        }
-        
-        if (!bf_left || !bf_right) {
-            ret = vm_get_none(frame->vm);
-        } else {
-            BigFloat* bf_result = NULL;
-            
-            switch (op) {
-                case 0x00: // ADD
-                    bf_result = bigfloat_add(bf_left, bf_right);
-                    break;
-                case 0x0A: // SUB
-                    bf_result = bigfloat_sub(bf_left, bf_right);
-                    break;
-                case 0x05: // MUL
-                    bf_result = bigfloat_mul(bf_left, bf_right);
-                    break;
-                case 0x0B: // DIV
-                    bf_result = bigfloat_div(bf_left, bf_right);
-                    break;
-                case 0x06: // REMAINDER
-                    bf_result = bigfloat_mod(bf_left, bf_right);
-                    break;
-                case 0x50: // EQ
-                    ret = bigfloat_eq(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x51: // NE
-                    ret = !bigfloat_eq(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x52: // LT
-                    ret = bigfloat_lt(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x53: // LE
-                    ret = bigfloat_le(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x54: // GT
-                    ret = bigfloat_gt(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                case 0x55: // GE
-                    ret = bigfloat_ge(bf_left, bf_right) ? 
-                          vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                    break;
-                default:
-                    ret = vm_get_none(frame->vm);
-                    break;
-            }
-            
-            if (bf_result) {
-                ret = heap_alloc_float_from_bf(frame->vm->heap, bf_result);
-            }
-            
-            // Освобождаем временные BigFloat если они были созданы
-            if (left->type != OBJ_FLOAT && bf_left) bigfloat_destroy(bf_left);
-            if (right->type != OBJ_FLOAT && bf_right) bigfloat_destroy(bf_right);
+    
+    // IS операция для одинаковых типов
+    else if (op == 0x56) { // IS
+        ret = (left == right) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
+    }
+    
+    // Сравнение разных типов
+    else if (op == 0x50 || op == 0x51) { // EQ или NE
+        if (op == 0x50) { // EQ
+            ret = vm_get_false(frame->vm);
+        } else { // NE
+            ret = vm_get_true(frame->vm);
         }
     }
-
-    else if (left->type == right->type) {
-        switch (arg) {
-            case 0x56: {
-                ret = (left == right) ? 
-                      vm_get_true(frame->vm) : vm_get_false(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op on current type: %u\n", op);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-    }
-    else if (left->type != right->type) {
-        switch (arg) {
-            case 0x50:
-            case 0x56: {
-                ret = vm_get_false(frame->vm);
-                break;
-            }
-            case 0x51: {
-                ret = vm_get_true(frame->vm);
-                break;
-            }
-            default:
-                DPRINT("VM: Unsupported binary_op %u on %d type and %d type\n", op, left->type, right->type);
-                ret = vm_get_none(frame->vm);
-                break;
-        }
-    } else {
-        DPRINT("VM: BINARY_OP for non-int-bool operands not implemented\n");
+    
+    // Неподдерживаемая операция
+    else {
+        DPRINT("VM: Unsupported binary_op %u for types %d and %d\n", 
+               op, left->type, right->type);
         ret = vm_get_none(frame->vm);
     }
     
     // ОСВОБОЖДАЕМ ВРЕМЕННЫЕ ОБЪЕКТЫ
-    GC_DECREF_IF_NEEDED(frame, left);
-    GC_DECREF_IF_NEEDED(frame, right);
+    // Важно: только если это не синглтоны или кэшированные объекты
+    if (left && left->ref_count != 0x7FFFFFFF) {
+        GC_DECREF_IF_NEEDED(frame, left);
+    }
+    if (right && right->ref_count != 0x7FFFFFFF) {
+        GC_DECREF_IF_NEEDED(frame, right);
+    }
     
     // КЛАДЕМ РЕЗУЛЬТАТ НА СТЕК
-    // Для кэшированных объектов и синглтонов не нужно incref
+    if (!ret) {
+        ret = vm_get_none(frame->vm);
+    }
+    
     if (ret->ref_count == 0x7FFFFFFF) {
         // Бессмертные объекты (кэш, синглтоны)
         FAST_PUSH_NO_GC(frame, ret);

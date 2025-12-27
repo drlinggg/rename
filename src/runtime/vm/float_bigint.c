@@ -1,694 +1,778 @@
-#include "float_bigint.h"
-#include "../../system.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <ctype.h>
-#include <math.h>
-#include <stdio.h>
+#include "float_bigint.h"
 
-#define MAX_PRECISION 100
+#define BF_PRECISION 25
+#define BF_SQRT_ITERS 200
 
-static void normalize_string(char* str) {
-    // Remove leading zeros but keep one digit if the number becomes zero
-    while (*str == '0' && *(str+1) != '.' && *(str+1) != '\0') {
-        // copy including null terminator
-        memmove(str, str+1, strlen(str) + 1);
+
+static int bigfloat_cmp_abs(const BigFloat* a, const BigFloat* b);
+static BigFloat* bf_new(void) {
+    BigFloat* x = calloc(1, sizeof(BigFloat));
+    x->digits = strdup("0");
+    x->len = 1;
+    return x;
+}
+
+static BigFloat* bf_zero(void) { return bf_new(); }
+
+static BigFloat* bf_one(void) {
+    BigFloat* x = bf_new();
+    free(x->digits);
+    x->digits = strdup("1");
+    x->len = 1;
+    return x;
+}
+
+static BigFloat* bf_nan(void) {
+    BigFloat* x = bf_new();
+    x->is_nan = true;
+    return x;
+}
+
+static BigFloat* bf_inf(bool neg) {
+    BigFloat* x = bf_new();
+    x->is_inf = true;
+    x->neg = neg;
+    return x;
+}
+
+void bigfloat_free(BigFloat* x) {
+    if (!x) return;
+    free(x->digits);
+    free(x);
+}
+
+void bigfloat_destroy(BigFloat* x) { bigfloat_free(x); }
+
+
+static void bf_trim(BigFloat* x) {
+    if (x->is_nan || x->is_inf) return;
+
+    // Убираем лишние нули справа (дробная часть)
+    while (x->decimal_pos > 0 && x->len > 1 && x->digits[x->len - 1] == '0') {
+        x->len--;
+        x->decimal_pos--;
+        x->digits[x->len] = 0;
     }
-    if (*str == '.') {
-        memmove(str+1, str, strlen(str) + 1);
-        *str = '0';
+
+    // Убираем лишние нули слева (целая часть)
+    int i = 0;
+    while (i < x->len - 1 && x->digits[i] == '0' && x->len - i > x->decimal_pos) i++;
+    if (i) {
+        memmove(x->digits, x->digits + i, x->len - i);
+        x->len -= i;
+        x->digits[x->len] = 0;
+    }
+
+    // Если число = 0
+    if (x->len == 1 && x->digits[0] == '0') {
+        x->decimal_pos = 0;
+        x->neg = false;
     }
 }
 
-static void remove_trailing_zeros(char* str) {
-    int len = strlen(str);
-    int i = len - 1;
+static void bf_limit_precision(BigFloat* x, int max_decimal_digits) {
+    if (x->is_nan || x->is_inf) return;
+    if (x->decimal_pos <= max_decimal_digits) return;
     
-    // Находим десятичную точку
-    char* dot = strchr(str, '.');
-    if (!dot) return;
+    // Сколько цифр нужно отрезать
+    int digits_to_remove = x->decimal_pos - max_decimal_digits;
     
-    // Удаляем конечные нули
-    while (i > (dot - str) && str[i] == '0') {
-        str[i] = '\0';
-        i--;
+    if (digits_to_remove <= 0) return;
+    if (digits_to_remove >= x->len) {
+        // Отрезаем все - результат 0
+        free(x->digits);
+        x->digits = strdup("0");
+        x->len = 1;
+        x->decimal_pos = 0;
+        x->neg = false;
+        return;
     }
     
-    // Удаляем точку если после нее ничего нет
-    if (str[i] == '.') {
-        str[i] = '\0';
+    // Отрезаем с конца, но нужно округление
+    int cut_pos = x->len - digits_to_remove;
+    
+    // Проверяем цифру после cut_pos для округления
+    if (cut_pos > 0 && cut_pos < x->len) {
+        char next_digit = x->digits[cut_pos];
+        
+        // Обрезаем
+        x->len = cut_pos;
+        x->digits[x->len] = '\0';
+        x->decimal_pos = max_decimal_digits;
+        
+        // Округляем вверх если следующая цифра >= 5
+        if (next_digit >= '5') {
+            // Нужно увеличить последнюю цифру
+            int i = x->len - 1;
+            while (i >= 0) {
+                if (x->digits[i] < '9') {
+                    x->digits[i]++;
+                    break;
+                } else {
+                    x->digits[i] = '0';
+                    i--;
+                }
+            }
+            
+            // Если все цифры стали 9 -> 10...
+            if (i < 0) {
+                // Было 999... -> 1000...
+                char* new_digits = malloc(x->len + 2);
+                new_digits[0] = '1';
+                memset(new_digits + 1, '0', x->len);
+                new_digits[x->len + 1] = '\0';
+                free(x->digits);
+                x->digits = new_digits;
+                x->len++;
+            }
+        }
     }
+    
+    bf_trim(x);
 }
 
-static void align_decimals(const BigFloat* a, const BigFloat* b, 
-                          char** a_aligned, char** b_aligned, 
-                          int* max_len, int* decimal_pos) {
-    int a_len = a->length;
-    int b_len = b->length;
-    int a_dec_pos = a->decimal_pos;
-    int b_dec_pos = b->decimal_pos;
-    
-    // Находим максимальную позицию десятичной точки
-    int max_dec_pos = (a_dec_pos > b_dec_pos) ? a_dec_pos : b_dec_pos;
-    
-    // Выравниваем длины, добавляя нули
-    int a_total = a_len + (max_dec_pos - a_dec_pos);
-    int b_total = b_len + (max_dec_pos - b_dec_pos);
-    *max_len = (a_total > b_total) ? a_total : b_total;
-    
-    *a_aligned = malloc(*max_len + 1);
-    *b_aligned = malloc(*max_len + 1);
-    
-    // Заполняем выровненные строки
-    memset(*a_aligned, '0', *max_len);
-    memset(*b_aligned, '0', *max_len);
-    
-    // Копируем цифры с выравниванием
-    memcpy(*a_aligned + (*max_len - a_total), a->digits, a_len);
-    memcpy(*b_aligned + (*max_len - b_total), b->digits, b_len);
-    
-    (*a_aligned)[*max_len] = '\0';
-    (*b_aligned)[*max_len] = '\0';
-    *decimal_pos = max_dec_pos;
+
+
+static BigFloat* bf_copy(const BigFloat* a) {
+    BigFloat* x = bf_new();
+    free(x->digits);
+    x->digits = strdup(a->digits);
+    x->len = a->len;
+    x->decimal_pos = a->decimal_pos;
+    x->neg = a->neg;
+    x->is_nan = a->is_nan;
+    x->is_inf = a->is_inf;
+    return x;
 }
 
-BigFloat* bigfloat_create(const char* str) {
-    if (!str) return NULL;
+BigFloat* bigfloat_create(const char* s) {
+    if (!s) return bf_zero();
+    if (!strcasecmp(s, "nan")) return bf_nan();
+    if (!strcasecmp(s, "inf") || !strcasecmp(s, "+inf")) return bf_inf(false);
+    if (!strcasecmp(s, "-inf")) return bf_inf(true);
+
+    BigFloat* x = bf_new();
+    const char* p = s;
     
-    BigFloat* bf = malloc(sizeof(BigFloat));
-    bf->is_nan = false;
-    bf->is_inf = false;
-    bf->negative = false;
-    
-    if (strcmp(str, "nan") == 0 || strcmp(str, "NaN") == 0) {
-        bf->is_nan = true;
-        bf->digits = strdup("0");
-        bf->length = 1;
-        bf->decimal_pos = 0;
-        return bf;
-    }
-    
-    if (strcmp(str, "inf") == 0 || strcmp(str, "Infinity") == 0) {
-        bf->is_inf = true;
-        bf->negative = false;
-        bf->digits = strdup("0");
-        bf->length = 1;
-        bf->decimal_pos = 0;
-        return bf;
-    }
-    
-    if (strcmp(str, "-inf") == 0 || strcmp(str, "-Infinity") == 0) {
-        bf->is_inf = true;
-        bf->negative = true;
-        bf->digits = strdup("0");
-        bf->length = 1;
-        bf->decimal_pos = 0;
-        return bf;
-    }
-    
-    const char* p = str;
-    if (*p == '-') {
-        bf->negative = true;
+    if (*p == '-' || *p == '+') {
+        x->neg = (*p == '-');
         p++;
     }
-    
-    // Находим точку
+
     const char* dot = strchr(p, '.');
-    if (dot) {
-        bf->length = strlen(p) - 1;
-        bf->decimal_pos = strlen(dot + 1);
-    } else {
-        bf->length = strlen(p);
-        bf->decimal_pos = 0;
-    }
-    
-    // Копируем цифры
-    bf->digits = malloc(bf->length + 1);
-    int j = 0;
-    for (int i = 0; p[i]; i++) {
-        if (p[i] != '.') {
-            bf->digits[j++] = p[i];
-        }
-    }
-    bf->digits[bf->length] = '\0';
-    
-    normalize_string(bf->digits);
-    
-    // Update recorded length after normalization and trim trailing
-    // zeros from the fractional part (digits are stored without a dot)
-    bf->length = strlen(bf->digits);
-    while (bf->decimal_pos > 0 && bf->length > 0 && bf->digits[bf->length - 1] == '0') {
-        bf->digits[bf->length - 1] = '\0';
-        bf->length--;
-        bf->decimal_pos--;
-    }
-    
-    // Если все цифры нули
-    if (bf->digits[0] == '0' && bf->length == 1) {
-        bf->negative = false;
-    }
+    int frac = dot ? strlen(dot + 1) : 0;
 
-    // DEBUG: if something goes wrong, print internal state
-    if (!bf->digits) {
-        DPRINT("bigfloat_create('%s') -> digits=NULL length=%d decimal_pos=%d negative=%d\n", str, bf->length, bf->decimal_pos, bf->negative);
-    } else {
-        DPRINT("bigfloat_create('%s') -> digits='%s' length=%d decimal_pos=%d negative=%d\n", str, bf->digits, bf->length, bf->decimal_pos, bf->negative);
-    }
-    
-    return bf;
-}
+    free(x->digits);
+    x->digits = calloc(strlen(p) + 1, 1);
+    x->len = 0;
 
-void bigfloat_destroy(BigFloat* bf) {
-    if (bf) {
-        if (bf->digits) free(bf->digits);
-        free(bf);
-    }
-}
-
-char* bigfloat_to_string(const BigFloat* bf) {
-    if (!bf) return strdup("0.0");
-    
-    if (bf->is_nan) return strdup("nan");
-    if (bf->is_inf) return bf->negative ? strdup("-inf") : strdup("inf");
-    
-    // Compute needed buffer length precisely to avoid overflows.
-    // int_part_len: number of digits before the decimal point
-    int int_part_len = bf->length - bf->decimal_pos;
-    int int_part_needed = (int_part_len <= 0) ? 1 : int_part_len; // at least one digit (0)
-    int frac_len = (bf->decimal_pos > 0) ? bf->decimal_pos : 0;
-    int decimal_char = (frac_len > 0) ? 1 : 0;
-
-    int total_len = (bf->negative ? 1 : 0) + int_part_needed + decimal_char + frac_len;
-    char* result = malloc(total_len + 1); // +1 for '\0'
-    int pos = 0;
-    
-    if (bf->negative) result[pos++] = '-';
-    
-    // Integer part
-    // If there are no integer digits, write a single '0' and account for
-    // leading zeros needed in the fractional part alignment.
-    int missing_leading_zeros = 0;
-    if (int_part_len <= 0) {
-        result[pos++] = '0';
-        missing_leading_zeros = -int_part_len;
-        int_part_len = 0;
-    } else {
-        for (int i = 0; i < int_part_len; i++) {
-            result[pos++] = bf->digits[i];
-        }
-    }
-    
-    // Дробная часть
-    if (frac_len > 0) {
-        result[pos++] = '.';
-        for (int i = 0; i < missing_leading_zeros; i++) {
-            result[pos++] = '0';
-        }
-        for (int i = int_part_len; i < bf->length; i++) {
-            result[pos++] = bf->digits[i];
-        }
-    }
-    
-    // Ensure we null-terminate at the expected position
-    if (pos <= total_len) {
-        result[pos] = '\0';
-    } else {
-        // Defensive: should not happen if length computed correctly
-        result[total_len] = '\0';
-    }
-    
-    // Удаляем лишние нули в конце
-    if (bf->decimal_pos > 0) {
-        remove_trailing_zeros(result);
-    }
-    
-    // Если результат "-0", делаем "0"
-    if (strcmp(result, "-0") == 0 || strcmp(result, "-0.0") == 0) {
-        free(result);
-        return strdup("0");
-    }
-    
-    return result;
-}
-
-BigFloat* bigfloat_add(const BigFloat* a, const BigFloat* b) {
-    // Проверка специальных случаев
-    if (a->is_nan || b->is_nan) return bigfloat_nan();
-    if (a->is_inf && b->is_inf) {
-        if (a->negative == b->negative) return bigfloat_inf(a->negative);
-        return bigfloat_nan(); // inf - inf = NaN
-    }
-    if (a->is_inf) return bigfloat_inf(a->negative);
-    if (b->is_inf) return bigfloat_inf(b->negative);
-    
-    // Если знаки разные, делаем вычитание
-    if (a->negative && !b->negative) {
-        BigFloat* a_copy = malloc(sizeof(BigFloat));
-        memcpy(a_copy, a, sizeof(BigFloat));
-        a_copy->negative = false;
-        BigFloat* result = bigfloat_sub(b, a_copy);
-        free(a_copy);
-        return result;
-    }
-    if (!a->negative && b->negative) {
-        BigFloat* b_copy = malloc(sizeof(BigFloat));
-        memcpy(b_copy, b, sizeof(BigFloat));
-        b_copy->negative = false;
-        BigFloat* result = bigfloat_sub(a, b_copy);
-        free(b_copy);
-        return result;
-    }
-    
-    char* a_aligned, *b_aligned;
-    int max_len, decimal_pos;
-    align_decimals(a, b, &a_aligned, &b_aligned, &max_len, &decimal_pos);
-    
-    // Выполняем сложение
-    char* result_digits = malloc(max_len + 2); // +1 для возможного переноса, +1 для '\0'
-    int carry = 0;
-    
-    for (int i = max_len - 1; i >= 0; i--) {
-        int digit_a = a_aligned[i] - '0';
-        int digit_b = b_aligned[i] - '0';
-        int sum = digit_a + digit_b + carry;
-        result_digits[i + 1] = (sum % 10) + '0';
-        carry = sum / 10;
-    }
-    
-    // Обрабатываем последний перенос
-    if (carry > 0) {
-        result_digits[0] = carry + '0';
-        result_digits[max_len + 1] = '\0';
-        max_len++;
-    } else {
-        memmove(result_digits, result_digits + 1, max_len);
-        result_digits[max_len] = '\0';
-    }
-    
-    free(a_aligned);
-    free(b_aligned);
-    
-    // Создаем результат
-    BigFloat* result = malloc(sizeof(BigFloat));
-    result->digits = result_digits;
-    result->length = max_len;
-    result->decimal_pos = decimal_pos;
-    result->negative = a->negative; // Оба отрицательные
-    result->is_nan = false;
-    result->is_inf = false;
-    
-    normalize_string(result->digits);
-
-    // Update length and trim trailing fractional zeros
-    result->length = strlen(result->digits);
-    while (result->decimal_pos > 0 && result->length > 0 && result->digits[result->length - 1] == '0') {
-        result->digits[result->length - 1] = '\0';
-        result->length--;
-        result->decimal_pos--;
-    }
-
-    // If we ended up with empty digits, set to zero
-    if (result->length == 0) {
-        free(result->digits);
-        result->digits = strdup("0");
-        result->length = 1;
-        result->decimal_pos = 0;
-        result->negative = false;
-    }
-
-    normalize_string(result->digits);
-    return result;
-}
-
-BigFloat* bigfloat_sub(const BigFloat* a, const BigFloat* b) {
-    // Проверка специальных случаев
-    if (a->is_nan || b->is_nan) return bigfloat_nan();
-    if (a->is_inf && b->is_inf) {
-        if (a->negative == b->negative) return bigfloat_nan(); // inf - inf = NaN
-        return bigfloat_inf(a->negative);
-    }
-    if (a->is_inf) return bigfloat_inf(a->negative);
-    if (b->is_inf) {
-        BigFloat* result = bigfloat_inf(!b->negative);
-        return result;
-    }
-    
-    // Если знаки разные, делаем сложение
-    if (a->negative && !b->negative) {
-        BigFloat* a_copy = malloc(sizeof(BigFloat));
-        memcpy(a_copy, a, sizeof(BigFloat));
-        a_copy->negative = false;
-        BigFloat* result = bigfloat_add(a_copy, b);
-        free(a_copy);
-        result->negative = true;
-        return result;
-    }
-    if (!a->negative && b->negative) {
-        BigFloat* b_copy = malloc(sizeof(BigFloat));
-        memcpy(b_copy, b, sizeof(BigFloat));
-        b_copy->negative = false;
-        BigFloat* result = bigfloat_add(a, b_copy);
-        free(b_copy);
-        return result;
-    }
-    
-    // Определяем какое число больше по модулю
-    bool a_is_bigger = true;
-    char* a_aligned, *b_aligned;
-    int max_len, decimal_pos;
-    align_decimals(a, b, &a_aligned, &b_aligned, &max_len, &decimal_pos);
-    
-    for (int i = 0; i < max_len; i++) {
-        if (a_aligned[i] > b_aligned[i]) {
-            a_is_bigger = true;
-            break;
-        } else if (a_aligned[i] < b_aligned[i]) {
-            a_is_bigger = false;
-            break;
-        }
-    }
-    
-    // Вычитаем из большего меньшее
-    char* result_digits = malloc(max_len + 1);
-    int borrow = 0;
-    
-    for (int i = max_len - 1; i >= 0; i--) {
-        int digit_a = a_is_bigger ? (a_aligned[i] - '0') : (b_aligned[i] - '0');
-        int digit_b = a_is_bigger ? (b_aligned[i] - '0') : (a_aligned[i] - '0');
-        
-        digit_a -= borrow;
-        if (digit_a < digit_b) {
-            digit_a += 10;
-            borrow = 1;
+    for (; *p; p++) {
+        if (*p == '.') continue;
+        if (isdigit(*p)) {
+            x->digits[x->len++] = *p;
         } else {
-            borrow = 0;
+            // Некорректный символ - возвращаем NaN
+            free(x->digits);
+            x->digits = strdup("0");
+            x->len = 1;
+            x->is_nan = true;
+            return x;
         }
-        
-        result_digits[i] = (digit_a - digit_b) + '0';
-    }
-    result_digits[max_len] = '\0';
-    
-    free(a_aligned);
-    free(b_aligned);
-    
-    // Создаем результат
-    BigFloat* result = malloc(sizeof(BigFloat));
-    result->digits = result_digits;
-    result->length = max_len;
-    result->decimal_pos = decimal_pos;
-    
-    // Определяем знак результата
-    if (a->negative && b->negative) {
-        // (-a) - (-b) = -a + b = b - a
-        result->negative = !a_is_bigger;
-    } else {
-        // a - b
-        result->negative = !a_is_bigger;
     }
     
-    result->is_nan = false;
-    result->is_inf = false;
-    
-    normalize_string(result->digits);
-
-    // Update length and trim trailing fractional zeros
-    result->length = strlen(result->digits);
-    while (result->decimal_pos > 0 && result->length > 0 && result->digits[result->length - 1] == '0') {
-        result->digits[result->length - 1] = '\0';
-        result->length--;
-        result->decimal_pos--;
+    if (!x->len) {
+        x->digits[0] = '0';
+        x->len = 1;
     }
 
-    // If we ended up with empty digits, set to zero
-    if (result->length == 0) {
-        free(result->digits);
-        result->digits = strdup("0");
-        result->length = 1;
-        result->decimal_pos = 0;
-        result->negative = false;
-    }
-
-    normalize_string(result->digits);
-    return result;
+    x->decimal_pos = frac;
+    bf_trim(x);
+    return x;
 }
 
-static void multiply_digits(const char* a, int a_len, const char* b, int b_len, char** result, int* result_len) {
-    *result_len = a_len + b_len;
-    *result = malloc(*result_len + 1);
-    if (!*result) return;
-    // initialize with ASCII '0' characters so arithmetic works correctly
-    memset(*result, '0', *result_len);
-    (*result)[*result_len] = '\0';
+char* bigfloat_to_string(const BigFloat* x) {
+    if (x->is_nan) return strdup("nan");
+    if (x->is_inf) return strdup(x->neg ? "-inf" : "inf");
+
+    int int_len = x->len - x->decimal_pos;
+    if (int_len < 0) int_len = 0;
+
+    // ВАЖНО: Если decimal_pos больше чем len, значит у нас ведущие нули в дробной части
+    int leading_zeros_in_frac = 0;
+    if (x->decimal_pos > x->len) {
+        leading_zeros_in_frac = x->decimal_pos - x->len;
+    }
+
+    int size = int_len + x->decimal_pos + 3 + (int_len == 0 ? 1 : 0) + (x->neg ? 1 : 0);
+    char* s = calloc(size, 1);
+    int k = 0;
+
+    if (x->neg) s[k++] = '-';
+
+    if (int_len <= 0) {
+        s[k++] = '0';
+        s[k++] = '.';
+        
+        // Добавляем leading zeros
+        for (int i = 0; i < leading_zeros_in_frac; i++) {
+            s[k++] = '0';
+        }
+        
+        // Добавляем оставшиеся zeros от -int_len
+        for (int i = 0; i < -int_len - leading_zeros_in_frac; i++) {
+            s[k++] = '0';
+        }
+        
+        // Копируем цифры
+        memcpy(s + k, x->digits, x->len);
+        k += x->len;
+    } else {
+        // Целая часть
+        memcpy(s + k, x->digits, int_len);
+        k += int_len;
+        
+        if (x->decimal_pos > 0) {
+            s[k++] = '.';
+            
+            // Если дробная часть короче чем decimal_pos, добавляем leading zeros
+            int frac_digits_in_number = x->len - int_len;
+            if (frac_digits_in_number < x->decimal_pos) {
+                int missing_zeros = x->decimal_pos - frac_digits_in_number;
+                for (int i = 0; i < missing_zeros; i++) {
+                    s[k++] = '0';
+                }
+            }
+            
+            // Копируем дробные цифры
+            int frac_to_copy = x->len - int_len;
+            if (frac_to_copy > 0) {
+                memcpy(s + k, x->digits + int_len, frac_to_copy);
+                k += frac_to_copy;
+            }
+        }
+    }
+
+    s[k] = 0;
+    return s;
+}
+
+
+/* integer helpers */
+
+static int istrcmp(const char* a, int al, const char* b, int bl) {
+    int a_start = 0;
+    while (a_start < al - 1 && a[a_start] == '0') a_start++;
+    int b_start = 0;
+    while (b_start < bl - 1 && b[b_start] == '0') b_start++;
+    
+    int a_len = al - a_start;
+    int b_len = bl - b_start;
+    
+    if (a_len != b_len) return a_len > b_len ? 1 : -1;
     
     for (int i = 0; i < a_len; i++) {
-        int carry = 0;
-        int digit_a = a[a_len - 1 - i] - '0';
-        
-        for (int j = 0; j < b_len; j++) {
-            int digit_b = b[b_len - 1 - j] - '0';
-            int pos = *result_len - 1 - i - j;
-            int current = (*result)[pos] ? (*result)[pos] - '0' : 0;
-            int product = digit_a * digit_b + carry + current;
-            (*result)[pos] = (product % 10) + '0';
-            carry = product / 10;
+        if (a[a_start + i] != b[b_start + i]) {
+            return a[a_start + i] > b[b_start + i] ? 1 : -1;
         }
-        
-        if (carry > 0) {
-            int pos = *result_len - 1 - i - b_len;
-            (*result)[pos] = carry + '0';
-        }
+    }
+    return 0;
+}
+
+static char* iadd(const char* a, int al, const char* b, int bl, int* rl) {
+    int n = (al > bl ? al : bl) + 1;
+    char* r = malloc(n + 2);  // +2: для n цифр и нулевого символа
+    memset(r, 0, n + 2);
+    
+    int c = 0;
+    for (int i = 0; i < n; i++) {
+        int da = al - 1 - i >= 0 ? a[al - 1 - i] - '0' : 0;
+        int db = bl - 1 - i >= 0 ? b[bl - 1 - i] - '0' : 0;
+        int s = da + db + c;
+        r[n - 1 - i] = '0' + (s % 10);
+        c = s / 10;
     }
     
     // Убираем ведущие нули
-    int start = 0;
-    while (start < *result_len - 1 && (*result)[start] == '0') {
-        start++;
+    int i = 0;
+    while (i < n - 1 && r[i] == '0') {
+        i++;
     }
     
-    if (start > 0) {
-        memmove(*result, *result + start, *result_len - start + 1);
-        *result_len -= start;
+    int new_len = n - i;
+    if (i > 0) {
+        memmove(r, r + i, new_len);
+    }
+    r[new_len] = '\0';
+    
+    // Освобождаем лишнюю память
+    char* result = malloc(new_len + 1);
+    memcpy(result, r, new_len + 1);
+    free(r);
+    
+    *rl = new_len;
+    return result;
+}
+
+
+static char* isub(const char* a, int al, const char* b, int bl, int* rl) {
+    // a >= b должно соблюдаться! Если нет, возвращаем NULL
+    int cmp = istrcmp(a, al, b, bl);
+    if (cmp < 0) {
+        *rl = 0;
+        return NULL;
+    }
+
+    char* r = calloc(al + 1, 1);
+    int br = 0;
+    for (int i = 0; i < al; i++) {
+        int da = a[al - 1 - i] - '0' - br;
+        int db = (bl - 1 - i >= 0) ? (b[bl - 1 - i] - '0') : 0;
+        if (da < db) {
+            da += 10;
+            br = 1;
+        } else {
+            br = 0;
+        }
+        r[al - 1 - i] = '0' + (da - db);
+    }
+
+    int i = 0;
+    while (i < al - 1 && r[i] == '0') i++;
+    memmove(r, r + i, al - i + 1);
+    *rl = al - i;
+    return r;
+}
+
+
+
+
+
+static char* imul(const char* a, int al, const char* b, int bl, int* rl) {
+    int n = al + bl;
+    int* temp = calloc(n, sizeof(int));
+
+    for (int i = al - 1; i >= 0; i--) {
+        int da = a[i] - '0';
+        for (int j = bl - 1; j >= 0; j--) {
+            int db = b[j] - '0';
+            temp[i + j + 1] += da * db;
+        }
+    }
+
+    // Перенос
+    for (int i = n - 1; i > 0; i--) {
+        temp[i - 1] += temp[i] / 10;
+        temp[i] %= 10;
+    }
+
+    // Найдём первую значащую цифру
+    int start = 0;
+    while (start < n - 1 && temp[start] == 0) start++;
+
+    *rl = n - start;
+    char* r = calloc(*rl + 1, 1);
+    for (int i = 0; i < *rl; i++) r[i] = temp[start + i] + '0';
+    r[*rl] = 0;
+
+    free(temp);
+    return r;
+}
+
+
+
+static void bf_align(BigFloat* x, int dp) {
+    if (x->decimal_pos < dp) {
+        int add = dp - x->decimal_pos;
+        x->digits = realloc(x->digits, x->len + add + 1);
+        memset(x->digits + x->len, '0', add);
+        x->len += add;
+        x->digits[x->len] = 0;
+        x->decimal_pos = dp;
     }
 }
+
+static int is_zero_string(const char* s, int len) {
+    for (int i = 0; i < len; i++) {
+        if (s[i] != '0') return 0;
+    }
+    return 1;
+}
+
+/* arithmetic */
+
+BigFloat* bigfloat_add(const BigFloat* a, const BigFloat* b) {
+    if (a->is_nan || b->is_nan) return bf_nan();
+    
+    if (a->is_inf || b->is_inf) {
+        if (a->is_inf && b->is_inf) {
+            if (a->neg == b->neg) return bf_inf(a->neg);
+            return bf_nan(); // ∞ + (-∞) = NaN
+        }
+        return bf_inf(a->is_inf ? a->neg : b->neg);
+    }
+
+    BigFloat* x = bf_copy(a);
+    BigFloat* y = bf_copy(b);
+    int dp = x->decimal_pos > y->decimal_pos ? x->decimal_pos : y->decimal_pos;
+    bf_align(x, dp);
+    bf_align(y, dp);
+
+    BigFloat* r = bf_new();
+    free(r->digits);
+
+    if (x->neg == y->neg) {
+        r->digits = iadd(x->digits, x->len, y->digits, y->len, &r->len);
+        r->neg = x->neg;
+    } else {
+        int cmp = istrcmp(x->digits, x->len, y->digits, y->len);
+        if (cmp >= 0) {
+            r->digits = isub(x->digits, x->len, y->digits, y->len, &r->len);
+            r->neg = x->neg;
+        } else {
+            r->digits = isub(y->digits, y->len, x->digits, x->len, &r->len);
+            r->neg = y->neg;
+        }
+    }
+
+    r->decimal_pos = dp;
+    bf_trim(r);
+    bigfloat_free(x);
+    bigfloat_free(y);
+    return r;
+}
+
+BigFloat* bigfloat_sub(const BigFloat* a, const BigFloat* b) {
+    BigFloat* nb = bf_copy(b);
+    nb->neg = !nb->neg;
+    BigFloat* r = bigfloat_add(a, nb);
+    bigfloat_free(nb);
+    return r;
+}
+
 
 BigFloat* bigfloat_mul(const BigFloat* a, const BigFloat* b) {
-    // Проверка специальных случаев
-    if (a->is_nan || b->is_nan) return bigfloat_nan();
+    if (a->is_nan || b->is_nan) return bf_nan();
+
+    // ∞ * 0 = NaN
+    if ((a->is_inf && is_zero_string(b->digits, b->len)) ||
+        (b->is_inf && is_zero_string(a->digits, a->len))) {
+        return bf_nan();
+    }
+
+    // ∞ * finite = ∞
     if (a->is_inf || b->is_inf) {
-        if (bigfloat_eq(a, bigfloat_zero()) || bigfloat_eq(b, bigfloat_zero())) {
-            return bigfloat_nan(); // 0 * inf = NaN
-        }
-        bool negative = a->negative != b->negative;
-        return bigfloat_inf(negative);
-    }
-    
-    char* result_digits;
-    int result_len;
-    multiply_digits(a->digits, a->length, b->digits, b->length, &result_digits, &result_len);
-    
-    // Создаем результат
-    BigFloat* result = malloc(sizeof(BigFloat));
-    result->digits = result_digits;
-    result->length = result_len;
-    result->decimal_pos = a->decimal_pos + b->decimal_pos;
-    result->negative = a->negative != b->negative;
-    result->is_nan = false;
-    result->is_inf = false;
-    
-    normalize_string(result->digits);
-
-    // Update length and trim trailing fractional zeros
-    result->length = strlen(result->digits);
-    while (result->decimal_pos > 0 && result->length > 0 && result->digits[result->length - 1] == '0') {
-        result->digits[result->length - 1] = '\0';
-        result->length--;
-        result->decimal_pos--;
+        bool result_neg = a->neg != b->neg;
+        return bf_inf(result_neg);
     }
 
-    if (result->length == 0) {
-        free(result->digits);
-        result->digits = strdup("0");
-        result->length = 1;
-        result->decimal_pos = 0;
-        result->negative = false;
+    // Полное умножение строк
+    int rlen;
+    char* rdigits = imul(a->digits, a->len, b->digits, b->len, &rlen);
+
+    BigFloat* r = bf_new();
+    free(r->digits);
+    r->digits = rdigits;
+    r->len = rlen;
+
+    // decimal_pos = сумма decimal_pos исходных чисел
+    r->decimal_pos = a->decimal_pos + b->decimal_pos;
+
+    // Если дробная часть длиннее результата, добавляем ведущие нули
+    if (r->decimal_pos > r->len) {
+        int add = r->decimal_pos - r->len;
+        r->digits = realloc(r->digits, r->len + add + 1);
+        memmove(r->digits + add, r->digits, r->len);
+        memset(r->digits, '0', add);
+        r->len += add;
+        r->digits[r->len] = 0;
     }
 
-    normalize_string(result->digits);
-    return result;
+    r->neg = a->neg != b->neg;
+
+    bf_trim(r);
+    bf_limit_precision(r, BF_PRECISION);
+    return r;
 }
+
 
 BigFloat* bigfloat_div(const BigFloat* a, const BigFloat* b) {
-    // Проверка специальных случаев
-    if (a->is_nan || b->is_nan) return bigfloat_nan();
+    if (a->is_nan || b->is_nan) return bf_nan();
+
     if (b->is_inf) {
-        if (a->is_inf) return bigfloat_nan(); // inf / inf = NaN
-        return bigfloat_zero();
+        BigFloat* zero = bf_zero();
+        zero->neg = a->neg != b->neg;
+        return zero;
     }
-    if (a->is_inf) return bigfloat_inf(a->negative != b->negative);
-    
-    // Деление на ноль
-    if (bigfloat_eq(b, bigfloat_zero())) {
-        return bigfloat_inf(a->negative != b->negative);
+    if (a->is_inf) return bf_inf(a->neg != b->neg);
+    if (is_zero_string(b->digits, b->len)) {
+        if (is_zero_string(a->digits, a->len)) return bf_nan();
+        return bf_inf(a->neg != b->neg);
+    }
+
+    bool result_neg = a->neg != b->neg;
+
+    BigFloat* num = bf_copy(a);
+    BigFloat* den = bf_copy(b);
+    num->neg = false;
+    den->neg = false;
+
+    int max_decimal = num->decimal_pos > den->decimal_pos ? num->decimal_pos : den->decimal_pos;
+
+    if (num->decimal_pos < max_decimal) {
+        int add_zeros = max_decimal - num->decimal_pos;
+        num->digits = realloc(num->digits, num->len + add_zeros + 1);
+        memset(num->digits + num->len, '0', add_zeros);
+        num->len += add_zeros;
+        num->digits[num->len] = '\0';
+        num->decimal_pos = max_decimal;
     }
     
-    // Простая реализация деления с заданной точностью
-    int precision = MAX_PRECISION;
-    
-    // Нормализуем числа: умножаем на 10^precision
-    BigFloat* a_scaled = bigfloat_mul(a, bigfloat_create("1"));
-    BigFloat* b_scaled = bigfloat_mul(b, bigfloat_create("1"));
-    
-    // Умножаем делимое на 10^precision
-    char* power = malloc(precision + 2);
-    if (!power) {
-        bigfloat_destroy(a_scaled);
-        bigfloat_destroy(b_scaled);
-        return bigfloat_create("0");
+    if (den->decimal_pos < max_decimal) {
+        int add_zeros = max_decimal - den->decimal_pos;
+        den->digits = realloc(den->digits, den->len + add_zeros + 1);
+        memset(den->digits + den->len, '0', add_zeros);
+        den->len += add_zeros;
+        den->digits[den->len] = '\0';
+        den->decimal_pos = max_decimal;
     }
-    power[0] = '1';
-    for (int i = 0; i < precision; i++) {
-        power[1 + i] = '0';
+
+    int extra_zeros = BF_PRECISION;
+    if (extra_zeros > 0) {
+        num->digits = realloc(num->digits, num->len + extra_zeros + 1);
+        memset(num->digits + num->len, '0', extra_zeros);
+        num->len += extra_zeros;
+        num->digits[num->len] = '\0';
+        num->decimal_pos += extra_zeros;
     }
-    power[1 + precision] = '\0';
-    BigFloat* multiplier = bigfloat_create(power);
-    free(power);
-    BigFloat* a_mult = bigfloat_mul(a_scaled, multiplier);
-    
-    // Выполняем целочисленное деление
-    char* result_digits = malloc(precision + a->length + 1);
-    // Упрощенная реализация - для полноценной нужна длинная арифметика деления
-    strcpy(result_digits, "0");
-    
-    bigfloat_destroy(a_scaled);
-    bigfloat_destroy(b_scaled);
-    bigfloat_destroy(multiplier);
-    bigfloat_destroy(a_mult);
-    
-    // Создаем результат
-    BigFloat* result = bigfloat_create("0");
-    result->negative = a->negative != b->negative;
-    return result;
+
+    int nlen = num->len;
+    int dlen = den->len;
+
+    while (istrcmp(num->digits, nlen, den->digits, dlen) < 0) {
+        num->digits = realloc(num->digits, nlen + 2);
+        num->digits[nlen] = '0';
+        num->digits[nlen + 1] = '\0';
+        num->len++;
+        nlen++;
+        num->decimal_pos++;
+    }
+
+    char* rdigits = calloc(nlen + 1, 1);
+    char* rem = malloc(nlen + 2);
+    int rem_len = 0;
+
+
+for (int i = 0; i < nlen; i++) {
+    rem[rem_len++] = num->digits[i];
+    rem[rem_len] = '\0';
+
+    int q = 0;
+
+    // Убираем ведущие нули
+    int start = 0;
+    while (start < rem_len && rem[start] == '0') start++;
+    int effective_rem_len = rem_len - start;
+
+    if (effective_rem_len > 0) {
+        while (effective_rem_len >= dlen && istrcmp(rem + start, effective_rem_len, den->digits, dlen) >= 0) {
+            if (is_zero_string(rem + start, effective_rem_len)) break;
+
+            int tmp_len;
+            char* tmp = isub(rem + start, effective_rem_len, den->digits, dlen, &tmp_len);
+
+            // Сдвигаем tmp в начало rem + start
+            if (tmp_len > 0) {
+                memmove(rem + start, tmp, tmp_len);
+            }
+            rem_len = start + tmp_len;
+            rem[rem_len] = '\0';
+            free(tmp);
+
+            q++;
+            start = 0;
+            while (start < rem_len && rem[start] == '0') start++;
+            effective_rem_len = rem_len - start;
+        }
+    }
+
+    rdigits[i] = '0' + q;
+
+    // Убираем ведущие нули из rem для следующей итерации
+    if (start > 0) {
+        memmove(rem, rem + start, rem_len - start);
+        rem_len -= start;
+        rem[rem_len] = '\0';
+    }
 }
+
+    BigFloat* r = bf_new();
+    free(r->digits);
+    r->digits = rdigits;
+    r->len = nlen;
+
+    r->decimal_pos = num->decimal_pos - den->decimal_pos;
+
+    if (r->decimal_pos < 0) {
+        int add_zeros = -r->decimal_pos;
+        r->digits = realloc(r->digits, r->len + add_zeros + 1);
+        memmove(r->digits + add_zeros, r->digits, r->len);
+        memset(r->digits, '0', add_zeros);
+        r->len += add_zeros;
+        r->digits[r->len] = '\0';
+        r->decimal_pos = 0;
+    }
+
+    r->neg = result_neg;
+    bf_trim(r);
+    bf_limit_precision(r, BF_PRECISION);  // ← ДОБАВЬ ЭТУ СТРОКУ
+    free(rem);
+    bigfloat_free(num);
+    bigfloat_free(den);
+    return r;
+}
+
 
 BigFloat* bigfloat_mod(const BigFloat* a, const BigFloat* b) {
-    if (a->is_nan || b->is_nan || b->is_inf || bigfloat_eq(b, bigfloat_zero())) {
-        return bigfloat_nan();
+    if (a->is_nan || b->is_nan || a->is_inf || b->is_inf) return bf_nan();
+    if (is_zero_string(b->digits, b->len)) return bf_nan(); // mod by zero
+    
+    BigFloat* d = bigfloat_div(a, b);
+    
+    // Округляем частное до целого вниз
+    BigFloat* d_int = bf_copy(d);
+    if (d_int->decimal_pos > 0) {
+        d_int->len -= d_int->decimal_pos;
+        d_int->decimal_pos = 0;
+        bf_trim(d_int);
     }
     
-    // Упрощенная реализация: a % b = a - floor(a/b) * b
-    BigFloat* div = bigfloat_div(a, b);
-    // Нужна функция floor для BigFloat
-    // Пока возвращаем упрощенный результат
-    BigFloat* result = bigfloat_sub(a, b);
-    bigfloat_destroy(div);
-    return result;
+    BigFloat* m = bigfloat_mul(d_int, b);
+    BigFloat* r = bigfloat_sub(a, m);
+    
+    bigfloat_free(d);
+    bigfloat_free(d_int);
+    bigfloat_free(m);
+    
+    return r;
 }
 
-BigFloat* bigfloat_neg(const BigFloat* a) {
-    if (a->is_nan) return bigfloat_nan();
-    if (a->is_inf) return bigfloat_inf(!a->negative);
+int bigfloat_cmp(const BigFloat* a, const BigFloat* b) {
+    if (a->is_nan || b->is_nan) return 0;
     
-    BigFloat* result = malloc(sizeof(BigFloat));
-    result->digits = strdup(a->digits);
-    result->length = a->length;
-    result->decimal_pos = a->decimal_pos;
-    result->negative = !a->negative;
-    result->is_nan = a->is_nan;
-    result->is_inf = a->is_inf;
-    return result;
+    if (a->is_inf && b->is_inf) {
+        if (a->neg && !b->neg) return -1;
+        if (!a->neg && b->neg) return 1;
+        return 0;
+    }
+    
+    if (a->is_inf) return a->neg ? -1 : 1;
+    if (b->is_inf) return b->neg ? 1 : -1;
+    
+    if (a->neg != b->neg) return a->neg ? -1 : 1;
+    
+    // Вычисляем разность
+    BigFloat* diff = bigfloat_sub(a, b);
+    
+    // Эпсилон для сравнения
+    BigFloat* epsilon = bigfloat_create("0.000000000000001");
+    
+    int result;
+    if (bigfloat_cmp_abs(diff, epsilon) <= 0) {
+        // |diff| <= epsilon => считаем равными
+        result = 0;
+    } else if (diff->neg) {
+        result = -1;
+    } else {
+        result = 1;
+    }
+    
+    bigfloat_free(diff);
+    bigfloat_free(epsilon);
+    
+    return a->neg ? -result : result;
+}
+
+// Вспомогательная функция для сравнения модулей
+static int bigfloat_cmp_abs(const BigFloat* a, const BigFloat* b) {
+    BigFloat* a_abs = a->neg ? bigfloat_neg(a) : bf_copy(a);
+    BigFloat* b_abs = b->neg ? bigfloat_neg(b) : bf_copy(b);
+    
+    // Простое сравнение без учета знака
+    BigFloat* x = bf_copy(a_abs);
+    BigFloat* y = bf_copy(b_abs);
+    int dp = x->decimal_pos > y->decimal_pos ? x->decimal_pos : y->decimal_pos;
+    bf_align(x, dp);
+    bf_align(y, dp);
+    
+    int cmp = istrcmp(x->digits, x->len, y->digits, y->len);
+    
+    bigfloat_free(a_abs);
+    bigfloat_free(b_abs);
+    bigfloat_free(x);
+    bigfloat_free(y);
+    
+    return cmp;
+}
+
+
+BigFloat* bigfloat_sqrt(const BigFloat* a) {
+    if (a->is_nan || a->neg) return bf_nan();
+    if (a->is_inf) return bf_inf(false);
+    if (is_zero_string(a->digits, a->len)) return bf_zero();
+
+    BigFloat* x = bf_copy(a);
+    BigFloat* half = bigfloat_create("0.5");
+
+    for (int i = 0; i < BF_SQRT_ITERS; i++) {
+        BigFloat* a_div_x = bigfloat_div(a, x);
+        BigFloat* sum = bigfloat_add(x, a_div_x);
+        BigFloat* new_x = bigfloat_mul(sum, half);
+
+        bigfloat_free(x);
+        bigfloat_free(a_div_x);
+        bigfloat_free(sum);
+
+        x = new_x;
+    }
+
+    bigfloat_free(half);
+    return x;
+}
+
+
+BigFloat* bigfloat_neg(const BigFloat* a) {
+    BigFloat* r = bf_copy(a);
+    if (!r->is_nan && !r->is_inf) {
+        r->neg = !a->neg;
+    }
+    return r;
 }
 
 bool bigfloat_eq(const BigFloat* a, const BigFloat* b) {
-    if (a->is_nan || b->is_nan) return false;
-    if (a->is_inf && b->is_inf) return a->negative == b->negative;
-    if (a->is_inf || b->is_inf) return false;
-    
-    if (a->negative != b->negative) return false;
-    
-    char* a_aligned, *b_aligned;
-    int max_len, decimal_pos;
-    align_decimals(a, b, &a_aligned, &b_aligned, &max_len, &decimal_pos);
-    
-    bool equal = (strcmp(a_aligned, b_aligned) == 0);
-    
-    free(a_aligned);
-    free(b_aligned);
-    
-    return equal;
+    return bigfloat_cmp(a, b) == 0;
 }
 
 bool bigfloat_lt(const BigFloat* a, const BigFloat* b) {
-    if (a->is_nan || b->is_nan) return false;
-    if (a->is_inf && b->is_inf) {
-        if (a->negative && !b->negative) return true;
-        if (!a->negative && b->negative) return false;
-        return false; // Одинаковые бесконечности
-    }
-    if (a->is_inf) return a->negative;
-    if (b->is_inf) return !b->negative;
-    
-    if (a->negative && !b->negative) return true;
-    if (!a->negative && b->negative) return false;
-    
-    char* a_aligned, *b_aligned;
-    int max_len, decimal_pos;
-    align_decimals(a, b, &a_aligned, &b_aligned, &max_len, &decimal_pos);
-    
-    bool less = false;
-    for (int i = 0; i < max_len; i++) {
-        if (a_aligned[i] < b_aligned[i]) {
-            less = true;
-            break;
-        } else if (a_aligned[i] > b_aligned[i]) {
-            less = false;
-            break;
-        }
-    }
-    
-    free(a_aligned);
-    free(b_aligned);
-    
-    return a->negative ? !less : less;
-}
-
-bool bigfloat_gt(const BigFloat* a, const BigFloat* b) {
-    return bigfloat_lt(b, a);
+    return bigfloat_cmp(a, b) < 0;
 }
 
 bool bigfloat_le(const BigFloat* a, const BigFloat* b) {
-    return !bigfloat_gt(a, b);
+    return bigfloat_cmp(a, b) <= 0;
+}
+
+bool bigfloat_gt(const BigFloat* a, const BigFloat* b) {
+    return bigfloat_cmp(a, b) > 0;
 }
 
 bool bigfloat_ge(const BigFloat* a, const BigFloat* b) {
-    return !bigfloat_lt(a, b);
+    return bigfloat_cmp(a, b) >= 0;
 }
 
-BigFloat* bigfloat_zero(void) {
-    return bigfloat_create("0");
-}
-
-BigFloat* bigfloat_one(void) {
-    return bigfloat_create("1");
-}
-
-BigFloat* bigfloat_nan(void) {
-    BigFloat* bf = malloc(sizeof(BigFloat));
-    bf->is_nan = true;
-    bf->is_inf = false;
-    bf->negative = false;
-    bf->digits = strdup("0");
-    bf->length = 1;
-    bf->decimal_pos = 0;
-    return bf;
-}
-
-BigFloat* bigfloat_inf(bool negative) {
-    BigFloat* bf = malloc(sizeof(BigFloat));
-    bf->is_nan = false;
-    bf->is_inf = true;
-    bf->negative = negative;
-    bf->digits = strdup("0");
-    bf->length = 1;
-    bf->decimal_pos = 0;
-    return bf;
-}
+BigFloat* bigfloat_zero(void) { return bf_zero(); }
+BigFloat* bigfloat_one(void) { return bf_one(); }
+BigFloat* bigfloat_nan(void) { return bf_nan(); }
+BigFloat* bigfloat_inf(bool negative) { return bf_inf(negative); }

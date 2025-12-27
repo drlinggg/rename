@@ -203,3 +203,4 @@ Object* builtin_sqrt(VM* vm, int arg_count, Object** args) {
     snprintf(buf, sizeof(buf), "%.15g", res);
     return heap_alloc_float(heap, strdup(buf));
 }
+

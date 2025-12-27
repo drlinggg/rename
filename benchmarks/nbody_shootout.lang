@@ -1,0 +1,135 @@
+float PI = 3.141592653589793;
+float SOLAR_MASS = 4 * PI * PI;
+float DAYS_PER_YEAR = 365.24;
+
+void init_bodies(float[] px, float[] py, float[] pz,
+                float[] vx, float[] vy, float[] vz,
+                float[] m) {
+    // Sun
+    px[0] = 0.0; py[0] = 0.0; pz[0] = 0.0;
+    vx[0] = 0.0; vy[0] = 0.0; vz[0] = 0.0;
+    m[0] = SOLAR_MASS;
+
+    // Jupiter
+    px[1] = 4.84143144246472090; py[1] = -1.16032004402742839; pz[1] = -0.103622044471123109;
+    vx[1] = 0.00166007664274403694 * DAYS_PER_YEAR;
+    vy[1] = 0.00769901118419740425 * DAYS_PER_YEAR;
+    vz[1] = -0.0000690460016972063023 * DAYS_PER_YEAR;
+    m[1] = 0.000954791938424326609 * SOLAR_MASS;
+
+    // Saturn
+    px[2] = 8.34336671824457987; py[2] = 4.12479856412430479; pz[2] = -0.403523417114321381;
+    vx[2] = -0.00276742510726862411 * DAYS_PER_YEAR;
+    vy[2] = 0.00499852801234917238 * DAYS_PER_YEAR;
+    vz[2] = 0.0000230417297573763929 * DAYS_PER_YEAR;
+    m[2] = 0.000285885980666130812 * SOLAR_MASS;
+
+    // Uranus
+    px[3] = 12.8943695621391310; py[3] = -15.1111514016986310; pz[3] = -0.223307578892655734;
+    vx[3] = 0.00296460137564761618 * DAYS_PER_YEAR;
+    vy[3] = 0.00237847173959480950 * DAYS_PER_YEAR;
+    vz[3] = -0.0000296589568540237556 * DAYS_PER_YEAR;
+    m[3] = 0.0000436624404335156298 * SOLAR_MASS;
+
+    // Neptune
+    px[4] = 15.3796971148509165; py[4] = -25.9193146099879641; pz[4] = 0.179258772950371181;
+    vx[4] = 0.00268067772490389322 * DAYS_PER_YEAR;
+    vy[4] = 0.00162824170038242295 * DAYS_PER_YEAR;
+    vz[4] = -0.0000951592254519715870 * DAYS_PER_YEAR;
+    m[4] = 0.0000515138902046611451 * SOLAR_MASS;
+
+    // offset momentum for the system
+    float px_tot = 0.0;
+    float py_tot = 0.0;
+    float pz_tot = 0.0;
+    for (int i = 0; i < 5; i = i + 1) {
+        px_tot = px_tot + vx[i] * m[i];
+        py_tot = py_tot + vy[i] * m[i];
+        pz_tot = pz_tot + vz[i] * m[i];
+    }
+
+    vx[0] = -px_tot / SOLAR_MASS;
+    vy[0] = -py_tot / SOLAR_MASS;
+    vz[0] = -pz_tot / SOLAR_MASS;
+}
+
+void advance(float dt,
+             float[] px, float[] py, float[] pz,
+             float[] vx, float[] vy, float[] vz,
+             float[] m,
+             int size) {
+    for (int i = 0; i < size; i = i + 1) {
+        for (int j = i + 1; j < size; j = j + 1) {
+            float dx = px[i] - px[j];
+            float dy = py[i] - py[j];
+            float dz = pz[i] - pz[j];
+
+            float distance = sqrt(dx * dx + dy * dy + dz * dz);
+            float mag = dt / (distance * distance * distance);
+
+            float bjm = m[j] * mag;
+            float bim = m[i] * mag;
+
+            vx[i] = vx[i] - dx * bjm;
+            vy[i] = vy[i] - dy * bjm;
+            vz[i] = vz[i] - dz * bjm;
+
+            vx[j] = vx[j] + dx * bim;
+            vy[j] = vy[j] + dy * bim;
+            vz[j] = vz[j] + dz * bim;
+        }
+    }
+
+    for (int i = 0; i < size; i = i + 1) {
+        px[i] = px[i] + dt * vx[i];
+        py[i] = py[i] + dt * vy[i];
+        pz[i] = pz[i] + dt * vz[i];
+    }
+}
+
+float energy(float[] px, float[] py, float[] pz,
+             float[] vx, float[] vy, float[] vz,
+             float[] m,
+             int size) {
+    float e = 0.0;
+
+    for (int i = 0; i < size; i = i + 1) {
+        e = e + 0.5 * m[i] * (vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i]);
+        for (int j = i + 1; j < size; j = j + 1) {
+            float dx = px[i] - px[j];
+            float dy = py[i] - py[j];
+            float dz = pz[i] - pz[j];
+            float distance = sqrt(dx * dx + dy * dy + dz * dz);
+            e = e - (m[i] * m[j]) / distance;
+        }
+    }
+
+    return e;
+}
+
+int main() {
+    float ret = 0.0;
+
+    for (int n = 3; n <= 24; n = n * 2) {
+        float[5] px; float[5] py; float[5] pz;
+        float[5] vx; float[5] vy; float[5] vz;
+        float[5] m;
+
+        init_bodies(px, py, pz, vx, vy, vz, m);
+
+        int max = n * 100;
+        ret = ret + energy(px, py, pz, vx, vy, vz, m, 5);
+        for (int i = 0; i < max; i = i + 1) {
+            advance(0.01, px, py, pz, vx, vy, vz, m, 5);
+        }
+        ret = ret + energy(px, py, pz, vx, vy, vz, m, 5);
+    }
+
+    float expected = -1.3524862408537381;
+    float diff = ret - expected;
+    print(ret == expected);
+    print(ret, expected);
+    print(diff);
+    return 0;
+}
+

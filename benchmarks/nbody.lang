@@ -1,0 +1,42 @@
+int main() {
+    int n = 64;
+    float[n] px;
+    float[n] py;
+    float[n] vx;
+    float[n] vy;
+    float[n] m;
+
+    // initialize
+    for (int i = 0; i < n; i = i + 1) {
+        px[i] = i * 0.01;
+        py[i] = i * 0.02;
+        vx[i] = 0.0;
+        vy[i] = 0.0;
+        m[i] = 1.0;
+    }
+
+    int steps = 5;
+    for (int step = 0; step < steps; step = step + 1) {
+        for (int i = 0; i < n; i = i + 1) {
+            for (int j = i + 1; j < n; j = j + 1) {
+                float dx = px[j] - px[i];
+                float dy = py[j] - py[i];
+                float dist2 = dx * dx + dy * dy + 0.0001;
+                float dist = sqrt(dist2);
+                float force = (m[i] * m[j]) / (dist2 * dist);
+                vx[i] = vx[i] + force * dx;
+                vy[i] = vy[i] + force * dy;
+                vx[j] = vx[j] - force * dx;
+                vy[j] = vy[j] - force * dy;
+            }
+        }
+        for (int i = 0; i < n; i = i + 1) {
+            px[i] = px[i] + vx[i];
+            py[i] = py[i] + vy[i];
+        }
+    }
+
+    // print a couple of values
+    print(px[1], py[1]);
+    return 0;
+}
