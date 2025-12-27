@@ -126,10 +126,9 @@ int main() {
     }
 
     float expected = -1.3524862408537381;
-    float diff = ret - expected;
-    print(ret == expected);
-    print(ret, expected);
-    print(diff);
+    if ret != expected {
+        return 1;
+    }
     return 0;
 }
 
