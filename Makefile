@@ -22,7 +22,7 @@ OBJECT_SRC = src/runtime/vm/object.c
 HEAP_SRC = src/runtime/vm/heap.c
 VM_SRC = src/runtime/vm/vm.c src/runtime/vm/float_bigint.c
 GC_SRC = src/runtime/gc/gc.c
-JIT_SRC = src/runtime/jit/jit.c src/runtime/jit/cmpswap.c src/runtime/jit/const_folding.c
+JIT_SRC = src/runtime/jit/jit.c src/runtime/jit/cmpswap.c src/runtime/jit/const_folding.c src/runtime/jit/dce.c
 
 # Test files
 AST_TEST = $(TEST_DIR)/ast/test_ast.c
@@ -47,7 +47,7 @@ test_parser: $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(SYSTEM_SRC) 
 	$(CC) $(CFLAGS) $(PARSER_TEST) $(PARSER_SRC) $(AST_SRC) $(LEXER_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
 
 test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) -o $@ $(LDFLAGS)  # ← ДОБАВЬТЕ ЗДЕСЬ
+	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) -o $@ $(LDFLAGS)
 
 test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) $(BUILTINS_SRC)
 	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@ $(LDFLAGS)  # ← И ЗДЕСЬ
@@ -59,7 +59,7 @@ test_vm_bigfloat: $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(
 	$(CC) $(CFLAGS) $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
 
 test_bigfloat: $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)  # ← И ЗДЕСЬ
+	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
 
 test: all
 	@echo "[Make] Running AST tests..."

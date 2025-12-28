@@ -1,5 +1,9 @@
+int increment(int a) {
+    return a + 1;
+}
+
 int main() {
-    int temp = c[50];
-    c[50] = d[50];
-    d[50] = temp;
+    int a = 5;
+    a = increment(a);
+    print(1231);
 }

@@ -12,7 +12,7 @@ static inline void bytecode_set_arg(bytecode* bc, uint32_t arg) {
     bc->argument[2] = arg & 0xFF;
 }
 
-static const char* bytecode_opcode_to_string(uint8_t op_code) {
+const char* bytecode_opcode_to_string(uint8_t op_code) {
     switch (op_code) {
         case LOAD_FAST: return "LOAD_FAST";
         case LOAD_CONST: return "LOAD_CONST";

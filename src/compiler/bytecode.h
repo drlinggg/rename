@@ -66,4 +66,4 @@ void bytecode_array_print(bytecode_array* bc);
 
 static uint8_t* bytecode_to_byte_array(const bytecode_array* bc_array, size_t* byte_count);
 static bytecode_array byte_array_to_bytecode(const uint8_t* byte_array, size_t byte_count);
-
+const char* bytecode_opcode_to_string(uint8_t op_code);

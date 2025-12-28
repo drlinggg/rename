@@ -1,6 +1,7 @@
 #include "../../system.h"
 #include "cmpswap.h"
 #include "const_folding.h"
+#include "dce.h"
 #include "jit.h"
 #include "jit_types.h"
 #include <stdio.h>
@@ -89,47 +90,6 @@ static void jit_add_to_cache(JIT* jit, CodeObj* optimized_code) {
            jit->cache_size, jit->cache_capacity);
 }
 
-// Вспомогательная функция для создания глубокой копии
-static CodeObj* deep_copy_codeobj(CodeObj* original) {
-    if (!original) return NULL;
-    
-    CodeObj* copy = malloc(sizeof(CodeObj));
-    if (!copy) return NULL;
-    
-    copy->name = original->name ? strdup(original->name) : NULL;
-    copy->local_count = original->local_count;
-    copy->arg_count = original->arg_count;
-    copy->constants_count = original->constants_count;
-    
-    if (original->constants_count > 0 && original->constants) {
-        copy->constants = malloc(original->constants_count * sizeof(Value));
-        if (!copy->constants) {
-            free(copy->name);
-            free(copy);
-            return NULL;
-        }
-        memcpy(copy->constants, original->constants,
-               original->constants_count * sizeof(Value));
-    } else {
-        copy->constants = NULL;
-    }
-    
-    copy->code.count = original->code.count;
-    copy->code.capacity = original->code.count;
-    copy->code.bytecodes = malloc(original->code.count * sizeof(bytecode));
-    if (!copy->code.bytecodes) {
-        free(copy->constants);
-        free(copy->name);
-        free(copy);
-        return NULL;
-    }
-    memcpy(copy->code.bytecodes, original->code.bytecodes,
-           original->code.count * sizeof(bytecode));
-    
-    return copy;
-}
-
-// Основная функция JIT-компиляции
 void* jit_compile_function(JIT* jit, void* code_ptr) {
     if (!jit || !code_ptr) {
         DPRINT("[JIT] Invalid parameters\n");
@@ -178,7 +138,20 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         was_optimized = true;
     }
     
-    // 4. Добавляем в кэш, если функция была оптимизирована
+    DCEStats dce_stats;
+    CodeObj* dce_result = jit_optimize_dce(optimized, &dce_stats);
+
+    if (dce_result && dce_result != optimized) {
+        DPRINT("[JIT-DCE] Dead Code Elimination: removed %zu function calls, %zu total instructions\n",
+               dce_stats.removed_calls, dce_stats.removed_instructions);
+
+        optimized = dce_result;
+        was_optimized = true;
+    } else if (dce_result == optimized) {
+        DPRINT("[JIT-DCE] No DCE changes applied\n");
+    }
+    
+    // 5. Добавляем в кэш, если функция была оптимизирована
     if (was_optimized && optimized) {
         jit_add_to_cache(jit, optimized);
         
@@ -202,6 +175,7 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
     
     return original;
 }
+
 
 // Дополнительная функция для принудительной очистки кэша
 void jit_clear_cache(JIT* jit) {

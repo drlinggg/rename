@@ -4,17 +4,17 @@
 #include <stdlib.h>
 
 // Объявления вспомогательных функций
-static int is_truthy(Value v);
-static int is_falsy(Value v);
-static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats);
-static CodeObj* deep_copy_codeobj(CodeObj* original);
-static int is_constant_foldable(Value a, Value b, uint8_t op);
-static int is_unary_foldable(Value a, uint8_t op);
-static Value fold_binary_constant(Value a, Value b, uint8_t op);
-static Value fold_unary_constant(Value a, uint8_t op);
+int is_truthy(Value v);
+int is_falsy(Value v);
+size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats);
+CodeObj* deep_copy_codeobj(CodeObj* original);
+int is_constant_foldable(Value a, Value b, uint8_t op);
+int is_unary_foldable(Value a, uint8_t op);
+Value fold_binary_constant(Value a, Value b, uint8_t op);
+Value fold_unary_constant(Value a, uint8_t op);
 
 // Вспомогательная функция для пропуска NOP
-static size_t skip_nops(bytecode_array* bc, size_t start_index) {
+size_t skip_nops(bytecode_array* bc, size_t start_index) {
     while (start_index < bc->count && bc->bytecodes[start_index].op_code == NOP) {
         start_index++;
     }
@@ -22,7 +22,7 @@ static size_t skip_nops(bytecode_array* bc, size_t start_index) {
 }
 
 // Получение цели прыжка (абсолютный индекс)
-static size_t get_jump_target(bytecode_array* bc, size_t ins_index, uint32_t arg, uint8_t op) {
+size_t get_jump_target(bytecode_array* bc, size_t ins_index, uint32_t arg, uint8_t op) {
     if (op == JUMP_BACKWARD) {
         return ins_index - arg;
     } else if (op == JUMP_FORWARD || op == POP_JUMP_IF_FALSE || op == POP_JUMP_IF_TRUE) {
@@ -32,18 +32,18 @@ static size_t get_jump_target(bytecode_array* bc, size_t ins_index, uint32_t arg
 }
 
 // Реализации функций проверки истинности
-static int is_truthy(Value v) {
+int is_truthy(Value v) {
     if (v.type == VAL_BOOL) return v.bool_val;
     if (v.type == VAL_INT) return v.int_val != 0;
     return 0;
 }
 
-static int is_falsy(Value v) {
+int is_falsy(Value v) {
     return !is_truthy(v);
 }
 
 // Реализация поиска/добавления константы
-static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats) {
+size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats) {
     for (size_t i = 0; i < code->constants_count; i++) {
         if (values_equal(code->constants[i], v)) {
             return i;
@@ -62,7 +62,7 @@ static size_t find_or_add_constant(CodeObj* code, Value v, FoldStats* stats) {
 }
 
 // Реализация глубокого копирования CodeObj
-static CodeObj* deep_copy_codeobj(CodeObj* original) {
+CodeObj* deep_copy_codeobj(CodeObj* original) {
     if (!original) return NULL;
     
     CodeObj* copy = malloc(sizeof(CodeObj));
@@ -101,8 +101,7 @@ static CodeObj* deep_copy_codeobj(CodeObj* original) {
     return copy;
 }
 
-// Улучшенный пересчет прыжков с учетом особенностей VM
-static void recalculate_jumps(bytecode_array* bc) {
+void recalculate_jumps(bytecode_array* bc) {
     // Сначала строим карту: старый индекс -> новый индекс
     size_t* old_to_new = malloc(bc->count * sizeof(size_t));
     size_t* new_to_old = malloc(bc->count * sizeof(size_t));
@@ -192,20 +191,20 @@ static void recalculate_jumps(bytecode_array* bc) {
     free(new_to_old);
 }
 
-static void mark_as_nop(bytecode_array* bc, size_t index) {
+void mark_as_nop(bytecode_array* bc, size_t index) {
     if (index < bc->count) {
         bc->bytecodes[index].op_code = NOP;
     }
 }
 
-static void mark_as_nops(bytecode_array* bc, size_t start, size_t end) {
+void mark_as_nops(bytecode_array* bc, size_t start, size_t end) {
     for (size_t i = start; i <= end && i < bc->count; i++) {
         bc->bytecodes[i].op_code = NOP;
     }
 }
 
 // Жадное сворачивание цепочек операций
-static int fold_operation_chain(CodeObj* code, bytecode_array* bc, size_t start, FoldStats* stats) {
+int fold_operation_chain(CodeObj* code, bytecode_array* bc, size_t start, FoldStats* stats) {
     size_t pos = start;
     int changed = 0;
     
@@ -301,7 +300,7 @@ static int fold_operation_chain(CodeObj* code, bytecode_array* bc, size_t start,
 }
 
 // Поиск цепочек операций для свертки
-static int find_and_fold_chains(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+int find_and_fold_chains(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
     int changed = 0;
     
     for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
@@ -319,7 +318,7 @@ static int find_and_fold_chains(CodeObj* code, bytecode_array* bc, FoldStats* st
 }
 
 // Упрощенная оптимизация условий if
-static void optimize_constant_ifs(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+void optimize_constant_ifs(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
     for (size_t i = 0; i < bc->count; i = skip_nops(bc, i + 1)) {
         // Ищем LOAD_CONST -> POP_JUMP_IF_FALSE
         size_t const_idx = skip_nops(bc, i);
@@ -359,7 +358,7 @@ static void optimize_constant_ifs(CodeObj* code, bytecode_array* bc, FoldStats* 
 }
 
 // Реализации функций для свертки констант
-static int is_constant_foldable(Value a, Value b, uint8_t op) {
+int is_constant_foldable(Value a, Value b, uint8_t op) {
     if (op >= 0x00 && op <= 0x0B) { // ADD, SUB, MUL, DIV, MOD
         return a.type == VAL_INT && b.type == VAL_INT;
     }
@@ -376,7 +375,7 @@ static int is_constant_foldable(Value a, Value b, uint8_t op) {
     return 0;
 }
 
-static int is_unary_foldable(Value a, uint8_t op) {
+int is_unary_foldable(Value a, uint8_t op) {
     if (op == 0x00 || op == 0x01) { // POSITIVE, NEGATIVE
         return a.type == VAL_INT;
     }
@@ -388,7 +387,7 @@ static int is_unary_foldable(Value a, uint8_t op) {
     return 0;
 }
 
-static Value fold_binary_constant(Value a, Value b, uint8_t op) {
+Value fold_binary_constant(Value a, Value b, uint8_t op) {
     if (a.type == VAL_INT && b.type == VAL_INT) {
         int64_t x = a.int_val;
         int64_t y = b.int_val;
@@ -424,7 +423,7 @@ static Value fold_binary_constant(Value a, Value b, uint8_t op) {
     return value_create_none();
 }
 
-static Value fold_unary_constant(Value a, uint8_t op) {
+Value fold_unary_constant(Value a, uint8_t op) {
     if (a.type == VAL_INT) {
         int64_t x = a.int_val;
         switch (op) {
@@ -440,8 +439,7 @@ static Value fold_unary_constant(Value a, uint8_t op) {
     return value_create_none();
 }
 
-
-static int aggressive_constant_folding(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
+int aggressive_constant_folding(CodeObj* code, bytecode_array* bc, FoldStats* stats) {
     int changed = 0;
     
     // Многократно применяем сворачивание, пока есть изменения
