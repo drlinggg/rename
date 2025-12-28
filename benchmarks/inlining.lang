@@ -1,0 +1,52 @@
+// make runner && ./bin/rename -d -j ./benchmarks/inlining.lang 
+
+int increment(int a) {
+    return a + 1;
+}
+
+int main() {
+    int a = 5;
+    increment(a);
+}
+
+//[JIT] Optimized bytecode for 'increment':
+//Bytecode array (4 instructions):
+//   0: [ LOAD_FAST                 0x01 | arg: 0x000000 (0) | local_index: 0 ]
+//   1: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   2: [ BINARY_OP                 0x08 | arg: 0x000000 (0) | ADD ]
+//   3: [ RETURN_VALUE              0x0F | arg: 0x000000 (0) ]
+//[JIT] Optimized bytecode for 'main':
+//Bytecode array (6 instructions):
+//   0: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   1: [ STORE_FAST                0x05 | arg: 0x000000 (0) | local_index: 0 ]
+//   2: [ LOAD_GLOBAL               0x03 | arg: 0x000008 (8) | global_index: 4 ]
+//   3: [ PUSH_NULL                 0x20 | arg: 0x000000 (0) ]
+//   4: [ LOAD_FAST                 0x01 | arg: 0x000000 (0) | local_index: 0 ]
+//   5: [ CALL_FUNCTION             0x09 | arg: 0x000001 (1) | argc: 1 ] нашли что эта функция может быть заинлайнена
+//
+// При билде функции смотрим что она может быть заинлайнена и запоминаем
+// При вызове функции в CALL_FUNCTION, смотрим не заинлайнена ли она и в JIT компиляции изменяем байткод связанный с ее вызовом на эквивалент 
+
+//
+//int increment(int a) {
+//    return a + 1;
+//}
+//
+//int main() {
+//    int a = 5;
+//    a + 1;
+//}
+//[JIT] Optimized bytecode for 'increment':
+//Bytecode array (4 instructions):
+//   0: [ LOAD_FAST                 0x01 | arg: 0x000000 (0) | local_index: 0 ]
+//   1: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   2: [ BINARY_OP                 0x08 | arg: 0x000000 (0) | ADD ]
+//   3: [ RETURN_VALUE              0x0F | arg: 0x000000 (0) ]
+//[JIT] Optimized bytecode for 'main':
+//Bytecode array (6 instructions):
+//   0: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   1: [ STORE_FAST                0x05 | arg: 0x000000 (0) | local_index: 0 ]
+//   2: [ LOAD_CONST                ...  | arg: ...          | ...            ]
+//   3: [ LOAD_FAST                 ...  | arg: ...          | ...            ]
+//   4: [ BINARY_OP                 ADD  | arg: ...          | ...            ]
+
