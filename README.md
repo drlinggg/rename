@@ -1,70 +1,74 @@
 # Rename Language — Compiler & Virtual Machine
 
-A small programming language implemented in C, featuring a lexer, parser, compiler, bytecode format, and a stack-based virtual machine. The goal of the project is to experiment with language design, compiler construction, and VM implementation.
+**Rename** is a small, experimental C-like programming language implemented in C, featuring a lexer, parser, compiler, bytecode format, and a stack-based virtual machine. The project is designed for learning language design, compiler construction, and VM implementation.
 
 ---
 
 ## 🚀 Overview
 
-Rename is a minimal C-like language with:
+Rename is a minimal C-like language that supports:
 
-- Variables and expressions  
-- Integer arithmetic  
-- Blocks and scopes  
-- Functions (including `main`)  
-- Bytecode compilation  
-- A custom virtual machine  
-- Optional debugging output (`-d` / `--debug`)
+* Variables and expressions
+* Integer arithmetic
+* Blocks and scopes
+* Functions (including `main`)
+* Compilation to bytecode
+* Execution on a custom virtual machine
+* Optional debugging output (`-d` / `--debug`)
+* Mark & Sweep garbage collection
+* Just-In-Time (JIT) compilation ([see docs/jit.md](docs/jit.md))
 
-The pipeline:
+**Compilation and execution pipeline:**
 
 ```
-
 Source Code → Lexer → Parser → AST → Compiler → Bytecode → VM → Program Output
-
 ```
+
+For more details on the VM and bytecode behavior, see:
+
+* [Virtual Machine](docs/vm.md) — Stack-based VM, memory management, frames, objects
+* [Bytecode](docs/bytecode.md) — Instruction set, format, and execution examples
 
 ---
 
 ## 📦 Project Structure
 
 ```
-
 .
 ├── src/
 │   ├── lexer/         # Tokenizer
 │   ├── parser/        # AST builder
 │   ├── compiler/      # Bytecode generator
 │   ├── runtime/
-│   │   ├── vm/        # Virtual machine
-│   │   └── objects/   # Heap-allocated objects
-│   └── debug.h        # Debug macro and global flag
+│   │   ├── vm/        # Virtual machine implementation
+│   │   ├── gc/        # Garbage collector
+│   │   └── jit/       # JIT compiler module
+│   └── system.h       # Debug, GC, JIT macros and global flags for it
 ├── tests/             # Unit and integration tests
 ├── benchmarks/        # Example programs
-├── docs/              # Additional documentation
+├── docs/              # Detailed documentation
 ├── Makefile
 ├── Dockerfile
 └── README.md
-
-````
+```
 
 ---
 
 ## 🛠 Building
 
-Build natively:
+**Build natively:**
 
-```sh
+```bash
 make
-````
+```
 
-Or build using Docker:
+**Build with Docker:**
 
-```sh
+```bash
 docker build -t rename-lang .
 ```
 
-The resulting executable is located in:
+**Executable location:**
 
 ```
 ./bin/rename
@@ -74,15 +78,15 @@ The resulting executable is located in:
 
 ## ▶️ Running Programs
 
-Run a `.lang` source file:
+Run a `.lang` file:
 
-```sh
+```bash
 ./bin/rename program.lang
 ```
 
 Enable debug mode:
 
-```sh
+```bash
 ./bin/rename -d program.lang
 ```
 
@@ -90,17 +94,23 @@ Debug mode prints detailed logs from:
 
 * Lexer
 * Parser
-* AST builder
 * Compiler
-* VM execution
+* VM execution ([see docs/vm.md](docs/vm.md))
 * Memory management
-* Freed AST nodes, bytecode traces, stack state, etc.
+* Freed AST nodes and bytecode traces ([see docs/bytecode.md](docs/bytecode.md))
+* Stack state
+
+Enable JIT mode:
+
+```bash
+./bin/rename -j program.lang
+```
 
 ---
 
 ## 📄 Example Program
 
-`benchmarks/first_program.lang`
+`benchmarks/first_program.lang`:
 
 ```c
 int main() {
@@ -112,45 +122,63 @@ int main() {
 }
 ```
 
-Run it:
+Run it with debugging:
 
-```sh
+```bash
 ./bin/rename -d benchmarks/first_program.lang
 ```
 
 ---
 
-## 🧪 Running Tests
+## 🧪 Testing
 
-```sh
+Run all tests:
+
+```bash
 make test
 ```
 
-Clean test results:
+Clean test artifacts:
 
-```sh
+```bash
 make clean
 ```
 
 Docker test run:
 
-```sh
+```bash
 docker run --rm -it rename-lang
 ```
 
+---
+
+## 📝 Documentation
+
+* [JIT Compiler](docs/jit.md) — Just-In-Time compilation, optimization passes, caching, and integration with VM
+* [Virtual Machine](docs/vm.md) — Stack frames, objects, memory management, and instruction execution
+* [Bytecode](docs/bytecode.md) — Instruction set, argument types, stack effects, and execution examples
+* [Language Specification](docs/language-specification.md) — Advanced guide for language semantics and syntax
+
+---
+
 ## 🤝 Contributing
 
-Issues and pull requests are welcome.
-This project is experimental and constantly evolving.
+Contributions are welcome!
+Since Rename is experimental, we encourage:
+
+* Adding tests for new instructions
+* Preserving semantic correctness during optimizations
+* Improving VM and JIT performance
+* Reporting issues or submitting pull requests
 
 ---
 
 ## 📜 License
 
-```
+```text
 MIT License
 
-Copyright (c) [2025]
+Copyright (c) 2025
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
