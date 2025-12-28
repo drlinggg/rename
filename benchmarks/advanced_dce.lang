@@ -1,0 +1,42 @@
+// make runner && ./bin/rename -d -j ./benchmarks/advanced_dce.lang 
+
+int useless() {
+    return 5;
+}
+
+int main() {
+    useless();
+    useless();
+}
+
+//[JIT] Optimized bytecode for 'useless':
+//Bytecode array (2 instructions):
+//   0: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   1: [ RETURN_VALUE              0x0F | arg: 0x000000 (0) ]
+//[JIT] No optimizations applied for 'main', returning original
+//Bytecode array (6 instructions):
+//   0: [ LOAD_GLOBAL               0x03 | arg: 0x000008 (8) | global_index: 4 ]
+//   1: [ PUSH_NULL                 0x20 | arg: 0x000000 (0) ]
+//   2: [ CALL_FUNCTION             0x09 | arg: 0x000000 (0) | argc: 0 ]
+//   3: [ LOAD_GLOBAL               0x03 | arg: 0x000008 (8) | global_index: 4 ]
+//   4: [ PUSH_NULL                 0x20 | arg: 0x000000 (0) ]
+//   5: [ CALL_FUNCTION             0x09 | arg: 0x000000 (0) | argc: 0 ]
+
+
+
+// При билде в MAKE_FUNCTION функции main смотрим что в ней есть CALL_FUNCTION <useless> понимаем что вызов функции ни на что не влияет (нет print input store_fast и других влияющих инструкций), изменяем байткод main удаляя вызовы этой функции
+//
+//int useless() {
+//    return 5;
+//}
+//
+//int main() {
+//}
+//
+//[JIT] Optimized bytecode for 'useless':
+//Bytecode array (2 instructions):
+//   0: [ LOAD_CONST                0x02 | arg: 0x000000 (0) | const_index: 0 ]
+//   1: [ RETURN_VALUE              0x0F | arg: 0x000000 (0) ]
+//[JIT] No optimizations applied for 'main', returning original
+//Bytecode array (0 instructions):
+
