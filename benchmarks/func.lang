@@ -16,11 +16,6 @@ bool main() {
     print_true_none_false_func();
     print();
 
-    int inputed = input();
-    print(inputed);
-    print();
-
-    print(input());
     x = 123;
     print(x);
 

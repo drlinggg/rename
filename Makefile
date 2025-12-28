@@ -35,7 +35,7 @@ VM_BIGFLOAT_TEST = $(TEST_DIR)/runtime/test_vm_bigfloat.c
 BIGFLOAT_VM_TEST = $(TEST_DIR)/runtime/test_bigfloat.c
 
 # Targets
-all: test_ast test_lexer test_parser test_bytecode test_compiler test_vm test_vm_bigfloat test_bigfloat
+all: test_ast test_lexer test_parser test_bytecode test_compiler test_vm test_vm_bigfloat test_bigfloat sanity_check
 
 test_ast: $(AST_TEST) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC)
 	$(CC) $(CFLAGS) $(AST_TEST) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@
@@ -50,7 +50,7 @@ test_bytecode: $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
 	$(CC) $(CFLAGS) $(BYTECODE_TEST) $(BYTECODE_SRC) $(SYSTEM_SRC) -o $@ $(LDFLAGS)
 
 test_compiler: $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) $(BUILTINS_SRC)
-	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@ $(LDFLAGS)  # ← И ЗДЕСЬ
+	$(CC) $(CFLAGS) $(COMPILER_TEST) $(COMPILER_SRC) $(VALUE_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(BYTECODE_SRC) $(AST_SRC) $(SYSTEM_SRC) $(TOKEN_SRC) -o $@ $(LDFLAGS)
 
 test_vm: $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
 	$(CC) $(CFLAGS) $(VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
@@ -60,6 +60,20 @@ test_vm_bigfloat: $(VM_BIGFLOAT_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(
 
 test_bigfloat: $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC)
 	$(CC) $(CFLAGS) $(BIGFLOAT_VM_TEST) $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o $@ $(LDFLAGS)
+
+sanity_check: runner
+	@echo "[Make] Running sanity check on all benchmarks..."
+	@for file in benchmarks/*.lang; do \
+		echo "[Sanity] Testing $$file ..."; \
+		./bin/rename -j "$$file"; \
+		status=$$?; \
+		if [ $$status -ne 0 ]; then \
+			echo "[Sanity] ERROR: $$file failed with exit code $$status"; \
+			exit 1; \
+		fi \
+	done
+	@echo "[Sanity] All benchmarks passed without crashes!"
+
 
 test: all
 	@echo "[Make] Running AST tests..."
@@ -82,13 +96,11 @@ runner: tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(CO
 	@mkdir -p bin
 	$(CC) $(CFLAGS) tools/runner.c $(BYTECODE_SRC) $(VALUE_SRC) $(AST_SRC) $(TOKEN_SRC) $(COMPILER_SRC) $(SCOPE_SRC) $(STRING_TABLE_SRC) $(LEXER_SRC) $(PARSER_SRC) $(OBJECT_SRC) $(HEAP_SRC) $(VM_SRC) $(GC_SRC) $(JIT_SRC) $(SYSTEM_SRC) $(BUILTINS_SRC) -o bin/rename $(LDFLAGS)
 
-run_benchmark: runner
-	@echo "[Make] Running benchmark: benchmarks/first_program.lang"
-	./bin/rename benchmarks/first_program.lang
+
 
 clean:
 	@echo "[Make] Cleaning ..."
 	rm -f test_ast test_lexer test_parser test_bytecode test_compiler test_vm test_vm_bigfloat test_bigfloat
 	rm -f bin/rename
 
-.PHONY: all test clean runner run_benchmark test_vm
+.PHONY: all test clean runner test_vm

@@ -1,5 +1,0 @@
-int main() {
-    int inputed = input();
-    print(inputed);
-    return inputed;
-}
