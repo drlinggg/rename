@@ -130,7 +130,6 @@ static CodeObj* deep_copy_codeobj(CodeObj* original) {
 }
 
 // Основная функция JIT-компиляции
-// Основная функция JIT-компиляции
 void* jit_compile_function(JIT* jit, void* code_ptr) {
     if (!jit || !code_ptr) {
         DPRINT("[JIT] Invalid parameters\n");
@@ -185,7 +184,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         
         DPRINT("[JIT] Optimized bytecode for '%s':\n",
                optimized->name ? optimized->name : "anonymous");
-        bytecode_array_print(&optimized->code);
         
         return optimized;
     }
@@ -232,7 +230,6 @@ JITStats jit_get_stats(JIT* jit) {
         stats.cache_capacity = jit->cache_capacity;
         stats.compiled_count = jit->compiled_count;
     }
-    
     return stats;
 }
 
