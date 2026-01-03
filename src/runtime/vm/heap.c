@@ -440,3 +440,36 @@ void heap_print_stats(Heap* heap) {
     DPRINT("Total memory used: ~%.2f MB\n",
            (heap->total_allocations * sizeof(Object)) / (1024.0 * 1024.0));
 }
+
+// Итерация по всем объектам в пуле
+static void pool_iterate_objects(ObjectPool* pool, HeapObjectCallback callback, void* user_data) {
+    if (!pool || !callback) return;
+    
+    MemoryBlock* block = pool->first;
+    while (block) {
+        for (size_t i = 0; i < block->used; i++) {
+            Object* obj = &block->memory[i];
+            if (obj) {
+                callback(user_data, obj);
+            }
+        }
+        block = block->next;
+    }
+}
+
+// Итерация по всем объектам в Heap (для GC sweep phase)
+void heap_iterate_all_objects(Heap* heap, HeapObjectCallback callback, void* user_data) {
+    if (!heap || !callback) return;
+    
+    // Итерируемся по всем пулам
+    pool_iterate_objects(&heap->int_pool, callback, user_data);
+    pool_iterate_objects(&heap->array_pool, callback, user_data);
+    pool_iterate_objects(&heap->function_pool, callback, user_data);
+    pool_iterate_objects(&heap->code_pool, callback, user_data);
+    pool_iterate_objects(&heap->native_func_pool, callback, user_data);
+    pool_iterate_objects(&heap->float_pool, callback, user_data);
+    pool_iterate_objects(&heap->bool_pool, callback, user_data);
+    pool_iterate_objects(&heap->none_pool, callback, user_data);
+    
+    // Также обрабатываем int_cache (но это immortal объекты, их можно пропустить)
+}

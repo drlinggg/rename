@@ -67,4 +67,8 @@ Object* heap_from_value(Heap* heap, Value val);
 size_t heap_live_objects(Heap* heap);
 void heap_print_stats(Heap* heap);
 
+// GC интеграция: итерация по всем объектам
+typedef void (*HeapObjectCallback)(void* user_data, Object* obj);
+void heap_iterate_all_objects(Heap* heap, HeapObjectCallback callback, void* user_data);
+
 #endif // HEAP_H
