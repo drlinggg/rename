@@ -1,7 +1,5 @@
 #include "builtins.h"
 #include "../runtime/vm/vm.h"
-#include "../runtime/vm/object.h"
-#include "../runtime/vm/heap.h"
 #include "../system.h"
 #include <time.h>
 #include <stdio.h>
@@ -58,8 +56,7 @@ Object* builtin_input(VM* vm, int arg_count, Object** args) {
     }
     
     DPRINT("[BUILTIN_INPUT] Called with %d arguments\n", arg_count);
-    
-    // Если есть аргумент - печатаем приглашение
+
     if (arg_count > 0 && args[0]) {
         char* str = object_to_string(args[0]);
         if (str) {
@@ -69,15 +66,13 @@ Object* builtin_input(VM* vm, int arg_count, Object** args) {
         printf(" ");
         fflush(stdout);
     }
-    
-    // Читаем строку
+
     char buffer[4096];
     int64_t result = 0;
     
     DPRINT("[BUILTIN_INPUT] Waiting for input...\n");
     
     if (fgets(buffer, sizeof(buffer), stdin)) {
-        // Убираем перевод строки
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len-1] == '\n') {
             buffer[len-1] = '\0';
@@ -85,12 +80,10 @@ Object* builtin_input(VM* vm, int arg_count, Object** args) {
         }
         
         DPRINT("[BUILTIN_INPUT] Got input: '%s'\n", buffer);
-        
-        // Преобразуем в число
+
         char* endptr;
         int64_t value = strtoll(buffer, &endptr, 10);
-        
-        // Если преобразование успешно, возвращаем число
+
         if (endptr != buffer && *endptr == '\0') {
             result = value;
             DPRINT("[BUILTIN_INPUT] Converted to int: %lld\n", (long long)result);

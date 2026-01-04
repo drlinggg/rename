@@ -17,16 +17,13 @@ void vm_destroy(VM* vm);
 
 Object* vm_execute(VM* vm, CodeObj* code);
 
-// set/get globals by index
 void vm_set_global(VM* vm, size_t idx, Object* value);
 Object* vm_get_global(VM* vm, size_t idx);
 
-// Frame helpers
 Frame* frame_create(VM* vm, CodeObj* code);
 void frame_destroy(Frame* frame);
 Object* frame_execute(Frame* frame);
 
-// Access VM internals for GC/JIT/HEAP
 GC* vm_get_gc(VM* vm);
 JIT* vm_get_jit(VM* vm);
 Heap* vm_get_heap(VM* vm);

@@ -51,14 +51,12 @@ void bigfloat_destroy(BigFloat* x) { bigfloat_free(x); }
 static void bf_trim(BigFloat* x) {
     if (x->is_nan || x->is_inf) return;
 
-    // Убираем лишние нули справа (дробная часть)
     while (x->decimal_pos > 0 && x->len > 1 && x->digits[x->len - 1] == '0') {
         x->len--;
         x->decimal_pos--;
         x->digits[x->len] = 0;
     }
 
-    // Убираем лишние нули слева (целая часть)
     int i = 0;
     while (i < x->len - 1 && x->digits[i] == '0' && x->len - i > x->decimal_pos) i++;
     if (i) {
@@ -67,7 +65,6 @@ static void bf_trim(BigFloat* x) {
         x->digits[x->len] = 0;
     }
 
-    // Если число = 0
     if (x->len == 1 && x->digits[0] == '0') {
         x->decimal_pos = 0;
         x->neg = false;
@@ -78,12 +75,10 @@ static void bf_limit_precision(BigFloat* x, int max_decimal_digits) {
     if (x->is_nan || x->is_inf) return;
     if (x->decimal_pos <= max_decimal_digits) return;
     
-    // Сколько цифр нужно отрезать
     int digits_to_remove = x->decimal_pos - max_decimal_digits;
     
     if (digits_to_remove <= 0) return;
     if (digits_to_remove >= x->len) {
-        // Отрезаем все - результат 0
         free(x->digits);
         x->digits = strdup("0");
         x->len = 1;
@@ -92,21 +87,16 @@ static void bf_limit_precision(BigFloat* x, int max_decimal_digits) {
         return;
     }
     
-    // Отрезаем с конца, но нужно округление
     int cut_pos = x->len - digits_to_remove;
     
-    // Проверяем цифру после cut_pos для округления
     if (cut_pos > 0 && cut_pos < x->len) {
         char next_digit = x->digits[cut_pos];
         
-        // Обрезаем
         x->len = cut_pos;
         x->digits[x->len] = '\0';
         x->decimal_pos = max_decimal_digits;
         
-        // Округляем вверх если следующая цифра >= 5
         if (next_digit >= '5') {
-            // Нужно увеличить последнюю цифру
             int i = x->len - 1;
             while (i >= 0) {
                 if (x->digits[i] < '9') {
@@ -118,9 +108,7 @@ static void bf_limit_precision(BigFloat* x, int max_decimal_digits) {
                 }
             }
             
-            // Если все цифры стали 9 -> 10...
             if (i < 0) {
-                // Было 999... -> 1000...
                 char* new_digits = malloc(x->len + 2);
                 new_digits[0] = '1';
                 memset(new_digits + 1, '0', x->len);
@@ -175,7 +163,6 @@ BigFloat* bigfloat_create(const char* s) {
         if (isdigit(*p)) {
             x->digits[x->len++] = *p;
         } else {
-            // Некорректный символ - возвращаем NaN
             free(x->digits);
             x->digits = strdup("0");
             x->len = 1;
@@ -201,7 +188,6 @@ char* bigfloat_to_string(const BigFloat* x) {
     int int_len = x->len - x->decimal_pos;
     if (int_len < 0) int_len = 0;
 
-    // ВАЖНО: Если decimal_pos больше чем len, значит у нас ведущие нули в дробной части
     int leading_zeros_in_frac = 0;
     if (x->decimal_pos > x->len) {
         leading_zeros_in_frac = x->decimal_pos - x->len;
@@ -217,28 +203,23 @@ char* bigfloat_to_string(const BigFloat* x) {
         s[k++] = '0';
         s[k++] = '.';
         
-        // Добавляем leading zeros
         for (int i = 0; i < leading_zeros_in_frac; i++) {
             s[k++] = '0';
         }
         
-        // Добавляем оставшиеся zeros от -int_len
         for (int i = 0; i < -int_len - leading_zeros_in_frac; i++) {
             s[k++] = '0';
         }
         
-        // Копируем цифры
         memcpy(s + k, x->digits, x->len);
         k += x->len;
     } else {
-        // Целая часть
         memcpy(s + k, x->digits, int_len);
         k += int_len;
         
         if (x->decimal_pos > 0) {
             s[k++] = '.';
             
-            // Если дробная часть короче чем decimal_pos, добавляем leading zeros
             int frac_digits_in_number = x->len - int_len;
             if (frac_digits_in_number < x->decimal_pos) {
                 int missing_zeros = x->decimal_pos - frac_digits_in_number;
@@ -247,7 +228,6 @@ char* bigfloat_to_string(const BigFloat* x) {
                 }
             }
             
-            // Копируем дробные цифры
             int frac_to_copy = x->len - int_len;
             if (frac_to_copy > 0) {
                 memcpy(s + k, x->digits + int_len, frac_to_copy);
@@ -260,8 +240,6 @@ char* bigfloat_to_string(const BigFloat* x) {
     return s;
 }
 
-
-/* integer helpers */
 
 static int istrcmp(const char* a, int al, const char* b, int bl) {
     int a_start = 0;
@@ -296,7 +274,6 @@ static char* iadd(const char* a, int al, const char* b, int bl, int* rl) {
         c = s / 10;
     }
     
-    // Убираем ведущие нули
     int i = 0;
     while (i < n - 1 && r[i] == '0') {
         i++;
@@ -308,7 +285,6 @@ static char* iadd(const char* a, int al, const char* b, int bl, int* rl) {
     }
     r[new_len] = '\0';
     
-    // Освобождаем лишнюю память
     char* result = malloc(new_len + 1);
     memcpy(result, r, new_len + 1);
     free(r);
@@ -319,7 +295,6 @@ static char* iadd(const char* a, int al, const char* b, int bl, int* rl) {
 
 
 static char* isub(const char* a, int al, const char* b, int bl, int* rl) {
-    // a >= b должно соблюдаться! Если нет, возвращаем NULL
     int cmp = istrcmp(a, al, b, bl);
     if (cmp < 0) {
         *rl = 0;
@@ -363,13 +338,11 @@ static char* imul(const char* a, int al, const char* b, int bl, int* rl) {
         }
     }
 
-    // Перенос
     for (int i = n - 1; i > 0; i--) {
         temp[i - 1] += temp[i] / 10;
         temp[i] %= 10;
     }
 
-    // Найдём первую значащую цифру
     int start = 0;
     while (start < n - 1 && temp[start] == 0) start++;
 
@@ -402,15 +375,13 @@ static int is_zero_string(const char* s, int len) {
     return 1;
 }
 
-/* arithmetic */
-
 BigFloat* bigfloat_add(const BigFloat* a, const BigFloat* b) {
     if (a->is_nan || b->is_nan) return bf_nan();
     
     if (a->is_inf || b->is_inf) {
         if (a->is_inf && b->is_inf) {
             if (a->neg == b->neg) return bf_inf(a->neg);
-            return bf_nan(); // ∞ + (-∞) = NaN
+            return bf_nan();
         }
         return bf_inf(a->is_inf ? a->neg : b->neg);
     }
@@ -457,19 +428,16 @@ BigFloat* bigfloat_sub(const BigFloat* a, const BigFloat* b) {
 BigFloat* bigfloat_mul(const BigFloat* a, const BigFloat* b) {
     if (a->is_nan || b->is_nan) return bf_nan();
 
-    // ∞ * 0 = NaN
     if ((a->is_inf && is_zero_string(b->digits, b->len)) ||
         (b->is_inf && is_zero_string(a->digits, a->len))) {
         return bf_nan();
     }
 
-    // ∞ * finite = ∞
     if (a->is_inf || b->is_inf) {
         bool result_neg = a->neg != b->neg;
         return bf_inf(result_neg);
     }
 
-    // Полное умножение строк
     int rlen;
     char* rdigits = imul(a->digits, a->len, b->digits, b->len, &rlen);
 
@@ -478,10 +446,8 @@ BigFloat* bigfloat_mul(const BigFloat* a, const BigFloat* b) {
     r->digits = rdigits;
     r->len = rlen;
 
-    // decimal_pos = сумма decimal_pos исходных чисел
     r->decimal_pos = a->decimal_pos + b->decimal_pos;
 
-    // Если дробная часть длиннее результата, добавляем ведущие нули
     if (r->decimal_pos > r->len) {
         int add = r->decimal_pos - r->len;
         r->digits = realloc(r->digits, r->len + add + 1);
@@ -572,7 +538,6 @@ for (int i = 0; i < nlen; i++) {
 
     int q = 0;
 
-    // Убираем ведущие нули
     int start = 0;
     while (start < rem_len && rem[start] == '0') start++;
     int effective_rem_len = rem_len - start;
@@ -584,7 +549,6 @@ for (int i = 0; i < nlen; i++) {
             int tmp_len;
             char* tmp = isub(rem + start, effective_rem_len, den->digits, dlen, &tmp_len);
 
-            // Сдвигаем tmp в начало rem + start
             if (tmp_len > 0) {
                 memmove(rem + start, tmp, tmp_len);
             }
@@ -601,7 +565,6 @@ for (int i = 0; i < nlen; i++) {
 
     rdigits[i] = '0' + q;
 
-    // Убираем ведущие нули из rem для следующей итерации
     if (start > 0) {
         memmove(rem, rem + start, rem_len - start);
         rem_len -= start;
@@ -642,7 +605,6 @@ BigFloat* bigfloat_mod(const BigFloat* a, const BigFloat* b) {
     
     BigFloat* d = bigfloat_div(a, b);
     
-    // Округляем частное до целого вниз
     BigFloat* d_int = bf_copy(d);
     if (d_int->decimal_pos > 0) {
         d_int->len -= d_int->decimal_pos;
@@ -674,15 +636,12 @@ int bigfloat_cmp(const BigFloat* a, const BigFloat* b) {
     
     if (a->neg != b->neg) return a->neg ? -1 : 1;
     
-    // Вычисляем разность
     BigFloat* diff = bigfloat_sub(a, b);
     
-    // Эпсилон для сравнения
     BigFloat* epsilon = bigfloat_create("0.000000000000001");
     
     int result;
     if (bigfloat_cmp_abs(diff, epsilon) <= 0) {
-        // |diff| <= epsilon => считаем равными
         result = 0;
     } else if (diff->neg) {
         result = -1;
@@ -696,12 +655,10 @@ int bigfloat_cmp(const BigFloat* a, const BigFloat* b) {
     return a->neg ? -result : result;
 }
 
-// Вспомогательная функция для сравнения модулей
 static int bigfloat_cmp_abs(const BigFloat* a, const BigFloat* b) {
     BigFloat* a_abs = a->neg ? bigfloat_neg(a) : bf_copy(a);
     BigFloat* b_abs = b->neg ? bigfloat_neg(b) : bf_copy(b);
     
-    // Простое сравнение без учета знака
     BigFloat* x = bf_copy(a_abs);
     BigFloat* y = bf_copy(b_abs);
     int dp = x->decimal_pos > y->decimal_pos ? x->decimal_pos : y->decimal_pos;

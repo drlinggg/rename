@@ -1,7 +1,6 @@
 #include "ast.h"
 #include <stdio.h>
 #include "../system.h"
-#include <assert.h>
 #include <stdbool.h>
 
 static ASTNode* ast_node_copy(ASTNode* node);
@@ -57,7 +56,6 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
             break;
 
         case NODE_LITERAL_EXPRESSION_LONG_ARITHMETICS:
-            // only for float literals for now
             node = (ASTNode*)malloc(sizeof(LiteralExpressionLongArithmetics));
             if (node) {
                 node->node_type = node_type;
@@ -240,7 +238,6 @@ static ASTNode* ast_node_allocate(NodeType node_type, SourceLocation loc) {
     return node;
 }
 
-// Copy functions remain the same...
 static BinaryExpression* copy_binary_expression(ASTNode* original) {
     if (!original) return NULL;
     BinaryExpression* orig = (BinaryExpression*)original;
@@ -565,12 +562,10 @@ static ArrayExpression* copy_array_expression(ASTNode* original) {
     ArrayExpression* copy = malloc(sizeof(ArrayExpression));
     if (!copy) return NULL;
 
-    // Копируем базовую структуру
     copy->base.node_type = NODE_ARRAY_EXPRESSION;
     copy->base.location = orig_expr->base.location;
     copy->element_count = orig_expr->element_count;
 
-    // Копируем массив элементов
     if (orig_expr->element_count > 0 && orig_expr->elements) {
         copy->elements = malloc(orig_expr->element_count * sizeof(ASTNode*));
         if (!copy->elements) {
@@ -581,7 +576,6 @@ static ArrayExpression* copy_array_expression(ASTNode* original) {
         for (size_t i = 0; i < orig_expr->element_count; i++) {
             copy->elements[i] = ast_node_copy(orig_expr->elements[i]);
             if (!copy->elements[i]) {
-                // Очищаем уже скопированные элементы
                 for (size_t j = 0; j < i; j++) {
                     ast_free(copy->elements[j]);
                 }
@@ -606,18 +600,15 @@ static SubscriptExpression* copy_subscript_expression(ASTNode* original) {
     SubscriptExpression* copy = malloc(sizeof(SubscriptExpression));
     if (!copy) return NULL;
 
-    // Копируем базовую структуру
     copy->base.node_type = NODE_SUBSCRIPT_EXPRESSION;
     copy->base.location = orig_expr->base.location;
 
-    // Копируем массив
     copy->array = ast_node_copy(orig_expr->array);
     if (!copy->array) {
         free(copy);
         return NULL;
     }
 
-    // Копируем индекс
     copy->index = ast_node_copy(orig_expr->index);
     if (!copy->index) {
         ast_free(copy->array);
@@ -637,14 +628,11 @@ static ArrayDeclarationStatement* copy_array_declaration_statement(ASTNode* orig
     ArrayDeclarationStatement* copy = malloc(sizeof(ArrayDeclarationStatement));
     if (!copy) return NULL;
 
-    // Копируем базовую структуру
     copy->base.node_type = NODE_ARRAY_DECLARATION_STATEMENT;
     copy->base.location = orig_stmt->base.location;
 
-    // Копируем тип элементов массива
     copy->element_type = orig_stmt->element_type;
 
-    // Копируем имя массива
     if (orig_stmt->name) {
         copy->name = strdup(orig_stmt->name);
         if (!copy->name) {
@@ -655,7 +643,6 @@ static ArrayDeclarationStatement* copy_array_declaration_statement(ASTNode* orig
         copy->name = NULL;
     }
 
-    // Копируем размер массива (если есть)
     if (orig_stmt->size) {
         copy->size = ast_node_copy(orig_stmt->size);
         if (!copy->size) {
@@ -667,7 +654,6 @@ static ArrayDeclarationStatement* copy_array_declaration_statement(ASTNode* orig
         copy->size = NULL;
     }
 
-    // Копируем инициализатор (если есть)
     if (orig_stmt->initializer) {
         copy->initializer = ast_node_copy(orig_stmt->initializer);
         if (!copy->initializer) {
@@ -739,7 +725,6 @@ static ASTNode* ast_node_copy(ASTNode* original) {
     }
 }
 
-// Конструкторы узлов AST
 Parameter* ast_new_parameter(const char* name, TypeVar type) {
     Parameter* parameter = malloc(sizeof(Parameter));
     if (!parameter) return NULL;

@@ -1,4 +1,3 @@
-// Simple runtime debug flag & macro
 #ifndef RENAME_DEBUG_H
 #define RENAME_DEBUG_H
 
@@ -9,8 +8,6 @@ extern int jit_enabled;
 extern int gc_enabled;
 
 #define DPRINT(fmt, ...) do { if (debug_enabled) fprintf(stderr, fmt, ##__VA_ARGS__); } while (0)
-
-//#define DPRINT(fmt, ...) ((void)0)
 
 #define JIT_COMPILE_IF_ENABLED(vm_ptr, code_ptr) \
     do { \
@@ -29,4 +26,4 @@ extern int gc_enabled;
         } \
     } while(0)
 
-#endif // RENAME_DEBUG_H
+#endif

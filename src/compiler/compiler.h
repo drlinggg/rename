@@ -19,7 +19,6 @@ typedef struct compiler {
     ASTNode* ast_tree;
     compilation_result* result;
 
-    // compiler tables
     string_table* global_names;
     CompilerScope* current_scope;
 } compiler;
@@ -28,4 +27,4 @@ compiler* compiler_create(ASTNode* ast_tree);
 void compiler_destroy(compiler* compiler);
 compilation_result* compiler_compile(compiler* compiler);
 
-#endif // COMPILER_H
+#endif

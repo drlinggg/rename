@@ -8,7 +8,7 @@
 
 #include "../lexer/token.h"
 
-typedef struct { // debug info
+typedef struct {
     int line;
     int column;
 } SourceLocation;
@@ -18,7 +18,6 @@ typedef enum {
 } TypeVar;
 
 typedef enum NodeType {
-    // Statements
     NODE_PROGRAM,
     NODE_FUNCTION_DECLARATION_STATEMENT,
     NODE_VARIABLE_DECLARATION_STATEMENT,
@@ -30,11 +29,9 @@ typedef enum NodeType {
     NODE_FOR_STATEMENT,
     NODE_ASSIGNMENT_STATEMENT,
 
-    // Loops control flow
     NODE_BREAK_STATEMENT,
     NODE_CONTINUE_STATEMENT,
     
-    // Expressions
     NODE_BINARY_EXPRESSION,
     NODE_UNARY_EXPRESSION,
     NODE_LITERAL_EXPRESSION,
@@ -42,7 +39,6 @@ typedef enum NodeType {
     NODE_VARIABLE_EXPRESSION,
     NODE_FUNCTION_CALL_EXPRESSION,
 
-    // array
     NODE_ARRAY_EXPRESSION,
     NODE_SUBSCRIPT_EXPRESSION,
     NODE_ARRAY_DECLARATION_STATEMENT
@@ -53,7 +49,6 @@ typedef struct ASTNode {
     SourceLocation location;
 } ASTNode;
 
-// Expressions
 typedef struct {
     ASTNode base;
     ASTNode* left;
@@ -83,7 +78,7 @@ typedef struct {
 typedef struct {
     ASTNode base;
     TypeVar type;
-    char* value; // long arithmetics
+    char* value;
 } LiteralExpressionLongArithmetics;
 
 typedef struct {
@@ -97,7 +92,6 @@ typedef struct {
     bool is_array;
 } Parameter;
 
-// Statements
 typedef struct {
     ASTNode base;
     ASTNode* left;
@@ -170,10 +164,10 @@ typedef struct {
 
 typedef struct {
     ASTNode base;
-    TypeVar element_type; // bool int long
+    TypeVar element_type;
     char* name;
-    ASTNode* size; // Any Expression
-    ASTNode* initializer; // ArrayExpression
+    ASTNode* size;
+    ASTNode* initializer;
 } ArrayDeclarationStatement;
 
 typedef struct {
@@ -188,7 +182,6 @@ typedef struct {
     ASTNode* index;
 } SubscriptExpression;
 
-// Function declarations
 void ast_free(ASTNode* node);
 ASTNode* ast_new_binary_expression(SourceLocation loc, ASTNode* left, Token op, ASTNode* right);
 ASTNode* ast_new_unary_expression(SourceLocation loc, Token op, ASTNode* operand);
