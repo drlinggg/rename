@@ -69,30 +69,6 @@ void value_free(Value value) {
     }
 }
 
-
-/*Value value_create_function(CodeObj* code_obj, Value* closures, size_t closures_count) {
-    Value value;
-    value.type = VAL_FUNCTION;
-    value.func_val = malloc(sizeof(FunctionObj));
-    
-    value.func_val->code = code_obj;
-    value.func_val->name = code_obj ? strdup(code_obj->name) : strdup("anonymous");
-    
-    if (closures && closures_count > 0) {
-        value.func_val->closures = malloc(closures_count * sizeof(Value));
-        value.func_val->closures_count = closures_count;
-        
-        for (size_t i = 0; i < closures_count; i++) {
-            value.func_val->closures[i] = closures[i];
-        }
-    } else {
-        value.func_val->closures = NULL;
-        value.func_val->closures_count = 0;
-    }
-    
-    return value;
-}*/
-
 void free_code_obj(CodeObj* code) {
     if (!code) return;
     

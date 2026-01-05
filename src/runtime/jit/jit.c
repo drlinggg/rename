@@ -30,11 +30,9 @@ JIT* jit_create(void) {
 void jit_destroy(JIT* jit) {
     if (!jit) return;
     
-    // Очищаем кэш
     for (size_t i = 0; i < jit->cache_size; i++) {
         CodeObj* code = jit->compiled_cache[i];
         if (code) {
-            // Освобождаем CodeObj из кэша
             if (code->name) free(code->name);
             if (code->constants) free(code->constants);
             if (code->code.bytecodes) free(code->code.bytecodes);
@@ -49,7 +47,6 @@ void jit_destroy(JIT* jit) {
     free(jit);
 }
 
-// Проверяет, есть ли функция уже в кэше
 static CodeObj* jit_find_in_cache(JIT* jit, CodeObj* code) {
     if (!jit || !jit->compiled_cache || !code) return NULL;
     
@@ -65,11 +62,9 @@ static CodeObj* jit_find_in_cache(JIT* jit, CodeObj* code) {
     return NULL;
 }
 
-// Добавляет функцию в кэш
 static void jit_add_to_cache(JIT* jit, CodeObj* optimized_code) {
     if (!jit || !optimized_code) return;
     
-    // Проверяем, не переполнен ли кэш
     if (jit->cache_size >= jit->cache_capacity) {
         size_t new_capacity = jit->cache_capacity ? jit->cache_capacity * 2 : 8;
         CodeObj** new_cache = realloc(jit->compiled_cache, 
@@ -101,7 +96,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
     DPRINT("[JIT] Compiling function: %s\n",
            original->name ? original->name : "anonymous");
     
-    // 1. Проверяем кэш
     CodeObj* cached = jit_find_in_cache(jit, original);
     if (cached) {
         return cached;
@@ -110,7 +104,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
     CodeObj* optimized = original;
     bool was_optimized = false;
     
-    // 2. Применяем свертку констант
     FoldStats cf_stats;
     CodeObj* cf_result = jit_optimize_constant_folding(original, &cf_stats);
     
@@ -121,7 +114,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         was_optimized = true;
     }
     
-    // 3. Применяем оптимизацию compare-and-swap
     CmpswapStats cas_stats;
     CodeObj* cas_result = jit_optimize_cmpswap(optimized, &cas_stats);
     
@@ -129,7 +121,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         DPRINT("[JIT] Compare-and-swap: optimized %zu patterns\n",
                cas_stats.optimized_patterns);
         
-        // Освобождаем предыдущую оптимизированную версию, если нужно
         if (was_optimized && optimized != original) {
             free_code_obj(optimized);
         }
@@ -151,7 +142,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         DPRINT("[JIT-DCE] No DCE changes applied\n");
     }
     
-    // 5. Добавляем в кэш, если функция была оптимизирована
     if (was_optimized && optimized) {
         jit_add_to_cache(jit, optimized);
         
@@ -161,8 +151,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
         return optimized;
     }
     
-    // 5. Если оптимизаций не было, но функция еще не в кэше
-    // Создаем копию и добавляем в кэш для будущего использования
     CodeObj* copy = deep_copy_codeobj(original);
     if (copy) {
         jit_add_to_cache(jit, copy);
@@ -176,8 +164,6 @@ void* jit_compile_function(JIT* jit, void* code_ptr) {
     return original;
 }
 
-
-// Дополнительная функция для принудительной очистки кэша
 void jit_clear_cache(JIT* jit) {
     if (!jit) return;
     
@@ -195,7 +181,6 @@ void jit_clear_cache(JIT* jit) {
     DPRINT("[JIT] Cache cleared\n");
 }
 
-// Функция для получения статистики кэша
 JITStats jit_get_stats(JIT* jit) {
     JITStats stats = {0};
     
@@ -207,7 +192,6 @@ JITStats jit_get_stats(JIT* jit) {
     return stats;
 }
 
-// Функция для отладки - печатает содержимое кэша
 void jit_print_cache(JIT* jit) {
     if (!jit) {
         printf("[JIT] Cache: (null)\n");

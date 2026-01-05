@@ -17,7 +17,6 @@ static void init_int_cache(Heap* heap) {
             exit(1);
         }
         
-        // Инициализируем объект
         memset(heap->int_cache[idx], 0, sizeof(Object));
         heap->int_cache[idx]->type = OBJ_INT;
         heap->int_cache[idx]->ref_count = 0x7FFFFFFF;
@@ -25,12 +24,10 @@ static void init_int_cache(Heap* heap) {
     }
 }
 
-// Освобождение кэша
 static void free_int_cache(Heap* heap) {
     for (int i = INT_CACHE_MIN; i <= INT_CACHE_MAX; i++) {
         int idx = i - INT_CACHE_MIN;
         if (heap->int_cache[idx]) {
-            // Устанавливаем ref_count в 0 перед освобождением
             heap->int_cache[idx]->ref_count = 0;
             free(heap->int_cache[idx]);
             heap->int_cache[idx] = NULL;
@@ -59,13 +56,11 @@ static MemoryBlock* block_create(size_t capacity) {
     block->used = 0;
     block->next = NULL;
     
-    // Инициализируем память нулями
     memset(block->memory, 0, capacity * sizeof(Object));
     
     return block;
 }
 
-// Уничтожение блока и всех последующих
 static void block_destroy(MemoryBlock* block) {
     while (block) {
         MemoryBlock* next = block->next;
@@ -77,7 +72,6 @@ static void block_destroy(MemoryBlock* block) {
     }
 }
 
-// Аллокация из блока (bump pointer)
 static Object* block_alloc_bump(MemoryBlock* block) {
     if (block->used >= block->capacity) {
         return NULL;
@@ -86,13 +80,11 @@ static Object* block_alloc_bump(MemoryBlock* block) {
     Object* obj = &block->memory[block->used];
     block->used++;
     
-    // Инициализируем объект
     memset(obj, 0, sizeof(Object));
     return obj;
 }
 
 
-// Инициализация пула
 static void pool_init(ObjectPool* pool, size_t block_size) {
     pool->first = NULL;
     pool->current = NULL;
@@ -100,7 +92,6 @@ static void pool_init(ObjectPool* pool, size_t block_size) {
     pool->total_allocations = 0;
 }
 
-// Создание нового блока в пуле
 static bool pool_add_block(ObjectPool* pool) {
     MemoryBlock* new_block = block_create(pool->block_size);
     if (!new_block) {
@@ -108,11 +99,9 @@ static bool pool_add_block(ObjectPool* pool) {
     }
     
     if (!pool->first) {
-        // Первый блок в пуле
         pool->first = new_block;
         pool->current = new_block;
     } else {
-        // Добавляем в конец списка
         pool->current->next = new_block;
         pool->current = new_block;
     }
@@ -124,17 +113,14 @@ static bool pool_add_block(ObjectPool* pool) {
 }
 
 static Object* pool_alloc(ObjectPool* pool) {
-    // Если нет блоков, создаем первый
     if (!pool->current) {
         if (!pool_add_block(pool)) {
             return NULL;
         }
     }
     
-    // Пытаемся аллоцировать из текущего блока
     Object* obj = block_alloc_bump(pool->current);
     
-    // Если текущий блок полон, создаем новый
     if (!obj) {
         if (!pool_add_block(pool)) {
             return NULL;
@@ -149,7 +135,6 @@ static Object* pool_alloc(ObjectPool* pool) {
     return obj;
 }
 
-// Подсчет использованных объектов в пуле
 static size_t pool_used_objects(ObjectPool* pool) {
     size_t total = 0;
     MemoryBlock* block = pool->first;
@@ -162,7 +147,6 @@ static size_t pool_used_objects(ObjectPool* pool) {
     return total;
 }
 
-// Уничтожение пула
 static void pool_destroy(ObjectPool* pool) {
     block_destroy(pool->first);
     pool->first = NULL;
@@ -176,23 +160,20 @@ Heap* heap_create(void) {
 
     init_int_cache(heap);
     
-    // Инициализируем пулы с разными размерами блоков
-    pool_init(&heap->int_pool, 2000000);        // Блоки по 100K int объектов
-    pool_init(&heap->array_pool, 100);       // Блоки по 100 массивов
-    pool_init(&heap->function_pool, 100);     // Блоки по 100 функций
-    pool_init(&heap->code_pool, 100);         // Блоки по 100 code объектов
-    pool_init(&heap->native_func_pool, 100);   // Блоки по 100 нативных функций
-    pool_init(&heap->float_pool, 10000); // Блоки по 10к для float
+    pool_init(&heap->int_pool, 2000000);
+    pool_init(&heap->array_pool, 100);
+    pool_init(&heap->function_pool, 100);
+    pool_init(&heap->code_pool, 100);
+    pool_init(&heap->native_func_pool, 100);
+    pool_init(&heap->float_pool, 10000);
 
-    pool_init(&heap->bool_pool, 2);        // 2 слота для true/false
-    pool_init(&heap->none_pool, 1);            // 1 слот для синглтона
+    pool_init(&heap->bool_pool, 2);
+    pool_init(&heap->none_pool, 1);
 
-    // Инициализируем синглтоны
     heap->none_singleton = NULL;
     heap->true_singleton = NULL;
     heap->false_singleton = NULL;
     
-    // Статистика
     heap->total_allocations = 0;
     
     return heap;
@@ -203,7 +184,6 @@ void heap_destroy(Heap* heap) {
 
     free_int_cache(heap);
     
-    // Уничтожаем все пулы
     pool_destroy(&heap->int_pool);
     pool_destroy(&heap->bool_pool);
     pool_destroy(&heap->none_pool);
@@ -213,7 +193,6 @@ void heap_destroy(Heap* heap) {
     pool_destroy(&heap->native_func_pool);
     pool_destroy(&heap->float_pool);
     
-    // Освобождаем синглтоны (они уже были в пулах)
     free(heap);
 }
 
@@ -271,7 +250,6 @@ Object* heap_alloc_float_from_bf(Heap* heap, BigFloat* bf) {
 Object* heap_alloc_bool(Heap* heap, bool b) {
     heap->total_allocations++;
     
-    // Используем синглтоны для true/false
     if (b) {
         if (!heap->true_singleton) {
             Object* o = pool_alloc(&heap->bool_pool);
@@ -294,7 +272,6 @@ Object* heap_alloc_bool(Heap* heap, bool b) {
 }
 
 Object* heap_alloc_none(Heap* heap) {
-    // None - синглтон
     if (!heap->none_singleton) {
         Object* o = pool_alloc(&heap->none_pool);
         o->type = OBJ_NONE;

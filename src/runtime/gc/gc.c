@@ -3,7 +3,6 @@
 #include <stdio.h>
 
 struct GC {
-    // placeholder: in the future this will hold GC roots, thresholds and state
     size_t allocated;
 };
 
@@ -20,9 +19,7 @@ void gc_destroy(GC* gc) {
 
 void gc_incref(GC* gc, Object* o) {
     (void)gc;
-    // for now delegate to object_incref to preserve current behavior.
     if (!o) return;
-    // call object-level incref as a bridge; later this will be GC-internal
     extern void object_incref(Object* o);
     object_incref(o);
 }
@@ -36,6 +33,5 @@ void gc_decref(GC* gc, Object* o) {
 
 void gc_collect(GC* gc) {
     (void)gc;
-    // noop for prototype
     fprintf(stderr, "[GC] gc_collect called (noop)\n");
 }
