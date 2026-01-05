@@ -31,9 +31,9 @@ struct Object {
 
         bool bool_value;
 
-        BigFloat* float_value; // для OBJ_FLOAT
+        BigFloat* float_value;
 
-        CodeObj* codeptr; // для OBJ_CODE
+        CodeObj* codeptr;
         
         struct {
             CodeObj* codeptr;
@@ -53,7 +53,7 @@ struct Object {
 
 Object* object_new_int(int64_t v);
 Object* object_new_float(const char* v);
-Object* object_new_float_from_bf(BigFloat* bf);  // Новая функция
+Object* object_new_float_from_bf(BigFloat* bf);
 Object* object_new_bool(bool v);
 Object* object_new_none(void);
 Object* object_new_code(CodeObj* code);
@@ -69,6 +69,5 @@ void object_array_free(Object* array);
 void object_incref(Object* o);
 void object_decref(Object* o);
 
-// Helpers
 bool object_is_truthy(Object* o);
 char* object_to_string(Object* o);

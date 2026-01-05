@@ -170,18 +170,11 @@ void object_decref(Object* obj) {
                 
                 case OBJ_CODE:
                 case OBJ_FUNCTION:
-                    // CodeObj освобождается отдельно
                     break;
                 
                 default:
                     break;
             }
-            /* Note: objects allocated via Heap pools must not be freed here
-             * because their memory is managed by the Heap pools and will be
-             * released when the pool is destroyed. Only free internal
-             * allocations that were separately allocated (like arrays' items,
-             * native function names, or BigFloat data). Do not call free(obj)
-             * to avoid double-free/corruption. */
             obj->ref_count = 0;
         }
     }

@@ -44,7 +44,7 @@
 
 typedef struct __attribute__((packed, aligned(1))) {
     uint8_t op_code;
-    uint8_t argument[3]; // 0x00 0x2D 0xFA values => 002DFA hex => 11770 dec
+    uint8_t argument[3];
 } bytecode;
 
 bytecode bytecode_create(uint8_t op_code, uint8_t argument1, uint8_t argument2, uint8_t argument3);

@@ -13,10 +13,9 @@ typedef struct {
 
 typedef struct {
     size_t insn;      // индекс jump-инструкции
-    size_t target;    // индекс целевой инструкции (до компакции)
+    size_t target;
 } JumpFixup;
 
-// Основные функции
 CodeObj* jit_optimize_constant_folding(CodeObj* original, FoldStats* stats);
 int jit_can_constant_fold(CodeObj* code);
 
@@ -34,5 +33,5 @@ int is_unary_foldable(Value a, uint8_t op);
 Value fold_unary_constant(Value a, uint8_t op);
 CodeObj* deep_copy_codeobj(CodeObj* original);
 
-#endif // CONST_FOLDING_H
+#endif
 

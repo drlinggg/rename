@@ -46,7 +46,6 @@ struct Frame {
 
 typedef void (*OpHandler)(Frame*, uint32_t);
 
-// Объявления всех функций-обработчиков
 static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg);
 static void op_LOAD_CONST(Frame* frame, uint32_t arg);
 static void op_LOAD_FAST(Frame* frame, uint32_t arg);
@@ -77,12 +76,10 @@ static void op_STORE_SUBSCR(Frame* frame, uint32_t arg);
 static void op_DEL_SUBSCR(Frame* frame, uint32_t arg);
 static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg);
 
-// Таблица обработчиков
 static OpHandler op_table[256] = {NULL};
 
-// Инициализация таблицы
 static void init_op_table(void) {
-    if (op_table[0] != NULL) return; // Уже инициализирована
+    if (op_table[0] != NULL) return;
     
     op_table[LOAD_CONST] = op_LOAD_CONST;
     op_table[LOAD_FAST] = op_LOAD_FAST;
@@ -136,7 +133,6 @@ static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_
 void vm_register_builtins(VM* vm) {
     if (!vm || !vm->heap) return;
     
-    // Создаем нативные функции с новым хипом
     Object* print_func = heap_alloc_native_function(vm->heap, 
         (NativeCFunc)builtin_print, "print");
     Object* input_func = heap_alloc_native_function(vm->heap, 
@@ -380,7 +376,6 @@ Object* frame_execute(Frame* frame) {
         }
     }
     
-    // Возврат None если нет явного return
     Object* nonev = vm_get_none(frame->vm);
     if (frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, nonev);
     return nonev;
@@ -404,7 +399,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
     }
 }
 
-// Быстрый PUSH с GC
 #define FAST_PUSH_GC(frame, obj) \
     do { \
         if ((frame)->stack_size >= (frame)->stack_capacity) { \
@@ -416,7 +410,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
         (frame)->stack[(frame)->stack_size++] = (obj); \
     } while(0)
 
-// Быстрый PUSH без GC (для кэшированных объектов)
 #define FAST_PUSH_NO_GC(frame, obj) \
     do { \
         if ((frame)->stack_size >= (frame)->stack_capacity) { \
@@ -425,11 +418,9 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
         (frame)->stack[(frame)->stack_size++] = (obj); \
     } while(0)
 
-// Быстрый POP без GC (мы сами управляем decref)
 #define FAST_POP_NO_GC(frame) \
     ((frame)->stack[--(frame)->stack_size])
 
-// Быстрый POP с GC
 #define FAST_POP_GC(frame) \
     ({ \
         Object* _obj = (frame)->stack[--(frame)->stack_size]; \
@@ -439,11 +430,9 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
         _obj; \
     })
 
-// Получить элемент без удаления
 #define FAST_PEEK(frame, offset) \
     ((frame)->stack[(frame)->stack_size - 1 - (offset)])
 
-// Уменьшить ссылку на объект если GC активен
 #define GC_DECREF_IF_NEEDED(frame, obj) \
     do { \
         if ((obj) && (frame)->vm && (frame)->vm->gc) { \
@@ -451,7 +440,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
         } \
     } while(0)
 
-// Увеличить ссылку на объект если GC активен
 #define GC_INCREF_IF_NEEDED(frame, obj) \
     do { \
         if ((obj) && (frame)->vm && (frame)->vm->gc) { \
@@ -463,7 +451,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
 static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     uint8_t op = arg & 0xFF;
     
-    // Извлекаем операнды без автоматического decref (сами будем управлять)
     Object* right = FAST_POP_NO_GC(frame);
     Object* left = FAST_POP_NO_GC(frame);
     
@@ -472,7 +459,6 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     
     Object* ret = NULL;
 
-    // Логические операции OR/AND (0x60, 0x61)
     if (op == 0x60 || op == 0x61) {
         bool left_bool = false;
         bool right_bool = false;
@@ -500,25 +486,22 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 break;
         }
 
-        // Исправлено: 0x60 - это AND, 0x61 - это OR
-        if (op == 0x60) { // AND
+        if (op == 0x60) {
             ret = (left_bool && right_bool) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
-        } else if (op == 0x61) { // OR
+        } else if (op == 0x61) {
             ret = (left_bool || right_bool) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
         } else {
             ret = vm_get_false(frame->vm);
         }
     }
     
-    // БЫСТРАЯ ВЕТКА: оба операнда int (самый частый случай)
     else if (left->type == OBJ_INT && right->type == OBJ_INT) {
         int64_t a = left->as.int_value;
         int64_t b = right->as.int_value;
         
         switch (op) {
-            case 0x00: { // ADD
+            case 0x00: {
                 int64_t result = a + b;
-                // Используем кэш если возможно
                 if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
                     ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
                 } else {
@@ -526,7 +509,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 }
                 break;
             }
-            case 0x0A: { // SUB
+            case 0x0A: {
                 int64_t result = a - b;
                 if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
                     ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
@@ -535,7 +518,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 }
                 break;
             }
-            case 0x05: { // MUL
+            case 0x05: {
                 int64_t result = a * b;
                 if (result >= INT_CACHE_MIN && result <= INT_CACHE_MAX) {
                     ret = frame->vm->heap->int_cache[result - INT_CACHE_MIN];
@@ -544,7 +527,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 }
                 break;
             }
-            case 0x06: { // REMAINDER
+            case 0x06: {
                 if (b == 0) {
                     ret = heap_alloc_int(frame->vm->heap, 0);
                 } else {
@@ -557,7 +540,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 }
                 break;
             }
-            case 0x0B: { // DIV (целочисленное деление)
+            case 0x0B: {
                 if (b == 0) {
                     ret = heap_alloc_int(frame->vm->heap, 0);
                 } else {
@@ -570,7 +553,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 }
                 break;
             }
-            case 0x50: { // EQ
+            case 0x50: {
                 ret = (a == b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
@@ -578,19 +561,19 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 ret = (a != b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x52: { // LT
+            case 0x52: {
                 ret = (a < b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x53: { // LE
+            case 0x53: {
                 ret = (a <= b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x54: { // GT
+            case 0x54: {
                 ret = (a > b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x55: { // GE
+            case 0x55: {
                 ret = (a >= b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
@@ -605,16 +588,13 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         }
     }
     
-    // МЕДЛЕННЫЕ ВЕТКИ: операции с float
     else if (left->type == OBJ_FLOAT || right->type == OBJ_FLOAT) {
-        // Флаги для отслеживания временных объектов
         bool left_is_temp = false;
         bool right_is_temp = false;
         
         BigFloat* bf_left = NULL;
         BigFloat* bf_right = NULL;
         
-        // Преобразуем левый операнд в BigFloat если нужно
         if (left->type == OBJ_FLOAT) {
             bf_left = left->as.float_value;
         } else if (left->type == OBJ_INT) {
@@ -630,7 +610,6 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
             goto cleanup_float_branch;
         }
         
-        // Преобразуем правый операнд в BigFloat если нужно
         if (right->type == OBJ_FLOAT) {
             bf_right = right->as.float_value;
         } else if (right->type == OBJ_INT) {
@@ -646,7 +625,6 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
             goto cleanup_float_branch;
         }
         
-        // Выполняем операцию
         if (!bf_left || !bf_right) {
             ret = vm_get_none(frame->vm);
             goto cleanup_float_branch;
@@ -655,42 +633,42 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         BigFloat* bf_result = NULL;
         
         switch (op) {
-            case 0x00: // ADD
+            case 0x00:
                 bf_result = bigfloat_add(bf_left, bf_right);
                 break;
-            case 0x0A: // SUB
+            case 0x0A:
                 bf_result = bigfloat_sub(bf_left, bf_right);
                 break;
-            case 0x05: // MUL
+            case 0x05:
                 bf_result = bigfloat_mul(bf_left, bf_right);
                 break;
-            case 0x0B: // DIV
+            case 0x0B:
                 bf_result = bigfloat_div(bf_left, bf_right);
                 break;
-            case 0x06: // REMAINDER
+            case 0x06:
                 bf_result = bigfloat_mod(bf_left, bf_right);
                 break;
-            case 0x50: // EQ
+            case 0x50:
                 ret = bigfloat_eq(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
-            case 0x51: // NE
+            case 0x51:
                 ret = !bigfloat_eq(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
-            case 0x52: // LT
+            case 0x52:
                 ret = bigfloat_lt(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
-            case 0x53: // LE
+            case 0x53:
                 ret = bigfloat_le(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
-            case 0x54: // GT
+            case 0x54:
                 ret = bigfloat_gt(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
-            case 0x55: // GE
+            case 0x55:
                 ret = bigfloat_ge(bf_left, bf_right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
@@ -699,13 +677,11 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 break;
         }
         
-        // Если операция вернула BigFloat (арифметические операции)
         if (bf_result) {
             ret = heap_alloc_float_from_bf(frame->vm->heap, bf_result);
         }
         
     cleanup_float_branch:
-        // Освобождаем временные BigFloat если они были созданы
         if (left_is_temp && bf_left) {
             bigfloat_destroy(bf_left);
         }
@@ -714,10 +690,9 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         }
     }
     
-    // Операции с bool
     else if (left->type == OBJ_BOOL && right->type == OBJ_BOOL) {
         switch (op) {
-            case 0x50: { // EQ
+            case 0x50: {
                 ret = (left->as.bool_value == right->as.bool_value) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
@@ -727,10 +702,10 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x52: // LT
-            case 0x53: // LE
-            case 0x54: // GT
-            case 0x55: { // GE
+            case 0x52:
+            case 0x53:
+            case 0x54:
+            case 0x55: {
                 ret = vm_get_false(frame->vm);
                 break;
             }
@@ -745,29 +720,24 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         }
     }
     
-    // IS операция для одинаковых типов
-    else if (op == 0x56) { // IS
+    else if (op == 0x56) {
         ret = (left == right) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
     }
     
-    // Сравнение разных типов
-    else if (op == 0x50 || op == 0x51) { // EQ или NE
-        if (op == 0x50) { // EQ
+    else if (op == 0x50 || op == 0x51) {
+        if (op == 0x50) {
             ret = vm_get_false(frame->vm);
-        } else { // NE
+        } else {
             ret = vm_get_true(frame->vm);
         }
     }
     
-    // Неподдерживаемая операция
     else {
         DPRINT("VM: Unsupported binary_op %u for types %d and %d\n", 
                op, left->type, right->type);
         ret = vm_get_none(frame->vm);
     }
     
-    // ОСВОБОЖДАЕМ ВРЕМЕННЫЕ ОБЪЕКТЫ
-    // Важно: только если это не синглтоны или кэшированные объекты
     if (left && left->ref_count != 0x7FFFFFFF) {
         GC_DECREF_IF_NEEDED(frame, left);
     }
@@ -775,16 +745,13 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
         GC_DECREF_IF_NEEDED(frame, right);
     }
     
-    // КЛАДЕМ РЕЗУЛЬТАТ НА СТЕК
     if (!ret) {
         ret = vm_get_none(frame->vm);
     }
     
     if (ret->ref_count == 0x7FFFFFFF) {
-        // Бессмертные объекты (кэш, синглтоны)
         FAST_PUSH_NO_GC(frame, ret);
     } else {
-        // Обычные объекты - нужен incref
         FAST_PUSH_GC(frame, ret);
     }
 }
@@ -839,18 +806,15 @@ static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
         return;
     }
     
-    // Получаем элемент
     int64_t index = index_obj->as.int_value;
     Object* element = array_obj->as.array.items[index];
     
-    // Кладем элемент на стек
     if (element && element->ref_count == 0x7FFFFFFF) {
         FAST_PUSH_NO_GC(frame, element);
     } else {
         FAST_PUSH_GC(frame, element ? element : vm_get_none(frame->vm));
     }
     
-    // Освобождаем временные объекты
     GC_DECREF_IF_NEEDED(frame, index_obj);
     GC_DECREF_IF_NEEDED(frame, array_obj);
 }
@@ -867,20 +831,16 @@ static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
         return;
     }
     
-    // Быстрая замена элемента
     int64_t index = index_obj->as.int_value;
     Object* old_element = array_obj->as.array.items[index];
     array_obj->as.array.items[index] = value_obj;
     
-    // Обновляем счетчики ссылок
     GC_INCREF_IF_NEEDED(frame, value_obj);
     GC_DECREF_IF_NEEDED(frame, old_element);
     
-    // Освобождаем временные объекты
     GC_DECREF_IF_NEEDED(frame, index_obj);
     GC_DECREF_IF_NEEDED(frame, array_obj);
 
-    /* Debug: log stores to the main benchmark array (size 1000) for low indices */
     if (debug_enabled && array_obj && array_obj->type == OBJ_ARRAY && array_obj->as.array.size == 1000 && index >= 0 && index < 30) {
         int64_t val = 0;
         if (value_obj && value_obj->type == OBJ_INT) val = value_obj->as.int_value;
@@ -945,7 +905,7 @@ static void op_UNARY_OP(Frame* frame, uint32_t arg) {
     }
     else if (obj->type == OBJ_BOOL) {
         switch (op) {
-            case 0x03: // NOT
+            case 0x03:
                 ret = obj->as.bool_value ? vm_get_false(frame->vm) : vm_get_true(frame->vm);
                 break;
             default:
@@ -956,16 +916,15 @@ static void op_UNARY_OP(Frame* frame, uint32_t arg) {
     }
     else if (obj->type == OBJ_FLOAT) {
         switch (op) {
-            case 0x00: // UNARY_PLUS
-                // +float возвращает тот же float
+            case 0x00:
                 ret = heap_alloc_float_from_bf(frame->vm->heap, 
                                                bigfloat_create(bigfloat_to_string(obj->as.float_value)));
                 break;
-            case 0x01: // UNARY_MINUS (отрицание)
+            case 0x01:
                 ret = heap_alloc_float_from_bf(frame->vm->heap, 
                                                bigfloat_neg(obj->as.float_value));
                 break;
-            case 0x03: // NOT для float (преобразует в bool)
+            case 0x03:
                 if (bigfloat_eq(obj->as.float_value, bigfloat_zero())) {
                     ret = vm_get_false(frame->vm);
                 } else {
@@ -980,8 +939,8 @@ static void op_UNARY_OP(Frame* frame, uint32_t arg) {
     }
     else if (obj->type == OBJ_NONE) {
         switch (op) {
-            case 0x03: // NOT для None
-                ret = vm_get_true(frame->vm); // not None == True
+            case 0x03:
+                ret = vm_get_true(frame->vm);
                 break;
             default:
                 DPRINT("VM: Unsupported unary_op on None: %u\n", op);
@@ -996,7 +955,6 @@ static void op_UNARY_OP(Frame* frame, uint32_t arg) {
 
     if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, obj);
     
-    // Кладем результат на стек
     if (ret->ref_count == 0x7FFFFFFF) {
         FAST_PUSH_NO_GC(frame, ret);
     } else {
@@ -1043,7 +1001,6 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
     uint32_t argc = arg;
     DPRINT("[VM] CALL_FUNCTION with %u arguments\n", argc);
     
-    // Собираем аргументы
     Object** args = NULL;
     if (argc > 0) {
         args = malloc(argc * sizeof(Object*));
@@ -1056,13 +1013,11 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
         }
     }
     
-    // Убираем NULL
     Object* maybe_null = frame_stack_pop(frame);
     if (maybe_null && frame->vm && frame->vm->gc) {
         gc_decref(frame->vm->gc, maybe_null);
     }
     
-    // Получаем функцию
     Object* callee_obj = frame_stack_pop(frame);
     if (!callee_obj) {
         DPRINT("[VM] ERROR: Callee is NULL\n");
@@ -1078,7 +1033,6 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
         return;
     }
     
-    // Вызываем функцию
     Object* ret = NULL;
     if (callee_obj->type == OBJ_FUNCTION) {
         CodeObj* callee_code = callee_obj->as.function.codeptr;
@@ -1105,7 +1059,6 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
         ret = vm_get_none(frame->vm);
     }
     
-    // Очищаем аргументы
     if (args) {
         for (uint32_t i = 0; i < argc; i++) {
             if (args[i] && frame->vm && frame->vm->gc) {
@@ -1129,12 +1082,10 @@ static void op_RETURN_VALUE(Frame* frame, uint32_t arg) {
     if (val && frame->vm && frame->vm->gc) {
         gc_incref(frame->vm->gc, val);
     }
-    // Возврат обрабатывается в основном цикле frame_execute
     frame_stack_push(frame, val);
 }
 
 static void op_NOP(Frame* frame, uint32_t arg) {
-    // Ничего не делаем
 }
 
 static void op_LOOP_START(Frame* frame, uint32_t arg) {
@@ -1419,14 +1370,12 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
         return;
     }
     
-    // Снимаем со стека в обратном порядке (последний загруженный - первый снимается)
     Object* j_plus_1_obj = FAST_POP_NO_GC(frame); // j+1
     Object* j_obj = FAST_POP_NO_GC(frame);        // j
     Object* array_obj = FAST_POP_NO_GC(frame);    // массив
     
     if (!array_obj || array_obj->type != OBJ_ARRAY) {
         DPRINT("[VM] COMPARE_AND_SWAP: expected array\n");
-        // Возвращаем обратно
         FAST_PUSH_NO_GC(frame, array_obj);
         FAST_PUSH_NO_GC(frame, j_obj);
         FAST_PUSH_NO_GC(frame, j_plus_1_obj);
@@ -1435,7 +1384,6 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     
     if (!j_obj || j_obj->type != OBJ_INT || !j_plus_1_obj || j_plus_1_obj->type != OBJ_INT) {
         DPRINT("[VM] COMPARE_AND_SWAP: indices must be integers\n");
-        // Возвращаем обратно
         FAST_PUSH_NO_GC(frame, array_obj);
         FAST_PUSH_NO_GC(frame, j_obj);
         FAST_PUSH_NO_GC(frame, j_plus_1_obj);
@@ -1445,13 +1393,11 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     int64_t j = j_obj->as.int_value;
     int64_t j_plus_1 = j_plus_1_obj->as.int_value;
     
-    // Проверка границ (только в debug)
     #ifdef DEBUG
     if (j < 0 || j >= array_obj->as.array.size || 
         j_plus_1 < 0 || j_plus_1 >= array_obj->as.array.size) {
         DPRINT("[VM] COMPARE_AND_SWAP: indices out of bounds: %lld, %lld (size=%zu)\n",
                (long long)j, (long long)j_plus_1, array_obj->as.array.size);
-        // Возвращаем обратно
         FAST_PUSH_NO_GC(frame, array_obj);
         FAST_PUSH_NO_GC(frame, j_obj);
         FAST_PUSH_NO_GC(frame, j_plus_1_obj);
@@ -1459,31 +1405,24 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     }
     #endif
     
-    // Получаем элементы
     Object* a = array_obj->as.array.items[j];
     Object* b = array_obj->as.array.items[j_plus_1];
     
-    // Сравниваем и меняем если нужно
     if (a->as.int_value > b->as.int_value) {
         DPRINT("[VM] COMPARE_AND_SWAP: swapping indices %lld and %lld (vals %lld > %lld) frame=%p\n",
             (long long)j, (long long)j_plus_1,
             (long long)(a ? a->as.int_value : 0), (long long)(b ? b->as.int_value : 0), (void*)frame);
-        /* Preserve old pointers and update refcounts similarly to STORE_SUBSCR
-         * to avoid premature frees or leaks when swapping elements. */
         Object* old_a = array_obj->as.array.items[j];
         Object* old_b = array_obj->as.array.items[j_plus_1];
 
-        /* Place b into position j */
         array_obj->as.array.items[j] = old_b;
         GC_INCREF_IF_NEEDED(frame, old_b);
         GC_DECREF_IF_NEEDED(frame, old_a);
 
-        /* Place a into position j+1 */
         array_obj->as.array.items[j_plus_1] = old_a;
         GC_INCREF_IF_NEEDED(frame, old_a);
         GC_DECREF_IF_NEEDED(frame, old_b);
 
-        /* Debug: print post-swap values and a quick sanity check */
         Object* new_a = array_obj->as.array.items[j];
         Object* new_b = array_obj->as.array.items[j_plus_1];
         DPRINT("[VM] COMPARE_AND_SWAP: after swap indices %lld=%lld, %lld=%lld\n",
@@ -1497,10 +1436,8 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     #endif
     }
     
-    // Освобождаем временные объекты (индексы)
     GC_DECREF_IF_NEEDED(frame, j_obj);
     GC_DECREF_IF_NEEDED(frame, j_plus_1_obj);
-    // Массив не освобождаем - он остается с теми же ссылками
 }
 
 static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_t argc) {

@@ -51,7 +51,6 @@ static Token* lexer_parse_identifier(lexer *l) {
     }
     buffer[i] = '\0';
     
-    // Check for keywords
     if (strcmp(buffer, "int") == 0) return token_create(KW_INT, buffer, start_line, start_column);
     if (strcmp(buffer, "float") == 0) return token_create(KW_FLOAT, buffer, start_line, start_column);
     if (strcmp(buffer, "void") == 0) return token_create(KW_VOID, buffer, start_line, start_column);
@@ -87,46 +86,39 @@ static Token* lexer_parse_number(lexer *l) {
     int has_dot = 0;
     int is_float = 0;
     
-    // Парсим целую часть
     while (isdigit(l->current_char) && i < 255) {
         buffer[i++] = l->current_char;
         lexer_advance(l);
     }
     
-    // Проверяем точку (десятичную часть)
     if (l->current_char == '.' && i < 254) {
         buffer[i++] = '.';
         lexer_advance(l);
         has_dot = 1;
         is_float = 1;
         
-        // Парсим дробную часть
         while (isdigit(l->current_char) && i < 255) {
             buffer[i++] = l->current_char;
             lexer_advance(l);
         }
     }
     
-    // Проверяем экспоненциальную часть
     if ((l->current_char == 'e' || l->current_char == 'E') && i < 254) {
         buffer[i++] = l->current_char;
         lexer_advance(l);
         is_float = 1;
         
-        // Проверяем знак экспоненты
         if ((l->current_char == '+' || l->current_char == '-') && i < 254) {
             buffer[i++] = l->current_char;
             lexer_advance(l);
         }
         
-        // Парсим цифры экспоненты
         if (isdigit(l->current_char)) {
             while (isdigit(l->current_char) && i < 255) {
                 buffer[i++] = l->current_char;
                 lexer_advance(l);
             }
         } else {
-            // Ошибка: после e/E должна быть хотя бы одна цифра
             buffer[i] = '\0';
             return token_create(ERROR, buffer, start_line, start_column);
         }
@@ -134,7 +126,6 @@ static Token* lexer_parse_number(lexer *l) {
     
     buffer[i] = '\0';
     
-    // Возвращаем соответствующий токен
     if (is_float) {
         return token_create(FLOAT_LITERAL, buffer, start_line, start_column);
     } else {
@@ -154,17 +145,14 @@ static Token* lexer_next_token(lexer *l) {
     int start_line = l->line;
     int start_column = l->column;
     
-    // Identifiers and keywords
     if (isalpha(l->current_char) || l->current_char == '_') {
         return lexer_parse_identifier(l);
     }
     
-    // Numbers
     if (isdigit(l->current_char)) {
         return lexer_parse_number(l);
     }
     
-    // Single character tokens and multi-character tokens
     char double_char[3] = {l->current_char, 0, '\0'};
     char single_char[2] = {l->current_char, '\0'};
     Token* token = NULL;
@@ -177,12 +165,11 @@ static Token* lexer_next_token(lexer *l) {
         case '%': token = token_create(OP_MOD, single_char, start_line, start_column); break;
         
         case '=':
-            // Check for ==
             double_char[1] = fgetc(l->file);
             if (double_char[1] == '=') {
                 double_char[2] = '\0';
                 token = token_create(OP_EQ, double_char, start_line, start_column);
-                lexer_advance(l); // Skip the second '='
+                lexer_advance(l);
             } else {
                 ungetc(double_char[1], l->file);
                 token = token_create(OP_ASSIGN, single_char, start_line, start_column);
@@ -190,12 +177,11 @@ static Token* lexer_next_token(lexer *l) {
             break;
             
         case '!':
-            // Check for !=
             double_char[1] = fgetc(l->file);
             if (double_char[1] == '=') {
                 double_char[2] = '\0';
                 token = token_create(OP_NE, double_char, start_line, start_column);
-                lexer_advance(l); // Skip the '='
+                lexer_advance(l);
             } else {
                 ungetc(double_char[1], l->file);
                 token = token_create(ERROR, single_char, start_line, start_column);
@@ -203,12 +189,11 @@ static Token* lexer_next_token(lexer *l) {
             break;
             
         case '<':
-            // Check for <=
             double_char[1] = fgetc(l->file);
             if (double_char[1] == '=') {
                 double_char[2] = '\0';
                 token = token_create(OP_LE, double_char, start_line, start_column);
-                lexer_advance(l); // Skip the '='
+                lexer_advance(l);
             } else {
                 ungetc(double_char[1], l->file);
                 token = token_create(OP_LT, single_char, start_line, start_column);
@@ -216,12 +201,11 @@ static Token* lexer_next_token(lexer *l) {
             break;
             
         case '>':
-            // Check for >=
             double_char[1] = fgetc(l->file);
             if (double_char[1] == '=') {
                 double_char[2] = '\0';
                 token = token_create(OP_GE, double_char, start_line, start_column);
-                lexer_advance(l); // Skip the '='
+                lexer_advance(l);
             } else {
                 ungetc(double_char[1], l->file);
                 token = token_create(OP_GT, single_char, start_line, start_column);
@@ -251,7 +235,6 @@ static Token* lexer_next_token(lexer *l) {
 }
 
 lexer* lexer_create(const char* filename) {
-    // initialize lexer from file function
     lexer *l = malloc(sizeof(lexer));
     if (!l) return NULL;
     
@@ -270,7 +253,6 @@ lexer* lexer_create(const char* filename) {
 }
 
 lexer* lexer_create_from_stream(FILE* file, const char* filename) {
-    // todo info
     lexer *l = malloc(sizeof(lexer));
     if (!l) return NULL;
     
@@ -292,14 +274,11 @@ void lexer_destroy(lexer *l) {
 }
 
 Token* lexer_parse_file(lexer* lexer, const char* filename) {
-    // if lexer is NULL creates new one from filename
-    // if filename is NULL uses given lexer with opened file inside
     if (!lexer) {
         lexer = lexer_create(filename);
-        if (!lexer) return NULL;
+        if (!lexer)         return NULL;
     }
     
-    // Count tokens first to allocate array
     int capacity = 100;
     int count = 0;
     Token** tokens = malloc(capacity * sizeof(Token*));
@@ -318,14 +297,12 @@ Token* lexer_parse_file(lexer* lexer, const char* filename) {
         }
     }
     
-    // Add EOF token
     if (count >= capacity) {
         capacity += 1;
         tokens = realloc(tokens, capacity * sizeof(Token*));
     }
     tokens[count++] = token_create(END_OF_FILE, "EOF", lexer->line, lexer->column);
     
-    // Create final array
     Token* result = malloc((count + 1) * sizeof(Token));
     for (int i = 0; i < count; i++) {
         result[i] = *tokens[i];

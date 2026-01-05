@@ -238,7 +238,6 @@ void free_bytecode_array(bytecode_array array) {
     }
 }
 
-// Эта функция может быть полезной для отладки
 static uint8_t* bytecode_to_byte_array(const bytecode_array* bc_array, size_t* byte_count) {
     if (!bc_array || !bc_array->bytecodes || bc_array->count == 0) {
         *byte_count = 0;
@@ -253,7 +252,6 @@ static uint8_t* bytecode_to_byte_array(const bytecode_array* bc_array, size_t* b
     return byte_array;
 }
 
-// И обратная функция
 static bytecode_array byte_array_to_bytecode(const uint8_t* byte_array, size_t byte_count) {
     if (!byte_array || byte_count % sizeof(bytecode) != 0) {
         return create_bytecode_array(NULL, 0);
