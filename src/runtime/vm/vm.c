@@ -4,8 +4,59 @@
 #include "../../system.h"
 #include "float_bigint.h"
 #include "vm.h"
+#include "heap.h"
 #include <stdio.h>
 #include <string.h>
+
+
+#define FAST_PUSH_GC(frame, obj) \
+    do { \
+        if ((frame)->stack_size >= (frame)->stack_capacity) { \
+            frame_stack_ensure_capacity_fast((frame), 1); \
+        } \
+        if ((obj)) { \
+            GC_INCREF_IF_ENABLED((frame), (obj)); \
+        } \
+        (frame)->stack[(frame)->stack_size++] = (obj); \
+    } while(0)
+
+#define FAST_PUSH_NO_GC(frame, obj) \
+    do { \
+        if ((frame)->stack_size >= (frame)->stack_capacity) { \
+            frame_stack_ensure_capacity_fast((frame), 1); \
+        } \
+        (frame)->stack[(frame)->stack_size++] = (obj); \
+    } while(0)
+
+#define FAST_POP_NO_GC(frame) \
+    ((frame)->stack[--(frame)->stack_size])
+
+#define FAST_POP_GC(frame) \
+    ({ \
+        Object* _obj = (frame)->stack[--(frame)->stack_size]; \
+        if (_obj) { \
+            GC_DECREF_IF_ENABLED((frame), _obj); \
+        } \
+        _obj; \
+    })
+
+#define FAST_PEEK(frame, offset) \
+    ((frame)->stack[(frame)->stack_size - 1 - (offset)])
+
+#define GC_INCREF_IF_ENABLED_VM(vm_ptr, obj_ptr) \
+    do { \
+        if (gc_enabled && (vm_ptr) && (vm_ptr)->gc && (obj_ptr)) { \
+            gc_incref((vm_ptr)->gc, (obj_ptr)); \
+        } \
+    } while (0)
+
+#define GC_DECREF_IF_ENABLED_VM(vm_ptr, obj_ptr) \
+    do { \
+        if (gc_enabled && (vm_ptr) && (vm_ptr)->gc && (obj_ptr)) { \
+            gc_decref((vm_ptr)->gc, (obj_ptr)); \
+        } \
+    } while (0)
+
 
 void gc_incref(GC* gc, Object* obj);
 void gc_decref(GC* gc, Object* obj);
@@ -21,6 +72,11 @@ struct VM {
     Object* none_object;
     Object* true_object;
     Object* false_object;
+    
+    // GC: отслеживание активных фреймов (call stack)
+    Frame** active_frames;
+    size_t active_frames_count;
+    size_t active_frames_capacity;
 };
 
 struct Frame {
@@ -109,8 +165,8 @@ static void init_op_table(void) {
 static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additional);
 static void frame_stack_push(Frame* frame, Object* o) {
     frame_stack_ensure_capacity_fast(frame, 1);
-    if (o && frame->vm && frame->vm->gc) {
-        gc_incref(frame->vm->gc, o);
+    if (o) {
+        GC_INCREF_IF_ENABLED(frame, o);
     }
     frame->stack[frame->stack_size++] = o;
 }
@@ -197,12 +253,12 @@ static void vm_print_object(VM* vm, Object* obj) {
 
 void vm_set_global(VM* vm, size_t idx, Object* value) {
     if (!vm || idx >= vm->globals_count) return;
-    if (value && vm->gc) {
-        gc_incref(vm->gc, value);
+    if (value) {
+        GC_INCREF_IF_ENABLED_VM(vm, value);
     }
     Object* old_value = vm->globals[idx];
-    if (old_value && vm->gc) {
-        gc_decref(vm->gc, old_value);
+    if (old_value) {
+        GC_INCREF_IF_ENABLED_VM(vm, old_value);
     }
     vm->globals[idx] = value;
 }
@@ -241,11 +297,14 @@ VM* vm_create(Heap* heap, size_t global_count) {
     vm->true_object = heap_alloc_bool(heap, true);
     vm->false_object = heap_alloc_bool(heap, false);
     
-    if (vm->gc) {
-        vm->none_object->ref_count = 0x7FFFFFFF;
-        vm->true_object->ref_count = 0x7FFFFFFF;
-        vm->false_object->ref_count = 0x7FFFFFFF;
-    }
+    vm->none_object->ref_count = 0x7FFFFFFF;
+    vm->true_object->ref_count = 0x7FFFFFFF;
+    vm->false_object->ref_count = 0x7FFFFFFF;
+    
+    // Инициализация отслеживания активных фреймов для GC
+    vm->active_frames = NULL;
+    vm->active_frames_count = 0;
+    vm->active_frames_capacity = 0;
     
     vm_register_builtins(vm);
     return vm;
@@ -256,14 +315,16 @@ void vm_destroy(VM* vm) {
     
     if (vm->globals) {
         for (size_t i = 0; i < vm->globals_count; i++) {
-            if (vm->gc) {
-                gc_decref(vm->gc, vm->globals[i]);
-            }
+            GC_DECREF_IF_ENABLED_VM(vm, vm->globals[i]);
         }
         free(vm->globals);
     }
     
-    if (vm->gc) gc_destroy(vm->gc);
+    if (vm->active_frames) {
+        free(vm->active_frames);
+    }
+    
+    gc_destroy(vm->gc);
     if (vm->jit) jit_destroy(vm->jit);
     
     free(vm);
@@ -277,27 +338,37 @@ Frame* frame_create(VM* vm, CodeObj* code) {
     f->local_count = code->local_count;
     f->locals = calloc(f->local_count, sizeof(Object*));
     for (size_t i = 0; i < f->local_count; i++) {
-        f->locals[i] = vm->heap ? vm_get_none(vm) : NULL;
-        if (f->locals[i] && vm->gc) gc_incref(vm->gc, f->locals[i]);
+        f->locals[i] = vm_get_none(vm);
+        if (f->locals[i]) GC_INCREF_IF_ENABLED(f, f->locals[i]);
     }
     f->stack = NULL;
     f->stack_capacity = 0;
     f->stack_size = 0;
     f->ip = 0;
+    
+    // Регистрируем фрейм для GC
+    vm_register_frame(vm, f);
+    
     return f;
 }
 
 void frame_destroy(Frame* frame) {
     if (!frame) return;
+    
+    // Отменяем регистрацию фрейма для GC
+    if (frame->vm) {
+        vm_unregister_frame(frame->vm, frame);
+    }
+    
     if (frame->stack) {
         for (size_t i = 0; i < frame->stack_size; i++) {
-            if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, frame->stack[i]);
+            if (frame->stack[i]) GC_DECREF_IF_ENABLED(frame, frame->stack[i]);
         }
         free(frame->stack);
     }
     if (frame->locals) {
         for (size_t i = 0; i < frame->local_count; i++) {
-            if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, frame->locals[i]);
+            if (frame->locals[i]) GC_DECREF_IF_ENABLED(frame, frame->locals[i]);
         }
         free(frame->locals);
     }
@@ -319,6 +390,10 @@ Object* frame_execute(Frame* frame) {
     CodeObj* code = frame->code;
     bytecode_array* code_arr = &code->code;
     
+    size_t instruction_count = 0;
+    const size_t GC_INTERVAL = 1000000;
+    
+    // Основной цикл выполнения
     while (frame->ip < code_arr->count) {
         bytecode bc = code_arr->bytecodes[frame->ip++];
         uint32_t arg = bytecode_get_arg(bc);
@@ -327,10 +402,17 @@ Object* frame_execute(Frame* frame) {
         if (handler) {
             handler(frame, arg);
             
+            // Периодическая сборка мусора
+            instruction_count++;
+            if (instruction_count >= GC_INTERVAL && gc_enabled) {
+                vm_collect_garbage(frame->vm);
+                instruction_count = 0;
+            }
+            
             if (bc.op_code == RETURN_VALUE) {
                 Object* val = frame_stack_pop(frame);
-                if (val && frame->vm && frame->vm->gc) {
-                    gc_incref(frame->vm->gc, val);
+                if (val) {
+                    GC_INCREF_IF_ENABLED(frame, val);
                 }
                 return val ? val : vm_get_none(frame->vm);
             }
@@ -340,7 +422,7 @@ Object* frame_execute(Frame* frame) {
     }
     
     Object* nonev = vm_get_none(frame->vm);
-    if (frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, nonev);
+    GC_INCREF_IF_ENABLED(frame, nonev);
     return nonev;
 }
 
@@ -362,53 +444,6 @@ static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additio
     }
 }
 
-#define FAST_PUSH_GC(frame, obj) \
-    do { \
-        if ((frame)->stack_size >= (frame)->stack_capacity) { \
-            frame_stack_ensure_capacity_fast((frame), 1); \
-        } \
-        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
-            gc_incref((frame)->vm->gc, (obj)); \
-        } \
-        (frame)->stack[(frame)->stack_size++] = (obj); \
-    } while(0)
-
-#define FAST_PUSH_NO_GC(frame, obj) \
-    do { \
-        if ((frame)->stack_size >= (frame)->stack_capacity) { \
-            frame_stack_ensure_capacity_fast((frame), 1); \
-        } \
-        (frame)->stack[(frame)->stack_size++] = (obj); \
-    } while(0)
-
-#define FAST_POP_NO_GC(frame) \
-    ((frame)->stack[--(frame)->stack_size])
-
-#define FAST_POP_GC(frame) \
-    ({ \
-        Object* _obj = (frame)->stack[--(frame)->stack_size]; \
-        if (_obj && (frame)->vm && (frame)->vm->gc) { \
-            gc_decref((frame)->vm->gc, _obj); \
-        } \
-        _obj; \
-    })
-
-#define FAST_PEEK(frame, offset) \
-    ((frame)->stack[(frame)->stack_size - 1 - (offset)])
-
-#define GC_DECREF_IF_NEEDED(frame, obj) \
-    do { \
-        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
-            gc_decref((frame)->vm->gc, (obj)); \
-        } \
-    } while(0)
-
-#define GC_INCREF_IF_NEEDED(frame, obj) \
-    do { \
-        if ((obj) && (frame)->vm && (frame)->vm->gc) { \
-            gc_incref((frame)->vm->gc, (obj)); \
-        } \
-    } while(0)
 
 
 static void op_BINARY_OP(Frame* frame, uint32_t arg) {
@@ -702,10 +737,10 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     }
     
     if (left && left->ref_count != 0x7FFFFFFF) {
-        GC_DECREF_IF_NEEDED(frame, left);
+        GC_DECREF_IF_ENABLED(frame, left);
     }
     if (right && right->ref_count != 0x7FFFFFFF) {
-        GC_DECREF_IF_NEEDED(frame, right);
+        GC_DECREF_IF_ENABLED(frame, right);
     }
     
     if (!ret) {
@@ -763,8 +798,8 @@ static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
     Object* array_obj = FAST_POP_NO_GC(frame);
     
     if (!array_obj || !index_obj) {
-        GC_DECREF_IF_NEEDED(frame, index_obj);
-        GC_DECREF_IF_NEEDED(frame, array_obj);
+        GC_DECREF_IF_ENABLED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
         FAST_PUSH_NO_GC(frame, vm_get_none(frame->vm));
         return;
     }
@@ -778,8 +813,8 @@ static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg) {
         FAST_PUSH_GC(frame, element ? element : vm_get_none(frame->vm));
     }
     
-    GC_DECREF_IF_NEEDED(frame, index_obj);
-    GC_DECREF_IF_NEEDED(frame, array_obj);
+    GC_DECREF_IF_ENABLED(frame, index_obj);
+    GC_DECREF_IF_ENABLED(frame, array_obj);
 }
 
 static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
@@ -788,9 +823,9 @@ static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
     Object* value_obj = FAST_POP_NO_GC(frame);
     
     if (!array_obj || !index_obj || !value_obj) {
-        GC_DECREF_IF_NEEDED(frame, value_obj);
-        GC_DECREF_IF_NEEDED(frame, array_obj);
-        GC_DECREF_IF_NEEDED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, value_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
+        GC_DECREF_IF_ENABLED(frame, index_obj);
         return;
     }
     
@@ -798,11 +833,11 @@ static void op_STORE_SUBSCR(Frame* frame, uint32_t arg) {
     Object* old_element = array_obj->as.array.items[index];
     array_obj->as.array.items[index] = value_obj;
     
-    GC_INCREF_IF_NEEDED(frame, value_obj);
-    GC_DECREF_IF_NEEDED(frame, old_element);
+    GC_INCREF_IF_ENABLED(frame, value_obj);
+    GC_DECREF_IF_ENABLED(frame, old_element);
     
-    GC_DECREF_IF_NEEDED(frame, index_obj);
-    GC_DECREF_IF_NEEDED(frame, array_obj);
+    GC_DECREF_IF_ENABLED(frame, index_obj);
+    GC_DECREF_IF_ENABLED(frame, array_obj);
 
     if (debug_enabled && array_obj && array_obj->type == OBJ_ARRAY && array_obj->as.array.size == 1000 && index >= 0 && index < 30) {
         int64_t val = 0;
@@ -825,13 +860,13 @@ static void op_STORE_FAST(Frame* frame, uint32_t arg) {
     if (arg >= frame->code->local_count) {
         DPRINT("VM: STORE_FAST index out of range %u\n", arg);
         Object* v = frame_stack_pop(frame);
-        if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, v);
+        GC_DECREF_IF_ENABLED(frame, v);
         return;
     }
     Object* v = frame_stack_pop(frame);
     
-    if (frame->vm && frame->vm->gc) gc_incref(frame->vm->gc, v);
-    if (frame->locals[arg] && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, frame->locals[arg]);
+    GC_INCREF_IF_ENABLED(frame, v);
+    if (frame->locals[arg]) GC_DECREF_IF_ENABLED(frame, frame->locals[arg]);
     frame->locals[arg] = v;
 }
 
@@ -846,7 +881,7 @@ static void op_STORE_GLOBAL(Frame* frame, uint32_t arg) {
     size_t gidx = arg;
     Object* v = frame_stack_pop(frame);
     vm_set_global(frame->vm, gidx, v);
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, v);
+    GC_DECREF_IF_ENABLED(frame, v);
 }
 
 
@@ -916,7 +951,7 @@ static void op_UNARY_OP(Frame* frame, uint32_t arg) {
         ret = vm_get_none(frame->vm);
     }
 
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, obj);
+    GC_DECREF_IF_ENABLED(frame, obj);
     
     if (ret->ref_count == 0x7FFFFFFF) {
         FAST_PUSH_NO_GC(frame, ret);
@@ -931,7 +966,7 @@ static void op_PUSH_NULL(Frame* frame, uint32_t arg) {
 
 static void op_POP_TOP(Frame* frame, uint32_t arg) {
     Object* o = frame_stack_pop(frame);
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, o);
+    GC_DECREF_IF_ENABLED(frame, o);
 }
 
 static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
@@ -942,20 +977,14 @@ static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
         
         JIT_COMPILE_IF_ENABLED(frame->vm, codeptr);
 
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, maybe);
-        }
+        GC_DECREF_IF_ENABLED(frame, maybe);
         
         Object* func_obj = heap_alloc_function(frame->vm->heap, codeptr);
         frame_stack_push(frame, func_obj);
         
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, func_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, func_obj);
     } else {
-        if (maybe && frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, maybe);
-        }
+        GC_DECREF_IF_ENABLED(frame, maybe);
         frame_stack_push(frame, vm_get_none(frame->vm));
     }
 }
@@ -977,18 +1006,14 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
     }
     
     Object* maybe_null = frame_stack_pop(frame);
-    if (maybe_null && frame->vm && frame->vm->gc) {
-        gc_decref(frame->vm->gc, maybe_null);
-    }
+    GC_DECREF_IF_ENABLED(frame, maybe_null);
     
     Object* callee_obj = frame_stack_pop(frame);
     if (!callee_obj) {
         DPRINT("[VM] ERROR: Callee is NULL\n");
         if (args) {
             for (uint32_t i = 0; i < argc; i++) {
-                if (args[i] && frame->vm && frame->vm->gc) {
-                    gc_decref(frame->vm->gc, args[i]);
-                }
+                if (args[i]) GC_DECREF_IF_ENABLED(frame, args[i]);
             }
             free(args);
         }
@@ -999,34 +1024,24 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
     Object* ret = NULL;
     if (callee_obj->type == OBJ_FUNCTION) {
         CodeObj* callee_code = callee_obj->as.function.codeptr;
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, callee_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, callee_obj);
         ret = _vm_execute_with_args(frame->vm, callee_code, args, argc);
     } 
     else if (callee_obj->type == OBJ_NATIVE_FUNCTION) {
         NativeCFunc native_func = callee_obj->as.native_function.c_func;
         ret = native_func(frame->vm, argc, args);
-        if (ret && frame->vm && frame->vm->gc) {
-            gc_incref(frame->vm->gc, ret);
-        }
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, callee_obj);
-        }
+        if (ret) GC_INCREF_IF_ENABLED(frame, ret);
+        GC_DECREF_IF_ENABLED(frame, callee_obj);
     } 
     else {
         DPRINT("[VM] ERROR: Callee is not a function (type=%d)\n", callee_obj->type);
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, callee_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, callee_obj);
         ret = vm_get_none(frame->vm);
     }
     
     if (args) {
         for (uint32_t i = 0; i < argc; i++) {
-            if (args[i] && frame->vm && frame->vm->gc) {
-                gc_decref(frame->vm->gc, args[i]);
-            }
+            if (args[i]) GC_DECREF_IF_ENABLED(frame, args[i]);
         }
         free(args);
     }
@@ -1042,8 +1057,8 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
 
 static void op_RETURN_VALUE(Frame* frame, uint32_t arg) {
     Object* val = frame_stack_pop(frame);
-    if (val && frame->vm && frame->vm->gc) {
-        gc_incref(frame->vm->gc, val);
+    if (val) {
+        GC_INCREF_IF_ENABLED(frame, val);
     }
     frame_stack_push(frame, val);
 }
@@ -1131,7 +1146,7 @@ static void op_POP_JUMP_IF_FALSE(Frame* frame, uint32_t arg) {
         }
     }
     
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+    GC_DECREF_IF_ENABLED(frame, condition);
     
     if (should_jump) {
         frame->ip += (int32_t)arg;
@@ -1162,7 +1177,7 @@ static void op_POP_JUMP_IF_TRUE(Frame* frame, uint32_t arg) {
         }
     }
     
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+    GC_DECREF_IF_ENABLED(frame, condition);
     if (should_jump) {
         frame->ip += (int32_t)arg;
     }
@@ -1174,7 +1189,7 @@ static void op_POP_JUMP_IF_NONE(Frame* frame, uint32_t arg) {
     if (condition && condition->type == OBJ_NONE) {
         should_jump = true;
     }
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+    GC_DECREF_IF_ENABLED(frame, condition);
     if (should_jump) {
         frame->ip += (int32_t)arg;
     }
@@ -1186,7 +1201,7 @@ static void op_POP_JUMP_IF_NOT_NONE(Frame* frame, uint32_t arg) {
     if (condition && condition->type != OBJ_NONE) {
         should_jump = true;
     }
-    if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, condition);
+    GC_DECREF_IF_ENABLED(frame, condition);
     
     if (should_jump) {
         frame->ip += (int32_t)arg;
@@ -1206,7 +1221,7 @@ static void op_BUILD_ARRAY(Frame* frame, uint32_t arg) {
         Object* size_obj = frame_stack_pop(frame);
         if (!size_obj || size_obj->type != OBJ_INT) {
             DPRINT("[VM] ERROR: BUILD_ARRAY(0) expected integer size on stack\n");
-            if (size_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, size_obj);
+            GC_DECREF_IF_ENABLED(frame, size_obj);
             frame_stack_push(frame, vm_get_none(frame->vm));
             return;
         }
@@ -1216,7 +1231,7 @@ static void op_BUILD_ARRAY(Frame* frame, uint32_t arg) {
         
         Object* array = heap_alloc_array_with_size(frame->vm->heap, size);
         
-        if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, size_obj);
+        GC_DECREF_IF_ENABLED(frame, size_obj);
         
         if (!array) {
             DPRINT("[VM] ERROR: Failed to allocate array\n");
@@ -1249,21 +1264,15 @@ static void op_BUILD_ARRAY(Frame* frame, uint32_t arg) {
             
             if (element) {
                 if (i < (int64_t)array->as.array.size) {
-                    if (frame->vm && frame->vm->gc) {
-                        gc_incref(frame->vm->gc, element);
-                    }
+                    GC_INCREF_IF_ENABLED(frame, element);
                     
                     Object* old_element = array->as.array.items[i];
-                    if (old_element && frame->vm && frame->vm->gc) {
-                        gc_decref(frame->vm->gc, old_element);
-                    }
+                    if (old_element) GC_DECREF_IF_ENABLED(frame, old_element);
                     
                     array->as.array.items[i] = element;
                 }
                 
-                if (frame->vm && frame->vm->gc) {
-                    gc_decref(frame->vm->gc, element);
-                }
+                GC_DECREF_IF_ENABLED(frame, element);
             }
         }
         
@@ -1277,17 +1286,15 @@ static void op_DEL_SUBSCR(Frame* frame, uint32_t arg) {
     
     if (!array_obj || !index_obj) {
         DPRINT("[VM] ERROR: DEL_SUBSCR missing array or index\n");
-        if (index_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, index_obj);
-        if (array_obj && frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, array_obj);
+        GC_DECREF_IF_ENABLED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
         return;
     }
     
     if (array_obj->type != OBJ_ARRAY) {
         DPRINT("[VM] ERROR: DEL_SUBSCR expected array, got type=%d\n", array_obj->type);
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, index_obj);
-            gc_decref(frame->vm->gc, array_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
         return;
     }
     
@@ -1296,34 +1303,26 @@ static void op_DEL_SUBSCR(Frame* frame, uint32_t arg) {
         index = index_obj->as.int_value;
     } else {
         DPRINT("[VM] ERROR: DEL_SUBSCR index must be integer, got type=%d\n", index_obj->type);
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, index_obj);
-            gc_decref(frame->vm->gc, array_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
         return;
     }
     
     if (index < 0 || index >= (int64_t)array_obj->as.array.size) {
         DPRINT("[VM] ERROR: DEL_SUBSCR index %lld out of bounds (size=%zu)\n", 
                (long long)index, array_obj->as.array.size);
-        if (frame->vm && frame->vm->gc) {
-            gc_decref(frame->vm->gc, index_obj);
-            gc_decref(frame->vm->gc, array_obj);
-        }
+        GC_DECREF_IF_ENABLED(frame, index_obj);
+        GC_DECREF_IF_ENABLED(frame, array_obj);
         return;
     }
     
     Object* old_element = array_obj->as.array.items[index];
     array_obj->as.array.items[index] = vm_get_none(frame->vm);
     
-    if (old_element && frame->vm && frame->vm->gc) {
-        gc_decref(frame->vm->gc, old_element);
-    }
+    if (old_element) GC_DECREF_IF_ENABLED(frame, old_element);
     
-    if (frame->vm && frame->vm->gc) {
-        gc_decref(frame->vm->gc, index_obj);
-        gc_decref(frame->vm->gc, array_obj);
-    }
+    GC_DECREF_IF_ENABLED(frame, index_obj);
+    GC_DECREF_IF_ENABLED(frame, array_obj);
 }
 
 static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
@@ -1379,12 +1378,12 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
         Object* old_b = array_obj->as.array.items[j_plus_1];
 
         array_obj->as.array.items[j] = old_b;
-        GC_INCREF_IF_NEEDED(frame, old_b);
-        GC_DECREF_IF_NEEDED(frame, old_a);
+        GC_INCREF_IF_ENABLED(frame, old_b);
+        GC_DECREF_IF_ENABLED(frame, old_a);
 
         array_obj->as.array.items[j_plus_1] = old_a;
-        GC_INCREF_IF_NEEDED(frame, old_a);
-        GC_DECREF_IF_NEEDED(frame, old_b);
+        GC_INCREF_IF_ENABLED(frame, old_a);
+        GC_DECREF_IF_ENABLED(frame, old_b);
 
         Object* new_a = array_obj->as.array.items[j];
         Object* new_b = array_obj->as.array.items[j_plus_1];
@@ -1399,8 +1398,8 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
     #endif
     }
     
-    GC_DECREF_IF_NEEDED(frame, j_obj);
-    GC_DECREF_IF_NEEDED(frame, j_plus_1_obj);
+    GC_DECREF_IF_ENABLED(frame, j_obj);
+    GC_DECREF_IF_ENABLED(frame, j_plus_1_obj);
 }
 
 static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_t argc) {
@@ -1410,13 +1409,136 @@ static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_
     
     for (size_t i = 0; i < frame->local_count && i < argc; i++) {
         if (args && args[i]) {
-            if (frame->locals[i] && vm->gc) gc_decref(vm->gc, frame->locals[i]);
+            if (frame->locals[i]) GC_DECREF_IF_ENABLED(frame, frame->locals[i]);
             frame->locals[i] = args[i];
-            if (vm->gc) gc_incref(vm->gc, frame->locals[i]);
+            GC_INCREF_IF_ENABLED(frame, frame->locals[i]);
         }
     }
     
     Object* res = frame_execute(frame);
     frame_destroy(frame);
     return res;
+}
+
+// Регистрация активного фрейма для GC
+void vm_register_frame(VM* vm, Frame* frame) {
+    if (!vm || !frame) return;
+    
+    if (vm->active_frames_count >= vm->active_frames_capacity) {
+        size_t new_capacity = vm->active_frames_capacity == 0 ? 16 : vm->active_frames_capacity * 2;
+        Frame** new_frames = realloc(vm->active_frames, new_capacity * sizeof(Frame*));
+        if (!new_frames) return;
+        vm->active_frames = new_frames;
+        vm->active_frames_capacity = new_capacity;
+    }
+    
+    vm->active_frames[vm->active_frames_count++] = frame;
+}
+
+// Отмена регистрации активного фрейма
+void vm_unregister_frame(VM* vm, Frame* frame) {
+    if (!vm || !frame) return;
+    
+    for (size_t i = 0; i < vm->active_frames_count; i++) {
+        if (vm->active_frames[i] == frame) {
+            // Сдвигаем остальные элементы
+            for (size_t j = i; j < vm->active_frames_count - 1; j++) {
+                vm->active_frames[j] = vm->active_frames[j + 1];
+            }
+            vm->active_frames_count--;
+            return;
+        }
+    }
+}
+
+// Callback для итерации по всем объектам Heap (для GC)
+static void heap_iterate_wrapper(void* iterator_data, GC_ObjectCallback callback, void* callback_data) {
+    Heap* heap = (Heap*)iterator_data;
+    if (!heap || !callback) return;
+    
+    // Используем функцию из heap.h
+    // HeapObjectCallback и GC_ObjectCallback имеют одинаковую сигнатуру
+    heap_iterate_all_objects(heap, (HeapObjectCallback)callback, callback_data);
+}
+
+// Сборка всех корней из VM
+static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capacity) {
+    if (!vm || !roots_buffer) return 0;
+    
+    size_t count = 0;
+    
+    // 1. Глобальные переменные
+    if (vm->globals) {
+        for (size_t i = 0; i < vm->globals_count && count < buffer_capacity; i++) {
+            if (vm->globals[i]) {
+                roots_buffer[count++] = vm->globals[i];
+            }
+        }
+    }
+    
+    // 2. Синглтоны (none, true, false)
+    if (count < buffer_capacity && vm->none_object) {
+        roots_buffer[count++] = vm->none_object;
+    }
+    if (count < buffer_capacity && vm->true_object) {
+        roots_buffer[count++] = vm->true_object;
+    }
+    if (count < buffer_capacity && vm->false_object) {
+        roots_buffer[count++] = vm->false_object;
+    }
+    
+    // 3. Локальные переменные и стек всех активных фреймов
+    if (vm->active_frames) {
+        for (size_t i = 0; i < vm->active_frames_count && count < buffer_capacity; i++) {
+            Frame* frame = vm->active_frames[i];
+            if (!frame) continue;
+            
+            // Локальные переменные
+            if (frame->locals) {
+                for (size_t j = 0; j < frame->local_count && count < buffer_capacity; j++) {
+                    if (frame->locals[j]) {
+                        roots_buffer[count++] = frame->locals[j];
+                    }
+                }
+            }
+            
+            // Стек операндов
+            if (frame->stack) {
+                for (size_t j = 0; j < frame->stack_size && count < buffer_capacity; j++) {
+                    if (frame->stack[j]) {
+                        roots_buffer[count++] = frame->stack[j];
+                    }
+                }
+            }
+        }
+    }
+    
+    return count;
+}
+
+// Выполнение сборки мусора
+void vm_collect_garbage(VM* vm) {
+    if (!vm || !vm->gc || !vm->heap) return;
+    
+    DPRINT("[VM] Starting garbage collection...\n");
+    
+    // Собираем все корни
+    // Выделяем буфер для корней (обычно их не очень много)
+    size_t roots_capacity = 1024;
+    Object** roots = malloc(roots_capacity * sizeof(Object*));
+    if (!roots) {
+        DPRINT("[VM] Failed to allocate roots buffer for GC\n");
+        return;
+    }
+    
+    size_t roots_count = vm_collect_roots(vm, roots, roots_capacity);
+    
+    DPRINT("[VM] Collected %zu roots for GC\n", roots_count);
+    
+    // Выполняем сборку мусора
+    gc_collect(vm->gc, roots, roots_count, heap_iterate_wrapper, vm->heap);
+    
+    free(roots);
+    
+    DPRINT("[VM] Garbage collection completed\n");
 }

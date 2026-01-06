@@ -1,5 +1,5 @@
 int main() {
-    int n = 10;
+    int n = 1000;
     
     int[n] is_prime;
     
@@ -25,6 +25,7 @@ int main() {
         if (is_prime[i] == 1) {
             print(i);
             count = count + 1;
+            break;
         }
     }
     return 0;

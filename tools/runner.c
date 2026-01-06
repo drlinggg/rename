@@ -12,12 +12,16 @@
 #include "../src/runtime/vm/object.h"
 #include "../src/system.h"
 
+// Объявление функции сборки мусора
+void vm_collect_garbage(VM* vm);
+
 int main(int argc, char** argv) {
     if (argc < 2) {
-        printf("Usage: %s [--debug|-d] [--jit|-j] <source_file.lang>\n", argv[0]);
+        printf("Usage: %s [--debug|-d] [--jit|-j] [--gc|-g] <source_file.lang>\n", argv[0]);
         printf("Options:\n");
         printf("  -d, --debug     Enable debug mode\n");
         printf("  -j, --jit       Enable JIT compilation\n");
+        printf("  -g, --gc        Enable garbage collection\n");
         return 1;
     }
 
@@ -34,18 +38,22 @@ int main(int argc, char** argv) {
             DPRINT("[RUNNER] JIT compilation enabled\n");
             argi++;
         }
+        else if (strcmp(argv[argi], "--gc") == 0 || strcmp(argv[argi], "-g") == 0) {
+            gc_enabled = 1;
+            DPRINT("[RUNNER] Garbage collection enabled\n");
+            argi++;
+        }
         else {
-            // Первый не-флаг - это имя файла
             break;
         }
     }
 
     if (argi >= argc) {
-        printf("Usage: %s [--debug|-d] [--jit|-j] <source_file.lang>\n", argv[0]);
+        printf("Usage: %s [--debug|-d] [--jit|-j] [--gc|-g] <source_file.lang>\n", argv[0]);
         printf("Options:\n");
         printf("  -d, --debug     Enable debug mode\n");
         printf("  -j, --jit       Enable JIT compilation\n");
-        printf("  --no-jit        Disable JIT compilation\n");
+        printf("  -g, --gc        Enable garbage collection\n");
         return 1;
     }
 
@@ -198,6 +206,11 @@ int main(int argc, char** argv) {
         printf("Proccess finished with return: 0\n");
     }
 
+
+    if (gc_enabled && vm) {
+        DPRINT("[RUNNER] Running final garbage collection...\n");
+        vm_collect_garbage(vm);
+    }
 
     // Cleanup
     if (ret) object_decref(ret);
