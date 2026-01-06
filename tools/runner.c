@@ -12,7 +12,6 @@
 #include "../src/runtime/vm/object.h"
 #include "../src/system.h"
 
-// Объявление функции сборки мусора
 void vm_collect_garbage(VM* vm);
 
 int main(int argc, char** argv) {
