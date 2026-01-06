@@ -488,15 +488,6 @@ static bool is_call_result_used(bytecode_array* bc, size_t call_idx) {
     return false;
 }
 
-static size_t remove_dead_calls(CodeObj* code) {
-    if (!code) return 0;
-    
-    bytecode_array* bc = &code->code;
-    size_t removed_calls = 0;
-    
-    return 0;
-}
-
 static void remove_dead_loads(CodeObj* code) {
     if (!code) return;
     bytecode_array* bc = &code->code;
