@@ -4,6 +4,7 @@
 #include "../../system.h"
 #include "float_bigint.h"
 #include "vm.h"
+#include "heap.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -21,6 +22,11 @@ struct VM {
     Object* none_object;
     Object* true_object;
     Object* false_object;
+    
+    // GC: отслеживание активных фреймов (call stack)
+    Frame** active_frames;
+    size_t active_frames_count;
+    size_t active_frames_capacity;
 };
 
 struct Frame {
@@ -247,6 +253,11 @@ VM* vm_create(Heap* heap, size_t global_count) {
         vm->false_object->ref_count = 0x7FFFFFFF;
     }
     
+    // Инициализация отслеживания активных фреймов для GC
+    vm->active_frames = NULL;
+    vm->active_frames_count = 0;
+    vm->active_frames_capacity = 0;
+    
     vm_register_builtins(vm);
     return vm;
 }
@@ -261,6 +272,10 @@ void vm_destroy(VM* vm) {
             }
         }
         free(vm->globals);
+    }
+    
+    if (vm->active_frames) {
+        free(vm->active_frames);
     }
     
     if (vm->gc) gc_destroy(vm->gc);
@@ -284,11 +299,21 @@ Frame* frame_create(VM* vm, CodeObj* code) {
     f->stack_capacity = 0;
     f->stack_size = 0;
     f->ip = 0;
+    
+    // Регистрируем фрейм для GC
+    vm_register_frame(vm, f);
+    
     return f;
 }
 
 void frame_destroy(Frame* frame) {
     if (!frame) return;
+    
+    // Отменяем регистрацию фрейма для GC
+    if (frame->vm) {
+        vm_unregister_frame(frame->vm, frame);
+    }
+    
     if (frame->stack) {
         for (size_t i = 0; i < frame->stack_size; i++) {
             if (frame->vm && frame->vm->gc) gc_decref(frame->vm->gc, frame->stack[i]);
@@ -319,6 +344,11 @@ Object* frame_execute(Frame* frame) {
     CodeObj* code = frame->code;
     bytecode_array* code_arr = &code->code;
     
+    // Счетчик инструкций для периодической сборки мусора
+    size_t instruction_count = 0;
+    const size_t GC_INTERVAL = 1000; // Собираем мусор каждые 1000 инструкций
+    
+    // Основной цикл выполнения
     while (frame->ip < code_arr->count) {
         bytecode bc = code_arr->bytecodes[frame->ip++];
         uint32_t arg = bytecode_get_arg(bc);
@@ -326,6 +356,13 @@ Object* frame_execute(Frame* frame) {
         OpHandler handler = op_table[bc.op_code];
         if (handler) {
             handler(frame, arg);
+            
+            // Периодическая сборка мусора
+            instruction_count++;
+            if (instruction_count >= GC_INTERVAL && frame->vm && frame->vm->gc && gc_enabled) {
+                vm_collect_garbage(frame->vm);
+                instruction_count = 0;
+            }
             
             if (bc.op_code == RETURN_VALUE) {
                 Object* val = frame_stack_pop(frame);
@@ -1419,4 +1456,127 @@ static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_
     Object* res = frame_execute(frame);
     frame_destroy(frame);
     return res;
+}
+
+// Регистрация активного фрейма для GC
+void vm_register_frame(VM* vm, Frame* frame) {
+    if (!vm || !frame) return;
+    
+    if (vm->active_frames_count >= vm->active_frames_capacity) {
+        size_t new_capacity = vm->active_frames_capacity == 0 ? 16 : vm->active_frames_capacity * 2;
+        Frame** new_frames = realloc(vm->active_frames, new_capacity * sizeof(Frame*));
+        if (!new_frames) return;
+        vm->active_frames = new_frames;
+        vm->active_frames_capacity = new_capacity;
+    }
+    
+    vm->active_frames[vm->active_frames_count++] = frame;
+}
+
+// Отмена регистрации активного фрейма
+void vm_unregister_frame(VM* vm, Frame* frame) {
+    if (!vm || !frame) return;
+    
+    for (size_t i = 0; i < vm->active_frames_count; i++) {
+        if (vm->active_frames[i] == frame) {
+            // Сдвигаем остальные элементы
+            for (size_t j = i; j < vm->active_frames_count - 1; j++) {
+                vm->active_frames[j] = vm->active_frames[j + 1];
+            }
+            vm->active_frames_count--;
+            return;
+        }
+    }
+}
+
+// Callback для итерации по всем объектам Heap (для GC)
+static void heap_iterate_wrapper(void* iterator_data, GC_ObjectCallback callback, void* callback_data) {
+    Heap* heap = (Heap*)iterator_data;
+    if (!heap || !callback) return;
+    
+    // Используем функцию из heap.h
+    // HeapObjectCallback и GC_ObjectCallback имеют одинаковую сигнатуру
+    heap_iterate_all_objects(heap, (HeapObjectCallback)callback, callback_data);
+}
+
+// Сборка всех корней из VM
+static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capacity) {
+    if (!vm || !roots_buffer) return 0;
+    
+    size_t count = 0;
+    
+    // 1. Глобальные переменные
+    if (vm->globals) {
+        for (size_t i = 0; i < vm->globals_count && count < buffer_capacity; i++) {
+            if (vm->globals[i]) {
+                roots_buffer[count++] = vm->globals[i];
+            }
+        }
+    }
+    
+    // 2. Синглтоны (none, true, false)
+    if (count < buffer_capacity && vm->none_object) {
+        roots_buffer[count++] = vm->none_object;
+    }
+    if (count < buffer_capacity && vm->true_object) {
+        roots_buffer[count++] = vm->true_object;
+    }
+    if (count < buffer_capacity && vm->false_object) {
+        roots_buffer[count++] = vm->false_object;
+    }
+    
+    // 3. Локальные переменные и стек всех активных фреймов
+    if (vm->active_frames) {
+        for (size_t i = 0; i < vm->active_frames_count && count < buffer_capacity; i++) {
+            Frame* frame = vm->active_frames[i];
+            if (!frame) continue;
+            
+            // Локальные переменные
+            if (frame->locals) {
+                for (size_t j = 0; j < frame->local_count && count < buffer_capacity; j++) {
+                    if (frame->locals[j]) {
+                        roots_buffer[count++] = frame->locals[j];
+                    }
+                }
+            }
+            
+            // Стек операндов
+            if (frame->stack) {
+                for (size_t j = 0; j < frame->stack_size && count < buffer_capacity; j++) {
+                    if (frame->stack[j]) {
+                        roots_buffer[count++] = frame->stack[j];
+                    }
+                }
+            }
+        }
+    }
+    
+    return count;
+}
+
+// Выполнение сборки мусора
+void vm_collect_garbage(VM* vm) {
+    if (!vm || !vm->gc || !vm->heap) return;
+    
+    DPRINT("[VM] Starting garbage collection...\n");
+    
+    // Собираем все корни
+    // Выделяем буфер для корней (обычно их не очень много)
+    size_t roots_capacity = 1024;
+    Object** roots = malloc(roots_capacity * sizeof(Object*));
+    if (!roots) {
+        DPRINT("[VM] Failed to allocate roots buffer for GC\n");
+        return;
+    }
+    
+    size_t roots_count = vm_collect_roots(vm, roots, roots_capacity);
+    
+    DPRINT("[VM] Collected %zu roots for GC\n", roots_count);
+    
+    // Выполняем сборку мусора
+    gc_collect(vm->gc, roots, roots_count, heap_iterate_wrapper, vm->heap);
+    
+    free(roots);
+    
+    DPRINT("[VM] Garbage collection completed\n");
 }

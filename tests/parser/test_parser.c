@@ -10,7 +10,7 @@
 Token create_token(TokenType type, const char* value, int line, int column) {
     Token token;
     token.type = type;
-    token.value = value;
+    token.value = (char*)value;  // Cast to char* to avoid const qualifier warning (safe for string literals)
     token.line = line;
     token.column = column;
     return token;
