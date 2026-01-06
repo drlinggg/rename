@@ -27,3 +27,17 @@ extern int gc_enabled;
     } while(0)
 
 #endif
+
+#define GC_INCREF_IF_ENABLED(frame_ptr, obj_ptr) \
+    do { \
+        if (gc_enabled && (frame_ptr) && (frame_ptr)->vm && (obj_ptr)) { \
+            gc_incref((frame_ptr)->vm->gc, (obj_ptr)); \
+        } \
+    } while (0)
+
+#define GC_DECREF_IF_ENABLED(frame_ptr, obj_ptr) \
+    do { \
+        if (gc_enabled && (frame_ptr) && (frame_ptr)->vm && (obj_ptr)) { \
+            gc_decref((frame_ptr)->vm->gc, (obj_ptr)); \
+        } \
+    } while (0)

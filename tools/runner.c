@@ -44,7 +44,6 @@ int main(int argc, char** argv) {
             argi++;
         }
         else {
-            // Первый не-флаг - это имя файла
             break;
         }
     }
@@ -208,7 +207,6 @@ int main(int argc, char** argv) {
     }
 
 
-    // Сборка мусора перед завершением (если GC включен)
     if (gc_enabled && vm) {
         DPRINT("[RUNNER] Running final garbage collection...\n");
         vm_collect_garbage(vm);
