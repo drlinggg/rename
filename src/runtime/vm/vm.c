@@ -391,7 +391,7 @@ Object* frame_execute(Frame* frame) {
     bytecode_array* code_arr = &code->code;
     
     size_t instruction_count = 0;
-    const size_t GC_INTERVAL = 1000000;
+    const size_t GC_INTERVAL = 100000;
     
     // Основной цикл выполнения
     while (frame->ip < code_arr->count) {
@@ -1521,6 +1521,7 @@ void vm_collect_garbage(VM* vm) {
     if (!vm || !vm->gc || !vm->heap) return;
     
     DPRINT("[VM] Starting garbage collection...\n");
+    heap_print_stats(vm->heap);
     
     // Собираем все корни
     // Выделяем буфер для корней (обычно их не очень много)
@@ -1540,5 +1541,6 @@ void vm_collect_garbage(VM* vm) {
     
     free(roots);
     
-    DPRINT("[VM] Garbage collection completed\n");
+    DPRINT("[VM] Garbage collection completed: \n");
+    heap_print_stats(vm->heap);
 }
