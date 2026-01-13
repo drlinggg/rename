@@ -11,12 +11,12 @@ int partition(int[] array, int low, int high) {
             array[j] = temp;
         }
     }
-    
-    temp = array[i + 1];
-    array[i + 1] = array[high];
+    i = i + 1;   
+    temp = array[i];
+    array[i] = array[high];
     array[high] = temp;
     
-    return i + 1;
+    return i;
 }
 
 void quicksort(int[] array, int low, int high) {
@@ -28,9 +28,8 @@ void quicksort(int[] array, int low, int high) {
 }
 
 int main() {
-    int n = 1000000;
+    int n = 100000;
     int[n] numbers;
-    
     for (int i = 0; i < n; i = i + 1) {
         numbers[i] = randint(1, 500);
     }

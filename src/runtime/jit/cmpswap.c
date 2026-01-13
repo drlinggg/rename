@@ -33,54 +33,6 @@ static int is_store_local_with_idx(bytecode bc, size_t idx) {
     return bytecode_get_arg(bc) == idx;
 }
 
-static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMatch* match) {
-    if (start + 25 >= bc->count) return 0;
-    
-    bytecode* ins = &bc->bytecodes[start];
-    
-    if (!is_load_local_with_idx(ins[0], 0)) return 0;
-    if (!is_load_local_with_idx(ins[1], 4)) return 0;
-    if (ins[2].op_code != LOAD_SUBSCR) return 0;
-    
-    if (!is_load_local_with_idx(ins[3], 0)) return 0;
-    if (!is_load_local_with_idx(ins[4], 4)) return 0;
-    if (ins[5].op_code != LOAD_CONST) return 0;
-    if (!is_binary_add(ins[6])) return 0;
-    if (ins[7].op_code != LOAD_SUBSCR) return 0;
-    
-    if (!is_binary_gt(ins[8])) return 0;
-    if (ins[9].op_code != POP_JUMP_IF_FALSE) return 0;
-    
-    match->array_local_idx = bytecode_get_arg(ins[0]);
-    match->index_local_idx = bytecode_get_arg(ins[1]);
-    match->const_one_idx = bytecode_get_arg(ins[5]);
-    
-    if (!is_load_local_with_idx(ins[10], 0)) return 0;
-    if (!is_load_local_with_idx(ins[11], 4)) return 0;
-    if (ins[12].op_code != LOAD_CONST) return 0;
-    if (!is_binary_add(ins[13])) return 0;
-    if (ins[14].op_code != LOAD_SUBSCR) return 0;
-    if (ins[15].op_code != STORE_FAST) return 0;
-    
-    match->temp_local_idx = bytecode_get_arg(ins[15]);
-    
-    if (!is_load_local_with_idx(ins[16], 0)) return 0;
-    if (!is_load_local_with_idx(ins[17], 4)) return 0;
-    if (ins[18].op_code != LOAD_SUBSCR) return 0;
-    if (!is_load_local_with_idx(ins[19], 0)) return 0;
-    if (!is_load_local_with_idx(ins[20], 4)) return 0;
-    if (ins[21].op_code != LOAD_CONST) return 0;
-    if (!is_binary_add(ins[22])) return 0;
-    if (ins[23].op_code != STORE_SUBSCR) return 0;
-    
-    if (!is_load_local_with_idx(ins[24], match->temp_local_idx)) return 0;
-    if (!is_load_local_with_idx(ins[25], 0)) return 0;
-    if (!is_load_local_with_idx(ins[26], 4)) return 0;
-    if (ins[27].op_code != STORE_SUBSCR) return 0;
-    
-    return 1;
-}
-
 static CodeObj* deep_copy_codeobj(CodeObj* original) {
     if (!original) return NULL;
     
@@ -216,22 +168,142 @@ static void recalculate_jumps(bytecode_array* bc) {
     free(old_to_new);
 }
 
+static int is_load_local(bytecode bc, size_t* idx) {
+    if (bc.op_code != LOAD_FAST) return 0;
+    *idx = bytecode_get_arg(bc);
+    return 1;
+}
+
+static int is_store_local(bytecode bc, size_t* idx) {
+    if (bc.op_code != STORE_FAST) return 0;
+    *idx = bytecode_get_arg(bc);
+    return 1;
+}
+
+static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMatch* match) {
+    if (start + 27 >= bc->count) return 0;
+    
+    bytecode* ins = &bc->bytecodes[start];
+    
+    // Проверяем общий паттерн сравнения и обмена
+    // arr[j] > arr[j+1]
+    size_t array_idx, idx_idx;
+    if (!is_load_local(ins[0], &array_idx)) return 0;
+    if (!is_load_local(ins[1], &idx_idx)) return 0;
+    if (ins[2].op_code != LOAD_SUBSCR) return 0;
+    
+    if (!is_load_local(ins[3], &array_idx)) return 0;
+    if (!is_load_local(ins[4], &idx_idx)) return 0;
+    if (ins[5].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[6])) return 0;
+    if (ins[7].op_code != LOAD_SUBSCR) return 0;
+    
+    if (!is_binary_gt(ins[8])) return 0;
+    if (ins[9].op_code != POP_JUMP_IF_FALSE) return 0;
+    
+    match->array_local_idx = array_idx;
+    match->index_local_idx = idx_idx;
+    match->const_one_idx = bytecode_get_arg(ins[5]);
+    
+    // temp = arr[j]
+    size_t temp_idx;
+    if (!is_load_local(ins[10], &array_idx)) return 0;
+    if (!is_load_local(ins[11], &idx_idx)) return 0;
+    if (ins[12].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[13])) return 0;
+    if (ins[14].op_code != LOAD_SUBSCR) return 0;
+    if (!is_store_local(ins[15], &temp_idx)) return 0;
+    
+    match->temp_local_idx = temp_idx;
+    
+    // arr[j] = arr[j+1]
+    if (!is_load_local(ins[16], &array_idx)) return 0;
+    if (!is_load_local(ins[17], &idx_idx)) return 0;
+    if (ins[18].op_code != LOAD_SUBSCR) return 0;
+    if (!is_load_local(ins[19], &array_idx)) return 0;
+    if (!is_load_local(ins[20], &idx_idx)) return 0;
+    if (ins[21].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[22])) return 0;
+    if (ins[23].op_code != STORE_SUBSCR) return 0;
+    
+    // arr[j+1] = temp
+    if (!is_load_local(ins[24], &temp_idx)) return 0;
+    if (!is_load_local(ins[25], &array_idx)) return 0;
+    if (!is_load_local(ins[26], &idx_idx)) return 0;
+    if (ins[27].op_code != LOAD_CONST) return 0;
+    if (!is_binary_add(ins[28])) return 0;
+    if (ins[29].op_code != STORE_SUBSCR) return 0;
+    
+    match->pattern_type = 0; // conditional swap
+    return 1;
+}
+
+// Функция для поиска паттерна безусловного обмена
+static int match_unconditional_swap_pattern(bytecode_array* bc, size_t start, PatternMatch* match) {
+    if (start + 13 >= bc->count) return 0;
+    
+    bytecode* ins = &bc->bytecodes[start];
+    
+    size_t array_idx, idx1_idx, idx2_idx, temp_idx;
+    
+    // temp = numbers[i]
+    if (!is_load_local(ins[0], &array_idx)) return 0;
+    if (!is_load_local(ins[1], &idx1_idx)) return 0;
+    if (ins[2].op_code != LOAD_SUBSCR) return 0;
+    if (!is_store_local(ins[3], &temp_idx)) return 0;
+    
+    // numbers[i] = numbers[j]
+    size_t array_idx2, idx2_idx2;
+    if (!is_load_local(ins[4], &array_idx2)) return 0;
+    if (array_idx2 != array_idx) return 0;
+    if (!is_load_local(ins[5], &idx2_idx)) return 0;
+    if (ins[6].op_code != LOAD_SUBSCR) return 0;
+    if (!is_load_local(ins[7], &array_idx2)) return 0;
+    if (array_idx2 != array_idx) return 0;
+    if (!is_load_local(ins[8], &idx1_idx)) return 0;
+    if (ins[9].op_code != STORE_SUBSCR) return 0;
+    
+    // numbers[j] = temp
+    size_t temp_idx2;
+    if (!is_load_local(ins[10], &temp_idx2)) return 0;
+    if (temp_idx2 != temp_idx) return 0;
+    if (!is_load_local(ins[11], &array_idx2)) return 0;
+    if (array_idx2 != array_idx) return 0;
+    if (!is_load_local(ins[12], &idx2_idx2)) return 0;
+    if (idx2_idx2 != idx2_idx) return 0;
+    if (ins[13].op_code != STORE_SUBSCR) return 0;
+    
+    match->array_local_idx = array_idx;
+    match->index_local_idx = idx1_idx;
+    match->index2_local_idx = idx2_idx;
+    match->temp_local_idx = temp_idx;
+    match->pattern_type = 1; // unconditional swap
+    
+    return 1;
+}
+
+// Замена на COMPARE_AND_SWAP (условный обмен)
 static void replace_with_cmpswap(bytecode_array* bc, size_t start, PatternMatch* match) {
-    for (size_t i = start; i < start + 28 && i < bc->count; i++) {
+    for (size_t i = start; i < start + 30 && i < bc->count; i++) {
         bc->bytecodes[i].op_code = NOP;
     }
     
     bc->bytecodes[start] = bytecode_create_with_number(LOAD_FAST, match->array_local_idx);
-    
     bc->bytecodes[start + 1] = bytecode_create_with_number(LOAD_FAST, match->index_local_idx);
+    bc->bytecodes[start + 2] = bytecode_create_with_number(LOAD_CONST, match->const_one_idx);
+    bc->bytecodes[start + 3] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x00);
+}
+
+// Замена на SWAP_ARRAY_ELEMENTS (безусловный обмен)
+static void replace_with_swap(bytecode_array* bc, size_t start, PatternMatch* match) {
+    for (size_t i = start; i < start + 14 && i < bc->count; i++) {
+        bc->bytecodes[i].op_code = NOP;
+    }
     
-    bc->bytecodes[start + 2] = bytecode_create_with_number(LOAD_FAST, match->index_local_idx);
-    
-    bc->bytecodes[start + 3] = bytecode_create_with_number(LOAD_CONST, match->const_one_idx);
-    
-    bc->bytecodes[start + 4] = bytecode_create_with_number(BINARY_OP, 0x00);
-    
-    bc->bytecodes[start + 5] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x00);
+    bc->bytecodes[start] = bytecode_create_with_number(LOAD_FAST, match->array_local_idx);
+    bc->bytecodes[start + 1] = bytecode_create_with_number(LOAD_FAST, match->index_local_idx);
+    bc->bytecodes[start + 2] = bytecode_create_with_number(LOAD_FAST, match->index2_local_idx);
+    bc->bytecodes[start + 3] = bytecode_create_with_number(SWAP_ARRAY_ELEMENTS, 0x00);
 }
 
 static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
@@ -240,17 +312,36 @@ static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
     
     for (size_t i = 0; i < bc->count; i++) {
         PatternMatch match;
+        
+        // Сначала проверяем безусловный обмен (он короче)
+        if (match_unconditional_swap_pattern(bc, i, &match)) {
+            DPRINT("[JIT-CMPSWAP] Found unconditional swap pattern at position %zu\n", i);
+            DPRINT("[JIT-CMPSWAP] array_idx=%zu, idx1=%zu, idx2=%zu, temp_idx=%zu\n",
+                   match.array_local_idx, match.index_local_idx, 
+                   match.index2_local_idx, match.temp_local_idx);
+            
+            replace_with_swap(bc, i, &match);
+            stats->swap_patterns++;
+            stats->optimized_patterns++;
+            changed = 1;
+            
+            i += 13; // Пропускаем обработанные инструкции
+            continue;
+        }
+        
+        // Затем проверяем условный обмен (он длиннее)
         if (match_bubble_sort_pattern(bc, i, &match)) {
-            DPRINT("[JIT-CMPSWAP] Found pattern at position %zu\n", i);
+            DPRINT("[JIT-CMPSWAP] Found bubble sort pattern at position %zu\n", i);
             DPRINT("[JIT-CMPSWAP] array_idx=%zu, index_idx=%zu, const_idx=%zu, temp_idx=%zu\n",
                    match.array_local_idx, match.index_local_idx, 
                    match.const_one_idx, match.temp_local_idx);
             
             replace_with_cmpswap(bc, i, &match);
+            stats->cmpswap_patterns++;
             stats->optimized_patterns++;
             changed = 1;
             
-            i += 27;
+            i += 29; // Пропускаем обработанные инструкции
         }
     }
     
@@ -267,8 +358,9 @@ int has_sorting_pattern(CodeObj* code) {
     
     PatternMatch match;
     for (size_t i = 0; i < code->code.count; i++) {
-        if (match_bubble_sort_pattern(&code->code, i, &match)) {
-            DPRINT("[JIT-CMPSWAP] Found sorting pattern at position %zu\n", i);
+        if (match_bubble_sort_pattern(&code->code, i, &match) ||
+            match_unconditional_swap_pattern(&code->code, i, &match)) {
+            DPRINT("[JIT-CMPSWAP] Found pattern at position %zu\n", i);
             return 1;
         }
     }

@@ -125,6 +125,7 @@ static void op_BUILD_ARRAY(Frame* frame, uint32_t arg);
 static void op_STORE_SUBSCR(Frame* frame, uint32_t arg);
 static void op_DEL_SUBSCR(Frame* frame, uint32_t arg);
 static void op_LOAD_SUBSCR(Frame* frame, uint32_t arg);
+static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg);
 
 static OpHandler op_table[256] = {NULL};
 
@@ -160,6 +161,7 @@ static void init_op_table(void) {
     op_table[DEL_SUBSCR] = op_DEL_SUBSCR;
     op_table[LOAD_SUBSCR] = op_LOAD_SUBSCR;
     op_table[COMPARE_AND_SWAP] = op_COMPARE_AND_SWAP;
+    op_table[SWAP_ARRAY_ELEMENTS] = op_SWAP_ARRAY_ELEMENTS;
 }
 
 static inline void frame_stack_ensure_capacity_fast(Frame* frame, size_t additional);
@@ -754,6 +756,100 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
     }
 }
 
+static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
+    // На стеке: массив, индекс1, индекс2
+    // Порядок: сначала загружается индекс2, потом индекс1, потом массив
+    
+    if (frame->stack_size < 3) {
+        DPRINT("[VM] SWAP_ARRAY_ELEMENTS: stack underflow (need 3, have %zu)\n", frame->stack_size);
+        return;
+    }
+    
+    Object* index2_obj = FAST_POP_NO_GC(frame);  // Второй индекс
+    Object* index1_obj = FAST_POP_NO_GC(frame);  // Первый индекс
+    Object* array_obj = FAST_POP_NO_GC(frame);   // Массив
+    
+    DPRINT("[VM] SWAP_ARRAY_ELEMENTS: array=%p, idx1=%p, idx2=%p\n", 
+           (void*)array_obj, (void*)index1_obj, (void*)index2_obj);
+    
+    // Проверяем типы
+    if (!array_obj || array_obj->type != OBJ_ARRAY) {
+        // Возвращаем объекты на стек
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, index1_obj);
+        FAST_PUSH_NO_GC(frame, index2_obj);
+        return;
+    }
+    
+    if (!index1_obj || index1_obj->type != OBJ_INT) {
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, index1_obj);
+        FAST_PUSH_NO_GC(frame, index2_obj);
+        return;
+    }
+    
+    if (!index2_obj || index2_obj->type != OBJ_INT) {
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, index1_obj);
+        FAST_PUSH_NO_GC(frame, index2_obj);
+        return;
+    }
+    
+    int64_t idx1 = index1_obj->as.int_value;
+    int64_t idx2 = index2_obj->as.int_value;
+    
+    // Проверяем границы массива
+    if (idx1 < 0 || idx1 >= (int64_t)array_obj->as.array.size ||
+        idx2 < 0 || idx2 >= (int64_t)array_obj->as.array.size) {
+        FAST_PUSH_NO_GC(frame, array_obj);
+        FAST_PUSH_NO_GC(frame, index1_obj);
+        FAST_PUSH_NO_GC(frame, index2_obj);
+        return;
+    }
+    
+    // Проверяем, не пытаемся ли поменять элемент с самим собой
+    if (idx1 == idx2) {
+        GC_DECREF_IF_ENABLED(frame, index1_obj);
+        GC_DECREF_IF_ENABLED(frame, index2_obj);
+        FAST_PUSH_NO_GC(frame, array_obj);  // Возвращаем массив на стек
+        return;
+    }
+    
+    // Получаем элементы
+    Object* elem1 = array_obj->as.array.items[idx1];
+    Object* elem2 = array_obj->as.array.items[idx2];
+    
+    // Выполняем обмен с корректным управлением ссылками
+    Object* old_elem1 = array_obj->as.array.items[idx1];
+    Object* old_elem2 = array_obj->as.array.items[idx2];
+    
+    // Обновляем первый элемент
+    array_obj->as.array.items[idx1] = old_elem2;
+    if (old_elem2) {
+        GC_INCREF_IF_ENABLED(frame, old_elem2);
+    }
+    if (old_elem1) {
+        GC_DECREF_IF_ENABLED(frame, old_elem1);
+    }
+    
+    // Обновляем второй элемент
+    array_obj->as.array.items[idx2] = old_elem1;
+    if (old_elem1) {
+        GC_INCREF_IF_ENABLED(frame, old_elem1);
+    }
+    if (old_elem2) {
+        GC_DECREF_IF_ENABLED(frame, old_elem2);
+    }
+    
+    DPRINT("[VM] SWAP_ARRAY_ELEMENTS: swap completed\n");
+    
+    // Освобождаем временные объекты
+    GC_DECREF_IF_ENABLED(frame, index1_obj);
+    GC_DECREF_IF_ENABLED(frame, index2_obj);
+    
+    // Возвращаем массив на стек (не нужно освобождать, так как мы его только что взяли)
+    FAST_PUSH_NO_GC(frame, array_obj);
+}
 
 static void op_LOAD_CONST(Frame* frame, uint32_t arg) {
     CodeObj* code = frame->code;
