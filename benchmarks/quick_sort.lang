@@ -1,40 +1,80 @@
-int partition(int[] array, int low, int high) {
-    int pivot = array[high];
+int hoare_partition(int[] a, int low, int high) {
+    int pivot = a[low + (high - low) / 2];
+
     int i = low - 1;
-    int temp;
-    
-    for (int j = low; j < high; j = j + 1) {
-        if (array[j] <= pivot) {
+    int j = high + 1;
+
+    while (1) {
+        i = i + 1;
+        while (a[i] < pivot) {
             i = i + 1;
-            temp = array[i];
-            array[i] = array[j];
-            array[j] = temp;
         }
+
+        j = j - 1;
+        while (a[j] > pivot) {
+            j = j - 1;
+        }
+
+        if (i >= j) {
+            return j;
+        }
+
+        int tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
     }
-    i = i + 1;   
-    temp = array[i];
-    array[i] = array[high];
-    array[high] = temp;
-    
-    return i;
 }
 
-void quicksort(int[] array, int low, int high) {
-    if (low < high) {
-        int pi = partition(array, low, high);
-        quicksort(array, low, pi - 1);
-        quicksort(array, pi + 1, high);
+void quicksort(int[] a, int low, int high) {
+    int[high - 1] stack;
+    int top = -1;
+
+    top = top + 1; stack[top] = low;
+    top = top + 1; stack[top] = high;
+
+    while (top >= 0) {
+        high = stack[top]; top = top - 1;
+        low  = stack[top]; top = top - 1;
+
+        while (low < high) {
+            int p = hoare_partition(a, low, high);
+
+            int left_low = low;
+            int left_high = p;
+            int right_low = p + 1;
+            int right_high = high;
+
+            int left_len = left_high - left_low;
+            int right_len = right_high - right_low;
+
+            if (left_len < right_len) {
+                if (right_low < right_high) {
+                    top = top + 1; stack[top] = right_low;
+                    top = top + 1; stack[top] = right_high;
+                }
+                low = left_low;
+                high = left_high;
+            } else {
+                if (left_low < left_high) {
+                    top = top + 1; stack[top] = left_low;
+                    top = top + 1; stack[top] = left_high;
+                }
+                low = right_low;
+                high = right_high;
+            }
+        }
     }
 }
 
 int main() {
-    int n = 100000;
+    int n = 1000000;
     int[n] numbers;
+
     for (int i = 0; i < n; i = i + 1) {
         numbers[i] = randint(1, 500);
     }
 
     quicksort(numbers, 0, n - 1);
-    print(numbers);
+
     return 0;
 }

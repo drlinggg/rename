@@ -1,0 +1,68 @@
+int hoare_partition(int[] a, int low, int high) {
+    int pivot = a[low + (high - low) / 2];
+
+    int i = low - 1;
+    int j = high + 1;
+
+    while (1) {
+        i = i + 1;
+        while (a[i] < pivot) {
+            i = i + 1;
+        }
+
+        j = j - 1;
+        while (a[j] > pivot) {
+            j = j - 1;
+        }
+
+        if (i >= j) {
+            return j;
+        }
+
+        int tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
+    }
+}
+
+void quicksort(int[] a, int low, int high) {
+    while (low < high) {
+        int p = hoare_partition(a, low, high);
+
+        int left_low = low;
+        int left_high = p;
+        int right_low = p + 1;
+        int right_high = high;
+
+        int left_len = left_high - left_low;
+        int right_len = right_high - right_low;
+
+        if (left_len < right_len) {
+            if (left_low < left_high) {
+                quicksort(a, left_low, left_high);
+            }
+            low = right_low;
+            high = right_high;
+        } else {
+            if (right_low < right_high) {
+                quicksort(a, right_low, right_high);
+            }
+            low = left_low;
+            high = left_high;
+        }
+    }
+}
+
+int main() {
+    int n = 1000000;
+    int[n] numbers;
+
+    for (int i = 0; i < n; i = i + 1) {
+        numbers[i] = randint(1, 500);
+    }
+
+    quicksort(numbers, 0, n - 1);
+    print(numbers);
+
+    return 0;
+}
