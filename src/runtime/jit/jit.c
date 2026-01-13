@@ -194,25 +194,25 @@ JITStats jit_get_stats(JIT* jit) {
 
 void jit_print_cache(JIT* jit) {
     if (!jit) {
-        printf("[JIT] Cache: (null)\n");
+        DPRINT("[JIT] Cache: (null)\n");
         return;
     }
     
-    printf("[JIT] Cache statistics:\n");
-    printf("  Size: %zu/%zu\n", jit->cache_size, jit->cache_capacity);
-    printf("  Compiled functions: %zu\n", jit->compiled_count);
+    DPRINT("[JIT] Cache statistics:\n");
+    DPRINT("  Size: %zu/%zu\n", jit->cache_size, jit->cache_capacity);
+    DPRINT("  Compiled functions: %zu\n", jit->compiled_count);
     
     if (jit->cache_size > 0) {
-        printf("  Cached functions:\n");
+        DPRINT("  Cached functions:\n");
         for (size_t i = 0; i < jit->cache_size; i++) {
             CodeObj* code = jit->compiled_cache[i];
             if (code) {
-                printf("    [%zu] %s (bytecode size: %zu)\n",
+                DPRINT("    [%zu] %s (bytecode size: %zu)\n",
                        i,
                        code->name ? code->name : "anonymous",
                        code->code.count);
             } else {
-                printf("    [%zu] (null)\n", i);
+                DPRINT("    [%zu] (null)\n", i);
             }
         }
     }

@@ -71,7 +71,7 @@ int main() {
     int[n] numbers;
 
     for (int i = 0; i < n; i = i + 1) {
-        numbers[i] = randint(1, 500);
+        numbers[i] = randint(-10000000, 10000000);
     }
 
     quicksort(numbers, 0, n - 1);

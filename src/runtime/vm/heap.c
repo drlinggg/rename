@@ -74,7 +74,7 @@ static void init_int_cache(Heap* heap) {
         
         heap->int_cache[idx] = malloc(sizeof(Object));
         if (!heap->int_cache[idx]) {
-            fprintf(stderr, "ERROR: Failed to allocate int cache for value %d\n", i);
+            DPRINT("ERROR: Failed to allocate int cache for value %d\n", i);
             exit(1);
         }
         
@@ -275,7 +275,7 @@ Object* heap_alloc_int(Heap* heap, int64_t v) {
                 obj->type = OBJ_INT;
                 obj->ref_count = 1;
                 obj->as.int_value = v;
-                fprintf(stderr, "[HEAP] Reused int %lld at %p\n", 
+                DPRINT("[HEAP] Reused int %lld at %p\n", 
                         (long long)v, (void*)obj);
                 return obj;
             }
@@ -286,7 +286,7 @@ Object* heap_alloc_int(Heap* heap, int64_t v) {
     // 3. Если не нашли - создаем новый
     Object* o = pool_alloc(&heap->int_pool);
     if (!o) {
-        fprintf(stderr, "ERROR: Failed to allocate int object\n");
+        DPRINT("ERROR: Failed to allocate int object\n");
         return NULL;
     }
 
@@ -294,7 +294,7 @@ Object* heap_alloc_int(Heap* heap, int64_t v) {
     o->ref_count = 1;
     o->as.int_value = v;
     
-    fprintf(stderr, "[HEAP] New int %lld at %p\n", 
+    DPRINT("[HEAP] New int %lld at %p\n", 
             (long long)v, (void*)o);
     return o;
 }
