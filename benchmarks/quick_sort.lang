@@ -1,0 +1,41 @@
+int partition(int[] array, int low, int high) {
+    int pivot = array[high];
+    int i = low - 1;
+    int temp;
+    
+    for (int j = low; j < high; j = j + 1) {
+        if (array[j] <= pivot) {
+            i = i + 1;
+            temp = array[i];
+            array[i] = array[j];
+            array[j] = temp;
+        }
+    }
+    
+    temp = array[i + 1];
+    array[i + 1] = array[high];
+    array[high] = temp;
+    
+    return i + 1;
+}
+
+void quicksort(int[] array, int low, int high) {
+    if (low < high) {
+        int pi = partition(array, low, high);
+        quicksort(array, low, pi - 1);
+        quicksort(array, pi + 1, high);
+    }
+}
+
+int main() {
+    int n = 1000000;
+    int[n] numbers;
+    
+    for (int i = 0; i < n; i = i + 1) {
+        numbers[i] = randint(1, 500);
+    }
+
+    quicksort(numbers, 0, n - 1);
+    print(numbers);
+    return 0;
+}
