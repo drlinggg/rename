@@ -14,4 +14,4 @@ typedef struct {
 
 CodeObj* jit_optimize_dce(CodeObj* code, DCEStats* stats);
 
-#endif // DCE_H
+#endif

@@ -12,7 +12,7 @@ typedef struct {
 } FoldStats;
 
 typedef struct {
-    size_t insn;      // индекс jump-инструкции
+    size_t insn;
     size_t target;
 } JumpFixup;
 

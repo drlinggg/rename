@@ -19,4 +19,4 @@ const char* string_table_get(const string_table* table, size_t index);
 int32_t string_table_find(const string_table* table, const char* name);
 bool string_table_contains(const string_table* table, const char* name);
 
-#endif // STRING_TABLE_H
+#endif

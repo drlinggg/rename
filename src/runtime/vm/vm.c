@@ -72,8 +72,7 @@ struct VM {
     Object* none_object;
     Object* true_object;
     Object* false_object;
-    
-    // GC: отслеживание активных фреймов (call stack)
+
     Frame** active_frames;
     size_t active_frames_count;
     size_t active_frames_capacity;
@@ -302,8 +301,7 @@ VM* vm_create(Heap* heap, size_t global_count) {
     vm->none_object->ref_count = 0x7FFFFFFF;
     vm->true_object->ref_count = 0x7FFFFFFF;
     vm->false_object->ref_count = 0x7FFFFFFF;
-    
-    // Инициализация отслеживания активных фреймов для GC
+
     vm->active_frames = NULL;
     vm->active_frames_count = 0;
     vm->active_frames_capacity = 0;
@@ -347,8 +345,7 @@ Frame* frame_create(VM* vm, CodeObj* code) {
     f->stack_capacity = 0;
     f->stack_size = 0;
     f->ip = 0;
-    
-    // Регистрируем фрейм для GC
+
     vm_register_frame(vm, f);
     
     return f;
@@ -356,8 +353,7 @@ Frame* frame_create(VM* vm, CodeObj* code) {
 
 void frame_destroy(Frame* frame) {
     if (!frame) return;
-    
-    // Отменяем регистрацию фрейма для GC
+
     if (frame->vm) {
         vm_unregister_frame(frame->vm, frame);
     }
@@ -394,8 +390,7 @@ Object* frame_execute(Frame* frame) {
     
     size_t instruction_count = 0;
     const size_t GC_INTERVAL = 100000;
-    
-    // Основной цикл выполнения
+
     while (frame->ip < code_arr->count) {
         bytecode bc = code_arr->bytecodes[frame->ip++];
         uint32_t arg = bytecode_get_arg(bc);
@@ -403,8 +398,7 @@ Object* frame_execute(Frame* frame) {
         OpHandler handler = op_table[bc.op_code];
         if (handler) {
             handler(frame, arg);
-            
-            // Периодическая сборка мусора
+
             instruction_count++;
             if (instruction_count >= GC_INTERVAL && gc_enabled) {
                 vm_collect_garbage(frame->vm);
@@ -557,7 +551,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 ret = (a == b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x51: { // NE
+            case 0x51: {
                 ret = (a != b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
@@ -577,7 +571,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 ret = (a >= b) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x56: { // IS
+            case 0x56: {
                 ret = (left == right) ? vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
@@ -697,7 +691,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
             }
-            case 0x51: { // NE
+            case 0x51: {
                 ret = (left->as.bool_value != right->as.bool_value) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
@@ -709,7 +703,7 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
                 ret = vm_get_false(frame->vm);
                 break;
             }
-            case 0x56: { // IS
+            case 0x56: {
                 ret = (left == right) ? 
                       vm_get_true(frame->vm) : vm_get_false(frame->vm);
                 break;
@@ -757,24 +751,20 @@ static void op_BINARY_OP(Frame* frame, uint32_t arg) {
 }
 
 static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
-    // На стеке: массив, индекс1, индекс2
-    // Порядок: сначала загружается индекс2, потом индекс1, потом массив
     
     if (frame->stack_size < 3) {
         DPRINT("[VM] SWAP_ARRAY_ELEMENTS: stack underflow (need 3, have %zu)\n", frame->stack_size);
         return;
     }
     
-    Object* index2_obj = FAST_POP_NO_GC(frame);  // Второй индекс
-    Object* index1_obj = FAST_POP_NO_GC(frame);  // Первый индекс
-    Object* array_obj = FAST_POP_NO_GC(frame);   // Массив
+    Object* index2_obj = FAST_POP_NO_GC(frame);
+    Object* index1_obj = FAST_POP_NO_GC(frame);
+    Object* array_obj = FAST_POP_NO_GC(frame);
     
     DPRINT("[VM] SWAP_ARRAY_ELEMENTS: array=%p, idx1=%p, idx2=%p\n", 
            (void*)array_obj, (void*)index1_obj, (void*)index2_obj);
-    
-    // Проверяем типы
+
     if (!array_obj || array_obj->type != OBJ_ARRAY) {
-        // Возвращаем объекты на стек
         FAST_PUSH_NO_GC(frame, array_obj);
         FAST_PUSH_NO_GC(frame, index1_obj);
         FAST_PUSH_NO_GC(frame, index2_obj);
@@ -797,8 +787,7 @@ static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
     
     int64_t idx1 = index1_obj->as.int_value;
     int64_t idx2 = index2_obj->as.int_value;
-    
-    // Проверяем границы массива
+
     if (idx1 < 0 || idx1 >= (int64_t)array_obj->as.array.size ||
         idx2 < 0 || idx2 >= (int64_t)array_obj->as.array.size) {
         FAST_PUSH_NO_GC(frame, array_obj);
@@ -806,24 +795,20 @@ static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
         FAST_PUSH_NO_GC(frame, index2_obj);
         return;
     }
-    
-    // Проверяем, не пытаемся ли поменять элемент с самим собой
+
     if (idx1 == idx2) {
         GC_DECREF_IF_ENABLED(frame, index1_obj);
         GC_DECREF_IF_ENABLED(frame, index2_obj);
-        FAST_PUSH_NO_GC(frame, array_obj);  // Возвращаем массив на стек
+        FAST_PUSH_NO_GC(frame, array_obj);
         return;
     }
-    
-    // Получаем элементы
+
     Object* elem1 = array_obj->as.array.items[idx1];
     Object* elem2 = array_obj->as.array.items[idx2];
-    
-    // Выполняем обмен с корректным управлением ссылками
+
     Object* old_elem1 = array_obj->as.array.items[idx1];
     Object* old_elem2 = array_obj->as.array.items[idx2];
-    
-    // Обновляем первый элемент
+
     array_obj->as.array.items[idx1] = old_elem2;
     if (old_elem2) {
         GC_INCREF_IF_ENABLED(frame, old_elem2);
@@ -831,8 +816,7 @@ static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
     if (old_elem1) {
         GC_DECREF_IF_ENABLED(frame, old_elem1);
     }
-    
-    // Обновляем второй элемент
+
     array_obj->as.array.items[idx2] = old_elem1;
     if (old_elem1) {
         GC_INCREF_IF_ENABLED(frame, old_elem1);
@@ -842,12 +826,10 @@ static void op_SWAP_ARRAY_ELEMENTS(Frame* frame, uint32_t arg) {
     }
     
     DPRINT("[VM] SWAP_ARRAY_ELEMENTS: swap completed\n");
-    
-    // Освобождаем временные объекты
+
     GC_DECREF_IF_ENABLED(frame, index1_obj);
     GC_DECREF_IF_ENABLED(frame, index2_obj);
-    
-    // Возвращаем массив на стек (не нужно освобождать, так как мы его только что взяли)
+
     FAST_PUSH_NO_GC(frame, array_obj);
 }
 
@@ -1428,9 +1410,9 @@ static void op_COMPARE_AND_SWAP(Frame* frame, uint32_t arg) {
         return;
     }
     
-    Object* j_plus_1_obj = FAST_POP_NO_GC(frame); // j+1
-    Object* j_obj = FAST_POP_NO_GC(frame);        // j
-    Object* array_obj = FAST_POP_NO_GC(frame);    // массив
+    Object* j_plus_1_obj = FAST_POP_NO_GC(frame);
+    Object* j_obj = FAST_POP_NO_GC(frame);
+    Object* array_obj = FAST_POP_NO_GC(frame);
     
     if (!array_obj || array_obj->type != OBJ_ARRAY) {
         DPRINT("[VM] COMPARE_AND_SWAP: expected array\n");
@@ -1516,7 +1498,6 @@ static Object* _vm_execute_with_args(VM* vm, CodeObj* code, Object** args, size_
     return res;
 }
 
-// Регистрация активного фрейма для GC
 void vm_register_frame(VM* vm, Frame* frame) {
     if (!vm || !frame) return;
     
@@ -1531,13 +1512,11 @@ void vm_register_frame(VM* vm, Frame* frame) {
     vm->active_frames[vm->active_frames_count++] = frame;
 }
 
-// Отмена регистрации активного фрейма
 void vm_unregister_frame(VM* vm, Frame* frame) {
     if (!vm || !frame) return;
     
     for (size_t i = 0; i < vm->active_frames_count; i++) {
         if (vm->active_frames[i] == frame) {
-            // Сдвигаем остальные элементы
             for (size_t j = i; j < vm->active_frames_count - 1; j++) {
                 vm->active_frames[j] = vm->active_frames[j + 1];
             }
@@ -1547,23 +1526,18 @@ void vm_unregister_frame(VM* vm, Frame* frame) {
     }
 }
 
-// Callback для итерации по всем объектам Heap (для GC)
 static void heap_iterate_wrapper(void* iterator_data, GC_ObjectCallback callback, void* callback_data) {
     Heap* heap = (Heap*)iterator_data;
     if (!heap || !callback) return;
-    
-    // Используем функцию из heap.h
-    // HeapObjectCallback и GC_ObjectCallback имеют одинаковую сигнатуру
+
     heap_iterate_all_objects(heap, (HeapObjectCallback)callback, callback_data);
 }
 
-// Сборка всех корней из VM
 static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capacity) {
     if (!vm || !roots_buffer) return 0;
     
     size_t count = 0;
-    
-    // 1. Глобальные переменные
+
     if (vm->globals) {
         for (size_t i = 0; i < vm->globals_count && count < buffer_capacity; i++) {
             if (vm->globals[i]) {
@@ -1571,8 +1545,7 @@ static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capa
             }
         }
     }
-    
-    // 2. Синглтоны (none, true, false)
+
     if (count < buffer_capacity && vm->none_object) {
         roots_buffer[count++] = vm->none_object;
     }
@@ -1582,14 +1555,12 @@ static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capa
     if (count < buffer_capacity && vm->false_object) {
         roots_buffer[count++] = vm->false_object;
     }
-    
-    // 3. Локальные переменные и стек всех активных фреймов
+
     if (vm->active_frames) {
         for (size_t i = 0; i < vm->active_frames_count && count < buffer_capacity; i++) {
             Frame* frame = vm->active_frames[i];
             if (!frame) continue;
-            
-            // Локальные переменные
+
             if (frame->locals) {
                 for (size_t j = 0; j < frame->local_count && count < buffer_capacity; j++) {
                     if (frame->locals[j]) {
@@ -1597,8 +1568,7 @@ static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capa
                     }
                 }
             }
-            
-            // Стек операндов
+
             if (frame->stack) {
                 for (size_t j = 0; j < frame->stack_size && count < buffer_capacity; j++) {
                     if (frame->stack[j]) {
@@ -1612,15 +1582,12 @@ static size_t vm_collect_roots(VM* vm, Object** roots_buffer, size_t buffer_capa
     return count;
 }
 
-// Выполнение сборки мусора
 void vm_collect_garbage(VM* vm) {
     if (!vm || !vm->gc || !vm->heap) return;
     
     DPRINT("[VM] Starting garbage collection...\n");
     heap_print_stats(vm->heap);
-    
-    // Собираем все корни
-    // Выделяем буфер для корней (обычно их не очень много)
+
     size_t roots_capacity = 1024;
     Object** roots = malloc(roots_capacity * sizeof(Object*));
     if (!roots) {
@@ -1631,8 +1598,7 @@ void vm_collect_garbage(VM* vm) {
     size_t roots_count = vm_collect_roots(vm, roots, roots_capacity);
     
     DPRINT("[VM] Collected %zu roots for GC\n", roots_count);
-    
-    // Выполняем сборку мусора
+
     gc_collect(vm->gc, roots, roots_count, heap_iterate_wrapper, vm->heap);
     
     free(roots);

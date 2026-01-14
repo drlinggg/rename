@@ -11,15 +11,15 @@ typedef struct {
 } CmpswapStats;
 
 typedef struct {
-    size_t array_local_idx;   // индекс массива в локальных переменных
-    size_t index_local_idx;   // индекс переменной цикла (j/i)
-    size_t index2_local_idx;  // второй индекс (для swap)
-    size_t temp_local_idx;    // индекс временной переменной (если есть)
-    size_t const_one_idx;     // индекс константы 1
-    int pattern_type;         // 0 = conditional (cmp), 1 = unconditional (swap)
+    size_t array_local_idx;
+    size_t index_local_idx;
+    size_t index2_local_idx;
+    size_t temp_local_idx;
+    size_t const_one_idx;
+    int pattern_type;
 } PatternMatch;
 
 int has_sorting_pattern(CodeObj* code);
 CodeObj* jit_optimize_cmpswap(CodeObj* original, CmpswapStats* stats);
 
-#endif // CMPSWAP_H
+#endif

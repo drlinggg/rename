@@ -7,4 +7,4 @@ JIT* jit_create(void);
 void jit_destroy(JIT* jit);
 void* jit_compile_function(JIT* jit, void* code);
 
-#endif // JIT_H
+#endif

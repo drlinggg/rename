@@ -11,4 +11,4 @@ typedef struct JIT {
     size_t compiled_count;
 } JIT;
 
-#endif // JIT_TYPES_H
+#endif

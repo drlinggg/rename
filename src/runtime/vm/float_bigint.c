@@ -262,7 +262,7 @@ static int istrcmp(const char* a, int al, const char* b, int bl) {
 
 static char* iadd(const char* a, int al, const char* b, int bl, int* rl) {
     int n = (al > bl ? al : bl) + 1;
-    char* r = malloc(n + 2);  // +2: для n цифр и нулевого символа
+    char* r = malloc(n + 2);
     memset(r, 0, n + 2);
     
     int c = 0;
@@ -591,7 +591,7 @@ for (int i = 0; i < nlen; i++) {
 
     r->neg = result_neg;
     bf_trim(r);
-    bf_limit_precision(r, BF_PRECISION);  // ← ДОБАВЬ ЭТУ СТРОКУ
+    bf_limit_precision(r, BF_PRECISION);
     free(rem);
     bigfloat_free(num);
     bigfloat_free(den);
@@ -601,7 +601,7 @@ for (int i = 0; i < nlen; i++) {
 
 BigFloat* bigfloat_mod(const BigFloat* a, const BigFloat* b) {
     if (a->is_nan || b->is_nan || a->is_inf || b->is_inf) return bf_nan();
-    if (is_zero_string(b->digits, b->len)) return bf_nan(); // mod by zero
+    if (is_zero_string(b->digits, b->len)) return bf_nan();
     
     BigFloat* d = bigfloat_div(a, b);
     

@@ -12,7 +12,6 @@ static Object* find_free_object_in_pool(ObjectPool* pool) {
     while (block) {
         for (size_t i = 0; i < block->used; i++) {
             Object* obj = &block->memory[i];
-            // Нашли свободный объект (ref_count == 0)
             if (obj && obj->ref_count == 0) {
                 return obj;
             }
@@ -258,20 +257,17 @@ void heap_destroy(Heap* heap) {
 }
 
 Object* heap_alloc_int(Heap* heap, int64_t v) {
-    // 1. Проверяем кэш
     if (v >= INT_CACHE_MIN && v <= INT_CACHE_MAX) {
         return heap->int_cache[v - INT_CACHE_MIN];
     }
     
     heap->total_allocations++;
-    
-    // 2. Ищем свободный int в пуле
+
     MemoryBlock* block = heap->int_pool.first;
     while (block) {
         for (size_t i = 0; i < block->used; i++) {
             Object* obj = &block->memory[i];
             if (obj && obj->ref_count == 0) {
-                // Переиспользуем!
                 obj->type = OBJ_INT;
                 obj->ref_count = 1;
                 obj->as.int_value = v;
@@ -282,8 +278,7 @@ Object* heap_alloc_int(Heap* heap, int64_t v) {
         }
         block = block->next;
     }
-    
-    // 3. Если не нашли - создаем новый
+
     Object* o = pool_alloc(&heap->int_pool);
     if (!o) {
         DPRINT("ERROR: Failed to allocate int object\n");
@@ -642,7 +637,6 @@ void heap_print_stats(Heap* heap) {
     DPRINT("=======================\n");
 }
 
-// Итерация по всем объектам в пуле
 static void pool_iterate_objects(ObjectPool* pool, HeapObjectCallback callback, void* user_data) {
     if (!pool || !callback) return;
     
@@ -658,11 +652,9 @@ static void pool_iterate_objects(ObjectPool* pool, HeapObjectCallback callback, 
     }
 }
 
-// Итерация по всем объектам в Heap (для GC sweep phase)
 void heap_iterate_all_objects(Heap* heap, HeapObjectCallback callback, void* user_data) {
     if (!heap || !callback) return;
-    
-    // Итерируемся по всем пулам
+
     pool_iterate_objects(&heap->int_pool, callback, user_data);
     pool_iterate_objects(&heap->array_pool, callback, user_data);
     pool_iterate_objects(&heap->function_pool, callback, user_data);
@@ -671,6 +663,5 @@ void heap_iterate_all_objects(Heap* heap, HeapObjectCallback callback, void* use
     pool_iterate_objects(&heap->float_pool, callback, user_data);
     pool_iterate_objects(&heap->bool_pool, callback, user_data);
     pool_iterate_objects(&heap->none_pool, callback, user_data);
-    
-    // Также обрабатываем int_cache (но это immortal объекты, их можно пропустить)
+
 }
