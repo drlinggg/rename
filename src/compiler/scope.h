@@ -15,4 +15,4 @@ size_t scope_add_local(CompilerScope* scope, const char* name);
 int32_t scope_find_local(CompilerScope* scope, const char* name);
 bool scope_contains_local(CompilerScope* scope, const char* name);
 
-#endif // SCOPE_H
+#endif

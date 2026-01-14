@@ -23,7 +23,7 @@ size_t get_jump_target(bytecode_array* bc, size_t ins_index, uint32_t arg, uint8
     if (op == JUMP_BACKWARD) {
         return ins_index - arg;
     } else if (op == JUMP_FORWARD || op == POP_JUMP_IF_FALSE || op == POP_JUMP_IF_TRUE) {
-        return ins_index + 1 + arg; // +1 потому что смещение от следующей инструкции
+        return ins_index + 1 + arg;
     }
     return (size_t)-1;
 }

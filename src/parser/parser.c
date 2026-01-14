@@ -434,7 +434,7 @@ static ASTNode* parser_parse_if_statement(Parser* parser) {
     }
     
     if (parser_peek(parser) && parser_peek(parser)->type == KW_ELSE) {
-        parser_advance(parser); // Consume 'else'
+        parser_advance(parser);
         
         ASTNode* else_branch = parser_parse_block(parser);
         if (!else_branch) {

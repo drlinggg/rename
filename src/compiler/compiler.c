@@ -372,7 +372,7 @@ static bytecode_array compiler_compile_if_statement(compiler* comp, ASTNode* nod
     for (size_t i = 0; i < if_stmt->elif_count; i++) {
         bytes_after_then += elif_cond_bc[i].count + 1 + elif_branch_bc[i].count;
         if (i < if_stmt->elif_count - 1 || has_else) {
-            bytes_after_then += 1; // JUMP_FORWARD
+            bytes_after_then += 1;
         }
     }
     
@@ -652,47 +652,47 @@ static bytecode_array compiler_compile_binary_expression(compiler* comp, ASTNode
     
     switch (bin_expr->operator_.type) {
         case OP_PLUS:
-            op_code_value = 0x00;  // BINARY_OP_ADD
+            op_code_value = 0x00;
             break;
         case OP_MINUS:
-            op_code_value = 0x0A;  // BINARY_OP_SUBTRACT
+            op_code_value = 0x0A;
             break;
         case OP_MULT:
-            op_code_value = 0x05;  // BINARY_OP_MULTIPLY
+            op_code_value = 0x05;
             break;
         case OP_DIV:
-            op_code_value = 0x0B;  // BINARY_OP_TRUE_DIVIDE
+            op_code_value = 0x0B;
             break;
         case OP_MOD:
-            op_code_value = 0x06;  // BINARY_OP_REMAINDER
+            op_code_value = 0x06;
             break;
         case OP_EQ:
-            op_code_value = 0x50;  // COMPARE_OP_EQ
+            op_code_value = 0x50;
             break;
         case OP_NE:
-            op_code_value = 0x51;  // COMPARE_OP_NE
+            op_code_value = 0x51;
             break;
         case OP_LT:
-            op_code_value = 0x52;  // COMPARE_OP_LT
+            op_code_value = 0x52;
             break;
         case OP_LE:
-            op_code_value = 0x53;  // COMPARE_OP_LE
+            op_code_value = 0x53;
             break;
         case OP_GT:
-            op_code_value = 0x54;  // COMPARE_OP_GT
+            op_code_value = 0x54;
             break;
         case OP_GE:
-            op_code_value = 0x55;  // COMPARE_OP_GE
+            op_code_value = 0x55;
             break;
         case KW_IS:
-            op_code_value = 0x56;  // KW_IS
+            op_code_value = 0x56;
             break;
 
-        case OP_AND: // and
+        case OP_AND:
             op_code_value = 0x60;
             break;
 
-        case OP_OR: // or
+        case OP_OR:
             op_code_value = 0x61;
             break;
 
@@ -733,13 +733,13 @@ static bytecode_array compiler_compile_unary_expression(compiler* comp, ASTNode*
     
     switch (unary_expr->operator_.type) {
         case OP_PLUS:
-            op_code_value = 0x00;  // +x
+            op_code_value = 0x00;
             break;
         case OP_MINUS:
-            op_code_value = 0x01;  // -x
+            op_code_value = 0x01;
             break;
         case OP_NOT:
-            op_code_value = 0x03;  // not x
+            op_code_value = 0x03;
             break;
         default:
             fprintf(stderr, "Invalid token for unary operation: %d\n", unary_expr->operator_);

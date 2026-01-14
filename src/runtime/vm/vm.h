@@ -32,7 +32,6 @@ Object* vm_get_none(VM* vm);
 Object* vm_get_true(VM* vm);
 Object* vm_get_false(VM* vm);
 
-// GC интеграция
 void vm_collect_garbage(VM* vm);
 void vm_register_frame(VM* vm, Frame* frame);
 void vm_unregister_frame(VM* vm, Frame* frame);

@@ -71,10 +71,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Count tokens (including END_OF_FILE sentinel)
     size_t token_count = 0;
     while (tokens[token_count].type != END_OF_FILE) token_count++;
-    token_count++; // include EOF token
+    token_count++;
 
     DPRINT("[RUNNER] token_count=%zu\n", token_count);
     for (size_t ti = 0; ti < token_count; ti++) {
@@ -116,20 +115,17 @@ int main(int argc, char** argv) {
     }
     DPRINT("[RUNNER] Global names count: %zu\n", comp->global_names ? comp->global_names->count : 0);
 
-    // Free token memory (values) - lexer_parse_file allocated strings
     for (size_t i = 0; i < token_count; i++) {
         if (tokens[i].value) free((void*)tokens[i].value);
     }
     free(tokens);
 
-    // Create heap and VM
     size_t global_count = comp->global_names ? comp->global_names->count : 0;
     Heap* heap = heap_create();
     VM* vm = vm_create(heap, global_count);
 
-    // Wrap top-level code into a CodeObj
     CodeObj module_code;
-    module_code.code = result->code_array; // transfer pointer
+    module_code.code = result->code_array;
     module_code.name = strdup("<module>");
     module_code.arg_count = 0;
     module_code.local_count = comp->current_scope && comp->current_scope->locals ? comp->current_scope->locals->count : 0;
@@ -140,13 +136,10 @@ int main(int argc, char** argv) {
     bytecode_array_print(&module_code.code);
 
     clock_t start_time = clock();
-    // Execute module top-level code (defines functions and globals)
     Object* module_res = vm_execute(vm, &module_code);
     if (module_res) {
-        // ignore, likely None
     }
 
-    // Find main global
     size_t main_index = SIZE_MAX;
     if (comp->global_names) {
         int32_t gi = string_table_find(comp->global_names, "main");
@@ -182,9 +175,8 @@ int main(int argc, char** argv) {
         DPRINT("main_obj is None\n");
     }
 
-    // Build call-main code: LOAD_GLOBAL main_index, PUSH_NULL, CALL_FUNCTION 0, RETURN_VALUE
     bytecode* codes = malloc(4 * sizeof(bytecode));
-    codes[0] = bytecode_create_with_number(LOAD_GLOBAL, (uint32_t)(main_index << 1)); // << 1 because VM decodes >> 1
+    codes[0] = bytecode_create_with_number(LOAD_GLOBAL, (uint32_t)(main_index << 1));
     codes[1] = bytecode_create(PUSH_NULL, 0, 0, 0);
     codes[2] = bytecode_create_with_number(CALL_FUNCTION, 0);
     codes[3] = bytecode_create(RETURN_VALUE, 0, 0, 0);
@@ -211,13 +203,12 @@ int main(int argc, char** argv) {
         vm_collect_garbage(vm);
     }
 
-    // Cleanup
     if (ret) object_decref(ret);
     if (module_res) object_decref(module_res);
     free(call_main.name);
     free(module_code.name);
 
-    compiler_destroy(comp); // frees result / AST etc
+    compiler_destroy(comp);
     vm_destroy(vm);
     heap_destroy(heap);
 

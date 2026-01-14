@@ -80,7 +80,7 @@ static void recalculate_jumps(bytecode_array* bc) {
         if (bc->bytecodes[i].op_code != NOP) {
             old_to_new[i] = new_count++;
         } else {
-            old_to_new[i] = (size_t)-1; // Помечаем как удаленную
+            old_to_new[i] = (size_t)-1;
         }
     }
     
@@ -184,9 +184,6 @@ static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMa
     if (start + 27 >= bc->count) return 0;
     
     bytecode* ins = &bc->bytecodes[start];
-    
-    // Проверяем общий паттерн сравнения и обмена
-    // arr[j] > arr[j+1]
     size_t array_idx, idx_idx;
     if (!is_load_local(ins[0], &array_idx)) return 0;
     if (!is_load_local(ins[1], &idx_idx)) return 0;
@@ -204,8 +201,7 @@ static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMa
     match->array_local_idx = array_idx;
     match->index_local_idx = idx_idx;
     match->const_one_idx = bytecode_get_arg(ins[5]);
-    
-    // temp = arr[j]
+
     size_t temp_idx;
     if (!is_load_local(ins[10], &array_idx)) return 0;
     if (!is_load_local(ins[11], &idx_idx)) return 0;
@@ -215,8 +211,7 @@ static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMa
     if (!is_store_local(ins[15], &temp_idx)) return 0;
     
     match->temp_local_idx = temp_idx;
-    
-    // arr[j] = arr[j+1]
+
     if (!is_load_local(ins[16], &array_idx)) return 0;
     if (!is_load_local(ins[17], &idx_idx)) return 0;
     if (ins[18].op_code != LOAD_SUBSCR) return 0;
@@ -225,8 +220,7 @@ static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMa
     if (ins[21].op_code != LOAD_CONST) return 0;
     if (!is_binary_add(ins[22])) return 0;
     if (ins[23].op_code != STORE_SUBSCR) return 0;
-    
-    // arr[j+1] = temp
+
     if (!is_load_local(ins[24], &temp_idx)) return 0;
     if (!is_load_local(ins[25], &array_idx)) return 0;
     if (!is_load_local(ins[26], &idx_idx)) return 0;
@@ -234,7 +228,7 @@ static int match_bubble_sort_pattern(bytecode_array* bc, size_t start, PatternMa
     if (!is_binary_add(ins[28])) return 0;
     if (ins[29].op_code != STORE_SUBSCR) return 0;
     
-    match->pattern_type = 0; // conditional swap
+    match->pattern_type = 0;
     return 1;
 }
 
@@ -242,8 +236,7 @@ static int match_swap_pattern(bytecode_array* bc, size_t start, PatternMatch* ma
     if (start + 13 >= bc->count) return 0;
     
     bytecode* ins = &bc->bytecodes[start];
-    
-    // Шаг 1: temp = numbers[i]
+
     if (ins[0].op_code != LOAD_FAST) return 0;
     size_t array_idx = bytecode_get_arg(ins[0]);
     
@@ -253,8 +246,7 @@ static int match_swap_pattern(bytecode_array* bc, size_t start, PatternMatch* ma
     if (ins[2].op_code != LOAD_SUBSCR) return 0;
     if (ins[3].op_code != STORE_FAST) return 0;
     size_t temp_idx = bytecode_get_arg(ins[3]);
-    
-    // Шаг 2: numbers[i] = numbers[j]
+
     if (!is_load_local_with_idx(ins[4], array_idx)) return 0;
     if (ins[5].op_code != LOAD_FAST) return 0;
     size_t idx2 = bytecode_get_arg(ins[5]);
@@ -263,19 +255,17 @@ static int match_swap_pattern(bytecode_array* bc, size_t start, PatternMatch* ma
     if (!is_load_local_with_idx(ins[7], array_idx)) return 0;
     if (!is_load_local_with_idx(ins[8], idx1)) return 0;
     if (ins[9].op_code != STORE_SUBSCR) return 0;
-    
-    // Шаг 3: numbers[j] = temp
+
     if (!is_load_local_with_idx(ins[10], temp_idx)) return 0;
     if (!is_load_local_with_idx(ins[11], array_idx)) return 0;
     if (!is_load_local_with_idx(ins[12], idx2)) return 0;
     if (ins[13].op_code != STORE_SUBSCR) return 0;
-    
-    // Сохраняем найденные индексы
+
     match->array_local_idx = array_idx;
     match->index_local_idx = idx1;
     match->index2_local_idx = idx2;
     match->temp_local_idx = temp_idx;
-    match->pattern_type = 1; // unconditional swap
+    match->pattern_type = 1;
     
     DPRINT("[JIT-CMPSWAP] Found swap pattern: array=%zu, i=%zu, j=%zu, temp=%zu\n",
            array_idx, idx1, idx2, temp_idx);
@@ -283,7 +273,6 @@ static int match_swap_pattern(bytecode_array* bc, size_t start, PatternMatch* ma
     return 1;
 }
 
-// Замена на COMPARE_AND_SWAP (условный обмен)
 static void replace_with_cmpswap(bytecode_array* bc, size_t start, PatternMatch* match) {
     for (size_t i = start; i < start + 30 && i < bc->count; i++) {
         bc->bytecodes[i].op_code = NOP;
@@ -295,7 +284,6 @@ static void replace_with_cmpswap(bytecode_array* bc, size_t start, PatternMatch*
     bc->bytecodes[start + 3] = bytecode_create_with_number(COMPARE_AND_SWAP, 0x00);
 }
 
-// Замена на SWAP_ARRAY_ELEMENTS (безусловный обмен)
 static void replace_with_swap(bytecode_array* bc, size_t start, PatternMatch* match) {
     for (size_t i = start; i < start + 14 && i < bc->count; i++) {
         bc->bytecodes[i].op_code = NOP;
@@ -313,8 +301,7 @@ static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
     
     for (size_t i = 0; i < bc->count; i++) {
         PatternMatch match;
-        
-        // Сначала проверяем безусловный обмен (он короче)
+
         if (match_swap_pattern(bc, i, &match)) {
             DPRINT("[JIT-CMPSWAP] Found unconditional swap pattern at position %zu\n", i);
             DPRINT("[JIT-CMPSWAP] array_idx=%zu, idx1=%zu, idx2=%zu, temp_idx=%zu\n",
@@ -326,11 +313,10 @@ static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
             stats->optimized_patterns++;
             changed = 1;
             
-            i += 13; // Пропускаем обработанные инструкции
+            i += 13;
             continue;
         }
-        
-        // Затем проверяем условный обмен (он длиннее)
+
         if (match_bubble_sort_pattern(bc, i, &match)) {
             DPRINT("[JIT-CMPSWAP] Found bubble sort pattern at position %zu\n", i);
             DPRINT("[JIT-CMPSWAP] array_idx=%zu, index_idx=%zu, const_idx=%zu, temp_idx=%zu\n",
@@ -342,7 +328,7 @@ static int find_and_replace_patterns(CodeObj* code, CmpswapStats* stats) {
             stats->optimized_patterns++;
             changed = 1;
             
-            i += 29; // Пропускаем обработанные инструкции
+            i += 29;
         }
     }
     

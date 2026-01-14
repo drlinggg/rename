@@ -308,7 +308,7 @@ Token* lexer_parse_file(lexer* lexer, const char* filename) {
         result[i] = *tokens[i];
         free(tokens[i]);
     }
-    result[count].type = END_OF_FILE; // Sentinel value
+    result[count].type = END_OF_FILE;
     result[count].value = NULL;
     
     free(tokens);
