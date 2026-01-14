@@ -37,6 +37,8 @@ struct Object {
         
         struct {
             CodeObj* codeptr;
+            size_t call_count;
+            bool jit_compiled;
         } function;
 
         struct {

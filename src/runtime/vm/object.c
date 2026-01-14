@@ -55,6 +55,8 @@ Object* object_new_function(CodeObj* code) {
     o->type = OBJ_FUNCTION;
     o->ref_count = 1;
     o->as.function.codeptr = code;
+    o->as.function.call_count = 0;
+    o->as.function.jit_compiled = false;
     return o;
 }
 

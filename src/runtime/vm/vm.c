@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define JIT_HOT_CALL_THRESHOLD 10
+
 
 #define FAST_PUSH_GC(frame, obj) \
     do { \
@@ -1052,12 +1054,12 @@ static void op_MAKE_FUNCTION(Frame* frame, uint32_t arg) {
     
     if (maybe && maybe->type == OBJ_CODE) {
         CodeObj* codeptr = maybe->as.codeptr;
-        
-        JIT_COMPILE_IF_ENABLED(frame->vm, codeptr);
 
         GC_DECREF_IF_ENABLED(frame, maybe);
         
         Object* func_obj = heap_alloc_function(frame->vm->heap, codeptr);
+        /* Hotness-based JIT: do not pre-JIT at creation time */
+        func_obj->as.function.jit_compiled = false;
         frame_stack_push(frame, func_obj);
         
         GC_DECREF_IF_ENABLED(frame, func_obj);
@@ -1101,6 +1103,23 @@ static void op_CALL_FUNCTION(Frame* frame, uint32_t arg) {
     
     Object* ret = NULL;
     if (callee_obj->type == OBJ_FUNCTION) {
+        if (jit_enabled && frame->vm && frame->vm->jit && 
+            !callee_obj->as.function.jit_compiled) {
+            size_t calls = ++callee_obj->as.function.call_count;
+            DPRINT("[VM] JIT hot counter for %s: %zu/%d\n",
+                   callee_obj->as.function.codeptr && callee_obj->as.function.codeptr->name ?
+                       callee_obj->as.function.codeptr->name : "<anonymous>",
+                   calls, JIT_HOT_CALL_THRESHOLD);
+            if (calls >= JIT_HOT_CALL_THRESHOLD) {
+                CodeObj* hot_code = callee_obj->as.function.codeptr;
+                JIT_COMPILE_IF_ENABLED(frame->vm, hot_code);
+                if (hot_code) {
+                    callee_obj->as.function.codeptr = hot_code;
+                }
+                callee_obj->as.function.jit_compiled = true;
+            }
+        }
+
         CodeObj* callee_code = callee_obj->as.function.codeptr;
         GC_DECREF_IF_ENABLED(frame, callee_obj);
         ret = _vm_execute_with_args(frame->vm, callee_code, args, argc);
